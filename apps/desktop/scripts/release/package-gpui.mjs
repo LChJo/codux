@@ -161,6 +161,13 @@ function packageWindows() {
     fs.mkdirSync(packageDir, { recursive: true });
     fs.copyFileSync(exePath, path.join(packageDir, `${appName}.exe`));
     fs.copyFileSync(path.join(desktopAssetsRoot, "icons", "icon.ico"), path.join(packageDir, "icon.ico"));
+    // Vendor the Microsoft-signed ConPTY pair next to the exe: portable-pty
+    // sideloads conpty.dll from the app directory, replacing the OS-frozen
+    // in-box ConPTY (scrollback-loss/ghosting bugs on older Windows builds).
+    const conptyDir = path.join(desktopRoot, "resources", "conpty", "x64");
+    fs.copyFileSync(path.join(conptyDir, "conpty.dll"), path.join(packageDir, "conpty.dll"));
+    fs.copyFileSync(path.join(conptyDir, "OpenConsole.exe"), path.join(packageDir, "OpenConsole.exe"));
+    fs.copyFileSync(path.join(conptyDir, "LICENSE"), path.join(packageDir, "conpty-LICENSE"));
     stageRuntimeAssets(path.join(packageDir, "runtime-root"));
     fs.copyFileSync(
       helperPath,
@@ -539,6 +546,9 @@ Section "Uninstall"
   Delete "$DESKTOP\\${escapeNsis(appName)}.lnk"
   Delete "$INSTDIR\\${escapeNsis(appName)}.exe"
   Delete "$INSTDIR\\icon.ico"
+  Delete "$INSTDIR\\conpty.dll"
+  Delete "$INSTDIR\\OpenConsole.exe"
+  Delete "$INSTDIR\\conpty-LICENSE"
   RMDir /r "$INSTDIR\\runtime-root"
   Delete "$INSTDIR\\Uninstall.exe"
   MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "$(MsgRemoveData)" /SD IDNO IDNO keepdata
