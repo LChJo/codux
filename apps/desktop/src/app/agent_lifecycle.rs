@@ -1,7 +1,10 @@
 use super::ai_runtime_status::AgentLifecycleState;
 use super::{CoduxApp, ProjectInfo, WorktreeInfo};
 use crate::terminal::TerminalPane;
-use codux_runtime::ai_runtime::{TerminalStatusEvent, TerminalStatusState};
+use codux_runtime::ai_runtime::{
+    AIRuntimeStateSnapshot, TerminalStatusEvent, TerminalStatusState, canonical_tool_name,
+};
+use std::collections::HashMap;
 
 pub(in crate::app) struct PaneAgentLifecycle {
     pub state: AgentLifecycleState,
@@ -106,6 +109,54 @@ pub(in crate::app) fn aggregate_agent_lifecycle(
     }
 }
 
+fn reconcile_runtime_agent_lifecycle_entries<'a>(
+    entries: &mut HashMap<String, PaneAgentLifecycle>,
+    sessions: impl Iterator<Item = (&'a str, Option<&'a str>, &'a str, &'a str, &'a str, f64)>,
+) -> bool {
+    let mut changed = false;
+    for (terminal_id, terminal_instance_id, project_id, tool, state, updated_at) in sessions {
+        if canonical_tool_name(tool).as_deref() != Some("claude") {
+            continue;
+        }
+        let next = match state {
+            "responding" => Some(AgentLifecycleState::Working),
+            "needsInput" => Some(AgentLifecycleState::Waiting),
+            _ => None,
+        };
+        let Some(next) = next else {
+            if let Some(entry) = entries.remove(terminal_id) {
+                changed |= pane_lifecycle_removal_changed(entry.state);
+            }
+            continue;
+        };
+
+        let existed_before = entries.contains_key(terminal_id);
+        let entry = entries
+            .entry(terminal_id.to_string())
+            .or_insert_with(PaneAgentLifecycle::new);
+        let previous = entry.state;
+        let project_id = entry
+            .project_id
+            .clone()
+            .or_else(|| Some(project_id.to_string()));
+        let worktree_id = entry.worktree_id.clone();
+        let terminal_instance_id = terminal_instance_id
+            .map(str::to_string)
+            .or_else(|| entry.terminal_instance_id.clone());
+        let remote_device_id = entry.remote_device_id.clone();
+        entry.apply_status_event(
+            next,
+            project_id,
+            worktree_id,
+            terminal_instance_id,
+            updated_at,
+            remote_device_id,
+        );
+        changed |= pane_lifecycle_entry_changed(existed_before, previous, entry.state);
+    }
+    changed
+}
+
 impl CoduxApp {
     pub(in crate::app) fn any_pane_agent_working(&self) -> bool {
         self.pane_agent_lifecycle
@@ -181,6 +232,25 @@ impl CoduxApp {
             }
         }
         changed
+    }
+
+    pub(in crate::app) fn reconcile_claude_agent_lifecycle(
+        &mut self,
+        snapshot: &AIRuntimeStateSnapshot,
+    ) -> bool {
+        reconcile_runtime_agent_lifecycle_entries(
+            &mut self.pane_agent_lifecycle,
+            snapshot.sessions.iter().map(|session| {
+                (
+                    session.terminal_id.as_str(),
+                    session.terminal_instance_id.as_deref(),
+                    session.project_id.as_str(),
+                    session.tool.as_str(),
+                    session.state.as_str(),
+                    session.updated_at,
+                )
+            }),
+        )
     }
 
     // Status pushed by a viewed remote host; same apply path as local events.
@@ -475,6 +545,98 @@ mod tests {
     fn removal_changed_for_non_idle() {
         assert!(pane_lifecycle_removal_changed(AgentLifecycleState::Working));
         assert!(!pane_lifecycle_removal_changed(AgentLifecycleState::Idle));
+    }
+
+    #[test]
+    fn idle_claude_runtime_clears_stale_title_lifecycle() {
+        let terminal_id = "terminal-claude".to_string();
+        let mut entries = std::collections::HashMap::from([(
+            terminal_id.clone(),
+            lifecycle(
+                AgentLifecycleState::Working,
+                Some("project-a"),
+                Some("worktree-a"),
+            ),
+        )]);
+
+        let changed = reconcile_runtime_agent_lifecycle_entries(
+            &mut entries,
+            [(
+                terminal_id.as_str(),
+                Some("instance-a"),
+                "project-a",
+                "claude",
+                "idle",
+                20.0,
+            )]
+            .into_iter(),
+        );
+
+        assert!(changed);
+        assert!(!entries.contains_key(&terminal_id));
+    }
+
+    #[test]
+    fn responding_claude_runtime_is_authoritative_over_completed_title() {
+        let terminal_id = "terminal-claude".to_string();
+        let mut entries = std::collections::HashMap::from([(
+            terminal_id.clone(),
+            lifecycle(
+                AgentLifecycleState::Completed,
+                Some("project-a"),
+                Some("worktree-a"),
+            ),
+        )]);
+
+        let changed = reconcile_runtime_agent_lifecycle_entries(
+            &mut entries,
+            [(
+                terminal_id.as_str(),
+                Some("instance-a"),
+                "project-a",
+                "claude-code",
+                "responding",
+                21.0,
+            )]
+            .into_iter(),
+        );
+
+        assert!(changed);
+        let lifecycle = entries.get(&terminal_id).expect("lifecycle");
+        assert_eq!(lifecycle.state, AgentLifecycleState::Working);
+        assert_eq!(lifecycle.worktree_id.as_deref(), Some("worktree-a"));
+    }
+
+    #[test]
+    fn idle_non_claude_runtime_keeps_title_lifecycle() {
+        let terminal_id = "terminal-codex".to_string();
+        let mut entries = std::collections::HashMap::from([(
+            terminal_id.clone(),
+            lifecycle(
+                AgentLifecycleState::Completed,
+                Some("project-a"),
+                Some("worktree-a"),
+            ),
+        )]);
+
+        let changed = reconcile_runtime_agent_lifecycle_entries(
+            &mut entries,
+            [(
+                terminal_id.as_str(),
+                Some("instance-a"),
+                "project-a",
+                "codex",
+                "idle",
+                22.0,
+            )]
+            .into_iter(),
+        );
+
+        assert!(!changed);
+        assert_eq!(
+            entries.get(&terminal_id).map(|entry| entry.state),
+            Some(AgentLifecycleState::Completed)
+        );
     }
 
     #[test]

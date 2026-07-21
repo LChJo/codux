@@ -1503,10 +1503,14 @@ impl CoduxApp {
             .drain_ai_runtime_events_and_enqueue_memory();
         let terminal_status_changed =
             self.drain_and_apply_terminal_lifecycle_events(&drained.events);
-        if terminal_status_changed {
+        let live_ai_snapshot = self.runtime_service.ai_runtime_state_snapshot();
+        let claude_runtime_status_changed =
+            self.reconcile_claude_agent_lifecycle(&live_ai_snapshot);
+        let pane_lifecycle_changed = terminal_status_changed || claude_runtime_status_changed;
+        if pane_lifecycle_changed {
             self.ensure_agent_pulse(cx);
         }
-        self.maybe_refresh_git_for_agent_activity(terminal_status_changed, cx);
+        self.maybe_refresh_git_for_agent_activity(pane_lifecycle_changed, cx);
         let memory_event = current_memory_update_event();
         let memory_update_event = memory_event.revision > self.memory_seen_revision;
         if memory_update_event {
@@ -1515,7 +1519,7 @@ impl CoduxApp {
         if drained.events.is_empty()
             && drained.memory.is_empty()
             && !memory_update_event
-            && !terminal_status_changed
+            && !pane_lifecycle_changed
         {
             return RuntimeActivityTickResult::default();
         }
@@ -1523,7 +1527,6 @@ impl CoduxApp {
         self.dispatch_ai_completion_notifications(&drained.events);
         self.refresh_dock_badge_for_ai_runtime_events(&drained.events, cx);
         let previous_project_states = self.state.ai_runtime_state.project_states.clone();
-        let live_ai_snapshot = self.runtime_service.ai_runtime_state_snapshot();
         self.state.ai_runtime_state = self
             .runtime_service
             .summarize_ai_runtime_state_snapshot(&live_ai_snapshot);
@@ -1558,12 +1561,12 @@ impl CoduxApp {
             }
         }
 
-        if terminal_status_changed {
+        if pane_lifecycle_changed {
             self.sync_project_lifecycle_state(cx);
             self.invalidate_task_column(cx);
         }
         let memory_events = drained.memory.len() + usize::from(memory_update_event);
-        let changed = ai_activity_changed || memory_events > 0 || terminal_status_changed;
+        let changed = ai_activity_changed || memory_events > 0 || pane_lifecycle_changed;
         if changed {
             self.runtime_trace(
                 "runtime-activity",
