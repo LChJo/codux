@@ -9,6 +9,17 @@ All notable changes to this project will be documented in this file.
 - Paused automatic memory queue processing when no eligible extraction provider is configured, preventing repeated failures and UI refresh churn while preserving queued work until a provider becomes available.
 - Hardened AI CLI wrapper tool-permission resolution: when the managed permission cache under the temp directory is missing, corrupt, or mid-write, launches now fall back to the app settings source of truth and log every resolution outcome, instead of silently dropping fullAccess/model injection; terminals keep the managed settings path wired even when the permission sync reports an error, and elevated (Administrator/root) terminals print a one-line warning whenever `--dangerously-skip-permissions` is active because Claude Code refuses the bypass there.
 
+## [2.0.3] - 2026-07-21
+
+### Added
+
+- Added project-level custom environment variables in the project create/edit dialog. New local, WSL, remote, and AI CLI terminals inherit these variables when opened.
+
+### Fixed
+
+- Fixed Homebrew cask download URLs and SHA256 generation to use the stable public DMG asset names.
+- Prevented project environment variables from overriding Codux runtime protocol variables reserved under `CODUX_*` and `DMUX_*`.
+
 ## [2.0.2] - 2026-07-16
 
 ### Changed
