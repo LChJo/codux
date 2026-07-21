@@ -86,6 +86,13 @@ if (process.platform === "win32") {
       "console-helper",
       "Windows package should include the console wrapper helper",
     );
+    for (const conptyFile of ["conpty.dll", "OpenConsole.exe", "conpty-LICENSE"]) {
+      assert.equal(
+        fs.existsSync(path.join(packageDir, conptyFile)),
+        true,
+        `Windows package should vendor the ConPTY pair (${conptyFile})`,
+      );
+    }
 
     const outputDir = path.join(
       process.cwd(),
