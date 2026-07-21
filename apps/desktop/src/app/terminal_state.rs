@@ -1141,9 +1141,12 @@ pub(in crate::app) fn terminal_launch_context(
         session_title: None,
         session_cwd: None,
         session_instance_id: Some(default_session_instance_id),
-        tool_permissions_file: tool_permissions
-            .error
-            .is_none()
+        // Wire the env var whenever a path exists: sync() always reports the
+        // target path (even on a write error), and the terminal wrappers now
+        // degrade gracefully from a missing/corrupt cache file to
+        // $DMUX_APP_SUPPORT_ROOT/settings.json instead of silently skipping
+        // tool-permission injection.
+        tool_permissions_file: (!tool_permissions.path.is_empty())
             .then(|| PathBuf::from(&tool_permissions.path)),
         memory_workspace_root: Some(launch_artifacts.workspace_root),
         memory_prompt_file: Some(launch_artifacts.prompt_file),

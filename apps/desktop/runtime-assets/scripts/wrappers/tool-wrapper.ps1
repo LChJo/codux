@@ -87,13 +87,53 @@ function Find-Real-Binary([string]$Name, [string]$SearchPath) {
 }
 
 function Read-Tool-Settings {
-  $path = $env:DMUX_TOOL_PERMISSION_SETTINGS_FILE
-  if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path)) { return $null }
-  try {
-    return Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
-  } catch {
-    return $null
+  # Resolution chain: managed cache file (temp dir, can vanish or be
+  # mid-write) -> app support settings.json (source of truth, always
+  # readable) -> $null. Every branch logs so a silent "no injection" is
+  # diagnosable from DMUX_LOG_FILE. The fallback returns the
+  # ai.runtimeTools node, which has the same flat camelCase keys as the
+  # managed cache, so downstream $settings.<key> accesses are unchanged.
+  $managed = $env:DMUX_TOOL_PERMISSION_SETTINGS_FILE
+  if (-not [string]::IsNullOrWhiteSpace($managed)) {
+    if (Test-Path -LiteralPath $managed) {
+      try {
+        $parsed = Get-Content -LiteralPath $managed -Raw | ConvertFrom-Json
+        if ($null -ne $parsed) {
+          Write-Live-Log "tool settings source=managed path=$managed"
+          return $parsed
+        }
+        Write-Live-Log "tool settings managed cache empty path=$managed"
+      } catch {
+        Write-Live-Log "tool settings managed cache parse failure path=$managed error=$($_.Exception.Message)"
+      }
+    } else {
+      Write-Live-Log "tool settings managed cache missing path=$managed"
+    }
   }
+  $supportRoot = $env:DMUX_APP_SUPPORT_ROOT
+  if (-not [string]::IsNullOrWhiteSpace($supportRoot)) {
+    $fallback = Join-Path $supportRoot "settings.json"
+    if (Test-Path -LiteralPath $fallback) {
+      try {
+        $root = Get-Content -LiteralPath $fallback -Raw | ConvertFrom-Json
+        $node = $null
+        if ($null -ne $root -and $null -ne $root.ai) {
+          $node = $root.ai.runtimeTools
+        }
+        if ($null -ne $node) {
+          Write-Live-Log "tool settings source=app-support path=$fallback"
+          return $node
+        }
+        Write-Live-Log "tool settings app-support node missing path=$fallback"
+      } catch {
+        Write-Live-Log "tool settings app-support parse failure path=$fallback error=$($_.Exception.Message)"
+      }
+    } else {
+      Write-Live-Log "tool settings app-support missing path=$fallback"
+    }
+  }
+  Write-Live-Log "tool settings source=none tool=$Tool (no tool-permission injection)"
+  return $null
 }
 
 function Tool-Memory-Injection-Strategy([string]$Name) {
@@ -158,6 +198,16 @@ function Tool-Model-Key([string]$Name) {
 
 function Has-Arg([string[]]$Args, [string]$Name) {
   return $Args -contains $Name
+}
+
+function Test-Elevated-Process {
+  try {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  } catch {
+    return $false
+  }
 }
 
 function Has-Prefix-Arg([string[]]$Args, [string]$Prefix) {
@@ -739,6 +789,15 @@ if ($permissionMode -eq "fullAccess") {
       $launchArgs = @("--yolo") + $launchArgs
     }
   }
+}
+
+# Covers both the injected flag (fullAccess) and a user-supplied one: when
+# elevated, Claude Code refuses the bypass and prompts will still appear.
+if (($Tool -eq "claude" -or $Tool -eq "claude-code" -or $Tool -eq "reclaude") -and
+    (Has-Arg $launchArgs "--dangerously-skip-permissions") -and
+    (Test-Elevated-Process)) {
+  [Console]::Error.WriteLine("Codux: this terminal is running as Administrator; Claude Code refuses --dangerously-skip-permissions when elevated, so permission prompts will still appear.")
+  Write-Live-Log "elevation warning emitted tool=$Tool (bypass flag ineffective under admin)"
 }
 
 if ($memoryInjectionStrategy -eq "appendSystemPrompt") {

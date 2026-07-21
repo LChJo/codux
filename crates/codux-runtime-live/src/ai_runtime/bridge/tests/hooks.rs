@@ -938,3 +938,285 @@ fn codewhale_turn_end_hook_writes_interrupted_lifecycle_event() {
     assert_eq!(metadata.has_completed_turn, Some(false));
     fs::remove_dir_all(dir).unwrap();
 }
+
+// ---------------------------------------------------------------------------
+// Tool-permission settings resolution: managed cache -> app-support fallback.
+// The managed cache lives under the temp dir and can vanish (temp cleaners)
+// or be mid-write; the wrappers must fall back to the app support
+// settings.json source of truth and log every resolution outcome instead of
+// silently dropping permission/model injection.
+// ---------------------------------------------------------------------------
+
+#[cfg(not(windows))]
+fn stage_fallback_fake_claude(dir: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let real_bin = dir.join("real-bin");
+    fs::create_dir_all(&real_bin).unwrap();
+    let fake_claude = real_bin.join("claude");
+    fs::write(
+        &fake_claude,
+        "#!/bin/sh\nprintf 'model=%s\\n' \"$DMUX_ACTIVE_AI_MODEL\"\nprintf '%s\\n' \"$@\"\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake_claude).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_claude, permissions).unwrap();
+    real_bin
+}
+
+#[cfg(not(windows))]
+fn write_app_support_runtime_tools(dir: &std::path::Path) -> std::path::PathBuf {
+    let support_dir = dir.join("support");
+    fs::create_dir_all(&support_dir).unwrap();
+    let settings = support_dir.join("settings.json");
+    fs::write(
+        &settings,
+        serde_json::json!({
+            "ai": {
+                "runtimeTools": {
+                    "claudeCode": "fullAccess",
+                    "claudeCodeModel": "claude-sonnet",
+                    "codexEffort": "none"
+                }
+            }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    support_dir
+}
+
+#[cfg(not(windows))]
+#[test]
+fn claude_wrapper_falls_back_to_app_support_settings_when_managed_file_missing() {
+    use std::process::Command;
+
+    let dir =
+        std::env::temp_dir().join(format!("codux-claude-fallback-missing-{}", Uuid::new_v4()));
+    let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+    bridge.stage_assets().unwrap();
+    let real_bin = stage_fallback_fake_claude(&dir);
+    let support_dir = write_app_support_runtime_tools(&dir);
+    let log_file = dir.join("wrapper.log");
+    let binding_dir = dir.join("bindings");
+
+    let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
+    let output = Command::new(bridge.wrapper_bin_dir().join("claude"))
+        .args(["--resume", "session-1"])
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_SESSION_ID", "terminal-1")
+        .env("DMUX_SESSION_INSTANCE_ID", "instance-1")
+        .env("DMUX_PROJECT_ID", "project-1")
+        .env("DMUX_PROJECT_NAME", "Project")
+        .env("DMUX_PROJECT_PATH", dir.join("project"))
+        .env("DMUX_SESSION_TITLE", "Claude")
+        .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+        .env("DMUX_AI_RUNTIME_BINDING_DIR", &binding_dir)
+        .env(
+            "DMUX_TOOL_PERMISSION_SETTINGS_FILE",
+            dir.join("missing-tool-permissions.json"),
+        )
+        .env("DMUX_LOG_FILE", &log_file)
+        .env("DMUX_APP_SUPPORT_ROOT", &support_dir)
+        .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "wrapper should execute fake claude, stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let args = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        args.lines().any(|arg| arg == "model=claude-sonnet"),
+        "{args}"
+    );
+    assert!(args.lines().any(|arg| arg == "--model"), "{args}");
+    assert!(args.lines().any(|arg| arg == "claude-sonnet"), "{args}");
+    assert!(
+        args.lines()
+            .any(|arg| arg == "--dangerously-skip-permissions"),
+        "{args}"
+    );
+    assert!(args.lines().any(|arg| arg == "--resume"), "{args}");
+    assert!(args.lines().any(|arg| arg == "session-1"), "{args}");
+
+    let log = String::from_utf8_lossy(&fs::read(&log_file).unwrap());
+    assert!(log.contains("source=app-support"), "{log}");
+
+    let binding: serde_json::Value =
+        serde_json::from_slice(&fs::read(binding_dir.join("terminal-1-claude.json")).unwrap())
+            .unwrap();
+    assert_eq!(binding["externalSessionId"].as_str(), Some("session-1"));
+    assert_eq!(binding["sessionOrigin"].as_str(), Some("restored"));
+    assert_eq!(binding["model"].as_str(), Some("claude-sonnet"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(not(windows))]
+#[test]
+fn claude_wrapper_uses_settings_fallback_when_managed_file_is_corrupt() {
+    use std::process::Command;
+
+    let dir =
+        std::env::temp_dir().join(format!("codux-claude-fallback-corrupt-{}", Uuid::new_v4()));
+    let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+    bridge.stage_assets().unwrap();
+    let real_bin = stage_fallback_fake_claude(&dir);
+    let support_dir = write_app_support_runtime_tools(&dir);
+    let log_file = dir.join("wrapper.log");
+
+    // An empty (mid-write / truncated) cache file must not validate.
+    let permissions_file = dir.join("tool-permissions.json");
+    fs::write(&permissions_file, "").unwrap();
+
+    let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
+    let output = Command::new(bridge.wrapper_bin_dir().join("claude"))
+        .args(["--resume", "session-1"])
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_SESSION_ID", "terminal-1")
+        .env("DMUX_SESSION_INSTANCE_ID", "instance-1")
+        .env("DMUX_PROJECT_ID", "project-1")
+        .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+        .env("DMUX_AI_RUNTIME_BINDING_DIR", dir.join("bindings"))
+        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+        .env("DMUX_LOG_FILE", &log_file)
+        .env("DMUX_APP_SUPPORT_ROOT", &support_dir)
+        .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "wrapper should execute fake claude, stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let args = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        args.lines().any(|arg| arg == "model=claude-sonnet"),
+        "{args}"
+    );
+    assert!(
+        args.lines()
+            .any(|arg| arg == "--dangerously-skip-permissions"),
+        "{args}"
+    );
+
+    let log = String::from_utf8_lossy(&fs::read(&log_file).unwrap());
+    assert!(log.contains("parse failure"), "{log}");
+    assert!(log.contains("source=app-support"), "{log}");
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(not(windows))]
+#[test]
+fn claude_wrapper_skips_injection_but_still_launches_when_no_settings_source() {
+    use std::process::Command;
+
+    let dir = std::env::temp_dir().join(format!("codux-claude-fallback-none-{}", Uuid::new_v4()));
+    let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+    bridge.stage_assets().unwrap();
+    let real_bin = stage_fallback_fake_claude(&dir);
+    let log_file = dir.join("wrapper.log");
+
+    let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
+    let output = Command::new(bridge.wrapper_bin_dir().join("claude"))
+        .args(["--resume", "session-1"])
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_SESSION_ID", "terminal-1")
+        .env("DMUX_SESSION_INSTANCE_ID", "instance-1")
+        .env("DMUX_PROJECT_ID", "project-1")
+        .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+        .env("DMUX_AI_RUNTIME_BINDING_DIR", dir.join("bindings"))
+        .env(
+            "DMUX_TOOL_PERMISSION_SETTINGS_FILE",
+            dir.join("missing-tool-permissions.json"),
+        )
+        .env("DMUX_LOG_FILE", &log_file)
+        .env_remove("DMUX_APP_SUPPORT_ROOT")
+        .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "wrapper must still launch claude without any settings source, stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let args = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !args
+            .lines()
+            .any(|arg| arg == "--dangerously-skip-permissions"),
+        "{args}"
+    );
+    assert!(!args.lines().any(|arg| arg == "--model"), "{args}");
+    assert!(args.lines().any(|arg| arg == "--resume"), "{args}");
+    assert!(args.lines().any(|arg| arg == "session-1"), "{args}");
+
+    let log = String::from_utf8_lossy(&fs::read(&log_file).unwrap());
+    assert!(log.contains("source=none"), "{log}");
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(not(windows))]
+#[test]
+fn claude_wrapper_reads_settings_fallback_without_helper_binary() {
+    use std::process::Command;
+
+    let dir =
+        std::env::temp_dir().join(format!("codux-claude-fallback-nohelper-{}", Uuid::new_v4()));
+    let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+    bridge.stage_assets().unwrap();
+    // Force the pure-shell resolution path (python3 when present, sed leaf
+    // matching otherwise) by removing the staged helper binary.
+    fs::remove_file(bridge.wrapper_bin_dir().join("codux-wrapper-helper")).unwrap();
+    let real_bin = stage_fallback_fake_claude(&dir);
+    let support_dir = write_app_support_runtime_tools(&dir);
+    let log_file = dir.join("wrapper.log");
+
+    let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
+    let output = Command::new(bridge.wrapper_bin_dir().join("claude"))
+        .args(["--resume", "session-1"])
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_SESSION_ID", "terminal-1")
+        .env("DMUX_SESSION_INSTANCE_ID", "instance-1")
+        .env("DMUX_PROJECT_ID", "project-1")
+        .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+        .env("DMUX_AI_RUNTIME_BINDING_DIR", dir.join("bindings"))
+        .env(
+            "DMUX_TOOL_PERMISSION_SETTINGS_FILE",
+            dir.join("missing-tool-permissions.json"),
+        )
+        .env("DMUX_LOG_FILE", &log_file)
+        .env("DMUX_APP_SUPPORT_ROOT", &support_dir)
+        .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "wrapper should execute fake claude, stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let args = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        args.lines().any(|arg| arg == "model=claude-sonnet"),
+        "{args}"
+    );
+    assert!(
+        args.lines()
+            .any(|arg| arg == "--dangerously-skip-permissions"),
+        "{args}"
+    );
+
+    let log = String::from_utf8_lossy(&fs::read(&log_file).unwrap());
+    assert!(log.contains("source=app-support"), "{log}");
+    fs::remove_dir_all(dir).unwrap();
+}

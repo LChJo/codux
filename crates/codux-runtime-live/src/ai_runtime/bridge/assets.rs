@@ -393,6 +393,20 @@ case "$cmd" in
       codewhaleModel) sed -n 's/.*"codewhaleModel"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${CONFIG_PATH}" | head -n 1 ;;
     esac
     ;;
+  json-nested-string-key)
+    [ -n "${CONFIG_PATH:-}" ] || exit 0
+    if [ -z "${CONFIG_KEY_PATH:-}" ]; then
+      # Empty key path = parse-validity probe. sed cannot validate JSON, so a
+      # non-empty file is the best-effort "parses" signal (mirrors the
+      # production shell fallback).
+      if [ -s "${CONFIG_PATH}" ]; then printf '%s\n' ok; fi
+      exit 0
+    fi
+    # runtimeTools leaf keys are unique within settings.json, so matching the
+    # last dotted segment anywhere in the file is safe without a JSON parser.
+    leaf="${CONFIG_KEY_PATH##*.}"
+    sed -n 's/.*"'"${leaf}"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${CONFIG_PATH}" | head -n 1
+    ;;
   codex-effort)
     sed -n 's/.*"codexEffort"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${CONFIG_PATH}" | head -n 1
     ;;
