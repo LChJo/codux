@@ -1,5 +1,5 @@
 fn claude_project_log_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
-    let directory_name = project_path.replace(['/', '.'], "-");
+    let directory_name = project_path.replace(['/', '\\', ':', '.'], "-");
     directory_files(
         &home.join(".claude").join("projects").join(directory_name),
         "jsonl",
