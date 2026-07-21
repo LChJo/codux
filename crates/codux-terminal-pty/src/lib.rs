@@ -805,10 +805,10 @@ fn build_interactive_login_shell_command(shell: &str, command: Option<&str>) -> 
         shell_name.as_deref(),
         Some("powershell.exe" | "powershell" | "pwsh.exe" | "pwsh")
     ) {
-        builder.args(["-NoLogo", "-NoProfile", "-NoExit"]);
+        builder.args(["-NoLogo", "-NoExit"]);
         builder.args(["-ExecutionPolicy", "Bypass"]);
-        // -NoProfile skips user profiles, so the Codux shell integration
-        // (OSC 133 marks) is dot-sourced explicitly when staged.
+        // Keep the Codux shell integration (OSC 133 marks) independent from
+        // the user's normal PowerShell profiles.
         let hook_prefix = "if ($env:DMUX_PS_HOOK_SCRIPT -and (Test-Path -LiteralPath $env:DMUX_PS_HOOK_SCRIPT)) { . $env:DMUX_PS_HOOK_SCRIPT }; ";
         let command = match command {
             Some(command) => format!("{hook_prefix}{command}"),
@@ -1108,6 +1108,33 @@ mod tests {
                 "-c".to_string(),
                 "printf codux".to_string(),
             ]
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn interactive_login_command_mode_loads_windows_powershell_profile() {
+        let command = build_shell_command(
+            "powershell.exe",
+            None,
+            LocalPtyCommandMode::InteractiveLogin,
+        );
+        let argv: Vec<_> = command
+            .get_argv()
+            .iter()
+            .map(|value| value.to_string_lossy().to_string())
+            .collect();
+
+        assert!(
+            !argv
+                .iter()
+                .any(|argument| argument.eq_ignore_ascii_case("-NoProfile")),
+            "interactive PowerShell must load user profiles: {argv:?}"
+        );
+        assert!(
+            argv.iter()
+                .any(|argument| argument.eq_ignore_ascii_case("-NoExit")),
+            "interactive PowerShell must remain open: {argv:?}"
         );
     }
 }
