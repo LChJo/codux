@@ -327,7 +327,7 @@ fn remote_file_list_matches_tauri_mobile_shape_and_sorting() {
     fs::write(dir.join("beta.txt"), "beta").expect("write beta");
     fs::write(dir.join(".hidden"), "hidden").expect("write hidden");
 
-    let payload = remote_file_list(Some(dir.to_str().unwrap()), Some("project-picker"));
+    let payload = remote_file_list(Some(dir.to_str().unwrap()), Some("project-picker"), false);
     assert_eq!(
         payload.get("path").and_then(serde_json::Value::as_str),
         Some(dir.to_str().unwrap())
@@ -344,6 +344,18 @@ fn remote_file_list_matches_tauri_mobile_shape_and_sorting() {
         .filter_map(|entry| entry.get("name").and_then(serde_json::Value::as_str))
         .collect::<Vec<_>>();
     assert_eq!(names, vec!["Alpha", "zeta", "beta.txt"]);
+
+    // The picker's show-hidden toggle reveals dot entries in the same shape.
+    let hidden_payload =
+        remote_file_list(Some(dir.to_str().unwrap()), Some("project-picker"), true);
+    let hidden_names = hidden_payload
+        .get("entries")
+        .and_then(serde_json::Value::as_array)
+        .expect("hidden entries")
+        .iter()
+        .filter_map(|entry| entry.get("name").and_then(serde_json::Value::as_str))
+        .collect::<Vec<_>>();
+    assert_eq!(hidden_names, vec!["Alpha", "zeta", ".hidden", "beta.txt"]);
 
     fs::remove_dir_all(dir).ok();
 }

@@ -36,6 +36,10 @@ use qrcode::{EcLevel, QrCode, types::Color as QrColor};
 mod options;
 mod widgets;
 
+// Shared with the memory manager window so its extraction-provider picker
+// offers exactly the providers the settings pane does.
+pub(in crate::app) use options::ai_provider_options;
+
 #[path = "panes/ai.rs"]
 mod ai;
 #[path = "panes/appearance.rs"]

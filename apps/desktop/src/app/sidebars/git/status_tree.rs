@@ -520,61 +520,6 @@ mod tests {
     }
 
     #[test]
-    fn review_tree_treats_added_directory_marker_as_directory() {
-        let files = vec![
-            GitReviewFile {
-                path: "plan_test/".to_string(),
-                status: "added".to_string(),
-                additions: 0,
-                deletions: 0,
-            },
-            GitReviewFile {
-                path: "plan_test/readme.md".to_string(),
-                status: "added".to_string(),
-                additions: 2,
-                deletions: 0,
-            },
-        ];
-
-        let (root_dirs, root_files) = collect_immediate_git_review_entries("", &files);
-        assert_eq!(
-            root_dirs.keys().cloned().collect::<Vec<_>>(),
-            vec!["plan_test"]
-        );
-        assert!(root_files.is_empty());
-
-        let (_child_dirs, child_files) = collect_immediate_git_review_entries("plan_test", &files);
-        assert_eq!(
-            child_files
-                .iter()
-                .map(|file| file.path.as_str())
-                .collect::<Vec<_>>(),
-            vec!["plan_test/readme.md"]
-        );
-    }
-
-    #[test]
-    fn review_tree_splits_nested_added_directory_marker_by_depth() {
-        let files = vec![GitReviewFile {
-            path: "assets/art/generated/sliced/characters/skeleton_test/".to_string(),
-            status: "added".to_string(),
-            additions: 0,
-            deletions: 0,
-        }];
-
-        let (root_dirs, root_files) = collect_immediate_git_review_entries("", &files);
-        assert_eq!(
-            root_dirs.keys().cloned().collect::<Vec<_>>(),
-            vec!["assets"]
-        );
-        assert!(root_files.is_empty());
-
-        let (asset_dirs, asset_files) = collect_immediate_git_review_entries("assets", &files);
-        assert_eq!(asset_dirs.keys().cloned().collect::<Vec<_>>(), vec!["art"]);
-        assert!(asset_files.is_empty());
-    }
-
-    #[test]
     fn git_tree_keys_scope_same_directory_by_section() {
         assert_eq!(git_status_tree_key("changed", "src"), "changed:src");
         assert_eq!(git_status_tree_key("untracked", "src"), "untracked:src");

@@ -4,6 +4,7 @@ import '../../models/remote_models.dart';
 import '../../models/workspace_mode.dart';
 import '../components/ai_stats_panel.dart';
 import '../components/project_files_panel.dart';
+import 'phone_review_panel.dart';
 import 'project_tab_bar.dart';
 import 'terminal_header.dart';
 
@@ -30,6 +31,14 @@ class RemoteWorkspaceView extends StatelessWidget {
     required this.onShowTerminal,
     required this.onShowStats,
     required this.onShowFiles,
+    required this.onShowReview,
+    required this.gitReview,
+    required this.gitDiff,
+    required this.gitDiffError,
+    required this.reviewSelectedPath,
+    required this.onSelectReviewDiffFile,
+    required this.onClearReviewSelection,
+    required this.onRefreshReview,
     required this.onBack,
     required this.onEditProject,
     required this.onAddProject,
@@ -71,6 +80,14 @@ class RemoteWorkspaceView extends StatelessWidget {
   final VoidCallback onShowTerminal;
   final VoidCallback onShowStats;
   final VoidCallback onShowFiles;
+  final VoidCallback onShowReview;
+  final RemoteGitReviewSummary? gitReview;
+  final RemoteGitDiff? gitDiff;
+  final String? gitDiffError;
+  final String? reviewSelectedPath;
+  final ValueChanged<String> onSelectReviewDiffFile;
+  final VoidCallback onClearReviewSelection;
+  final VoidCallback onRefreshReview;
   final VoidCallback onBack;
   final VoidCallback onEditProject;
   final VoidCallback onAddProject;
@@ -103,6 +120,7 @@ class RemoteWorkspaceView extends StatelessWidget {
           onTerminal: onShowTerminal,
           onStats: onShowStats,
           onFiles: onShowFiles,
+          onReview: onShowReview,
           onBack: onBack,
           onEditProject: onEditProject,
           onAddProject: onAddProject,
@@ -128,6 +146,17 @@ class RemoteWorkspaceView extends StatelessWidget {
   }
 
   Widget _buildBody() {
+    if (workspaceMode == WorkspaceMode.review) {
+      return PhoneReviewPanel(
+        review: gitReview,
+        gitDiff: gitDiff,
+        diffError: gitDiffError,
+        selectedPath: reviewSelectedPath,
+        onSelectFile: onSelectReviewDiffFile,
+        onClearSelection: onClearReviewSelection,
+        onRefreshReview: onRefreshReview,
+      );
+    }
     if (workspaceMode == WorkspaceMode.stats) {
       return AIStatsPanel(
         stats: aiStats,

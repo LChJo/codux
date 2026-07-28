@@ -358,7 +358,16 @@ impl CoduxApp {
                     .child(
                         div()
                             .flex_none()
+                            .flex()
+                            .items_center()
+                            .gap(px(2.0))
                             .px(px(12.0))
+                            .child(file_picker_hidden_toggle_button(
+                                self.file_picker_show_hidden,
+                                tr("file.picker.show_hidden", "Show hidden files"),
+                                tr("file.picker.hide_hidden", "Hide hidden files"),
+                                cx,
+                            ))
                             .child(file_picker_refresh_button(
                                 self.project_editor_browse_busy,
                                 tr("common.refresh", "Refresh"),
@@ -925,6 +934,30 @@ fn file_picker_refresh_button(
             if !current.trim().is_empty() {
                 app.project_editor_browse_navigate(Some(current), window, cx);
             }
+        }))
+        .into_any_element()
+}
+
+/// The eye toggle in the toolbar: reveals/hides hidden (dot) entries in the
+/// listing. Mirrors the Ctrl/Cmd+Shift+. shortcut in `handle_file_picker_key`.
+fn file_picker_hidden_toggle_button(
+    show_hidden: bool,
+    show_label: String,
+    hide_label: String,
+    cx: &mut Context<CoduxApp>,
+) -> AnyElement {
+    Button::new("file-picker-toggle-hidden")
+        .ghost()
+        .compact()
+        .with_size(Size::Small)
+        .icon(Icon::new(if show_hidden {
+            HeroIconName::EyeSlash
+        } else {
+            HeroIconName::Eye
+        }).size_3p5())
+        .tooltip(if show_hidden { hide_label } else { show_label })
+        .on_click(cx.listener(|app, _event, window, cx| {
+            app.toggle_file_picker_show_hidden(window, cx);
         }))
         .into_any_element()
 }

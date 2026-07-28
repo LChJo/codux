@@ -114,6 +114,8 @@ extension _HomePageActions on HomeController {
         // doesn't show stale files after switching projects.
         _gitDiffPath = null;
         _gitDiff = null;
+        _gitDiffError = null;
+        _gitReview = null;
       }
     });
     final plan = _remoteRuntime.userSelectProject(
@@ -141,6 +143,7 @@ extension _HomePageActions on HomeController {
     if (_workspaceMode == WorkspaceMode.review ||
         _workspaceMode == WorkspaceMode.git) {
       _requestGitStatus();
+      if (_workspaceMode == WorkspaceMode.review) _requestGitReview();
       return;
     }
     if (resetTerminal) {

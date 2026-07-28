@@ -59,6 +59,7 @@ impl CoduxApp {
                 app.file_picker_filename = default_filename.unwrap_or_default();
                 app.file_picker_selected = None;
                 app.file_picker_active_path = None;
+                app.file_picker_show_hidden = false;
                 app.project_editor_runtime_target = target_for_build;
                 app.project_editor_browse_path = String::new();
                 app.project_editor_browse_parent = None;
@@ -252,6 +253,22 @@ impl CoduxApp {
         self.load_project_editor_browse(runtime_target, None, window.window_handle(), cx);
     }
 
+    /// Toggle visibility of hidden (dot) entries and re-list the current
+    /// directory so the eye button / Ctrl+Shift+. shortcut takes effect.
+    pub(in crate::app) fn toggle_file_picker_show_hidden(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.file_picker_show_hidden = !self.file_picker_show_hidden;
+        let current = self.project_editor_browse_path.clone();
+        if current.trim().is_empty() {
+            self.invalidate_project_management(cx);
+            return;
+        }
+        self.project_editor_browse_navigate(Some(current), window, cx);
+    }
+
     pub(in crate::app) fn set_project_editor_browse_new_folder(
         &mut self,
         value: String,
@@ -397,15 +414,30 @@ impl CoduxApp {
             return false;
         }
         let keystroke = &event.keystroke;
+        let key = keystroke.key.as_str();
         let unmodified = !keystroke.modifiers.platform
             && !keystroke.modifiers.control
             && !keystroke.modifiers.alt
             && !keystroke.modifiers.shift
             && !keystroke.modifiers.function;
         if !unmodified {
+            // Ctrl/Cmd+Shift+. toggles hidden (dot) entries — the standard
+            // file-dialog shortcut. Ignored while the inline rename/new-folder
+            // editor is open or a listing is in flight.
+            if keystroke.modifiers.shift
+                && !keystroke.modifiers.alt
+                && !keystroke.modifiers.function
+                && (keystroke.modifiers.platform || keystroke.modifiers.control)
+                && key == "."
+                && self.file_picker_rename_draft.is_none()
+                && !self.file_picker_new_folder_active
+                && !self.project_editor_browse_busy
+            {
+                self.toggle_file_picker_show_hidden(window, cx);
+                return true;
+            }
             return false;
         }
-        let key = keystroke.key.as_str();
         if self.file_picker_rename_draft.is_some() || self.file_picker_new_folder_active {
             if matches!(key, "escape" | "Escape") {
                 if self.file_picker_rename_draft.is_some() {
@@ -666,6 +698,7 @@ impl CoduxApp {
         let runtime_service = self.runtime_service.clone();
         let path_for_call = path.clone();
         let expected_runtime_target = runtime_target.clone();
+        let show_hidden = self.file_picker_show_hidden;
         self.project_editor_browse_generation =
             self.project_editor_browse_generation.wrapping_add(1);
         let browse_generation = self.project_editor_browse_generation;
@@ -695,6 +728,7 @@ impl CoduxApp {
                     &runtime_target,
                     path_for_call.as_deref(),
                     purpose,
+                    show_hidden,
                 )
             })
             .await

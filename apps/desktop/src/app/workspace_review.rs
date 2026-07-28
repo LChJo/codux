@@ -9,7 +9,6 @@ pub(in crate::app) struct ReviewWorkspaceSnapshot {
     changed_files_count: String,
     selected_path: Option<String>,
     review: GitReviewSummary,
-    expanded_dirs: HashSet<String>,
     refreshing: bool,
     content: Option<GitReviewContentSummary>,
     derived_rows: Option<sidebars::GitReviewDerivedRows>,
@@ -76,7 +75,6 @@ impl CoduxApp {
             changed_files_count,
             selected_path,
             review: self.git_review.clone(),
-            expanded_dirs: self.git_expanded_dirs.clone(),
             refreshing: self.git_review_refreshing,
             content,
             derived_rows,
@@ -87,8 +85,6 @@ impl CoduxApp {
     }
 
     fn review_workspace_fingerprint(&self) -> u64 {
-        let mut expanded_dirs = self.git_expanded_dirs.iter().cloned().collect::<Vec<_>>();
-        expanded_dirs.sort();
         super::workspace_views::workspace_view_hash(&[
             super::workspace_views::workspace_view_hash(&(
                 self.state.settings.language.clone(),
@@ -122,7 +118,6 @@ impl CoduxApp {
             ),
             super::workspace_views::workspace_view_hash(&(
                 self.selected_git_file.clone(),
-                expanded_dirs,
                 self.git_review_refreshing,
             )),
             super::workspace_views::workspace_view_hash(&self.git_review_content.as_ref().map(
@@ -147,7 +142,6 @@ impl CoduxApp {
 pub(in crate::app) struct ReviewFileListSnapshot {
     review: GitReviewSummary,
     selected_path: Option<String>,
-    expanded_dirs: HashSet<String>,
     refreshing: bool,
     labels: Rc<sidebars::GitSidebarLabels>,
     fingerprint: u64,
@@ -178,18 +172,14 @@ impl PartialEq for ReviewDiffContentSnapshot {
 
 impl ReviewWorkspaceSnapshot {
     pub(in crate::app) fn file_list_snapshot(&self) -> ReviewFileListSnapshot {
-        let mut expanded_dirs = self.expanded_dirs.iter().cloned().collect::<Vec<_>>();
-        expanded_dirs.sort();
         ReviewFileListSnapshot {
             review: self.review.clone(),
             selected_path: self.selected_path.clone(),
-            expanded_dirs: self.expanded_dirs.clone(),
             refreshing: self.refreshing,
             labels: self.labels.clone(),
             fingerprint: super::workspace_views::workspace_view_hash(&(
                 self.review_file_fingerprint(),
                 self.selected_path.clone(),
-                expanded_dirs,
                 self.refreshing,
             )),
         }
@@ -349,7 +339,6 @@ pub(in crate::app) fn review_file_list(
         app_entity,
         &snapshot.review,
         snapshot.selected_path.as_deref(),
-        &snapshot.expanded_dirs,
         snapshot.refreshing,
         snapshot.labels,
         cx,

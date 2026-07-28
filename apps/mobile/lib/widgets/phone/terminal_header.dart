@@ -15,6 +15,7 @@ class TerminalHeader extends StatelessWidget {
     required this.onTerminal,
     required this.onStats,
     required this.onFiles,
+    required this.onReview,
     this.latencyMs,
     this.connected = true,
   });
@@ -28,6 +29,7 @@ class TerminalHeader extends StatelessWidget {
   final VoidCallback onTerminal;
   final VoidCallback onStats;
   final VoidCallback onFiles;
+  final VoidCallback onReview;
   final int? latencyMs;
   final bool connected;
 
@@ -62,6 +64,7 @@ class TerminalHeader extends StatelessWidget {
                 onTerminal: onTerminal,
                 onStats: onStats,
                 onFiles: onFiles,
+                onReview: onReview,
               ),
             ),
             Positioned(
@@ -131,12 +134,14 @@ class _ModeCapsule extends StatelessWidget {
     required this.onTerminal,
     required this.onStats,
     required this.onFiles,
+    required this.onReview,
   });
   final Color accent;
   final WorkspaceMode activeMode;
   final VoidCallback onTerminal;
   final VoidCallback onStats;
   final VoidCallback onFiles;
+  final VoidCallback onReview;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -166,6 +171,12 @@ class _ModeCapsule extends StatelessWidget {
           active: activeMode == WorkspaceMode.files,
           accent: accent,
           onTap: onFiles,
+        ),
+        _CapsuleItem(
+          icon: Icons.rate_review_rounded,
+          active: activeMode == WorkspaceMode.review,
+          accent: accent,
+          onTap: onReview,
         ),
       ],
     ),

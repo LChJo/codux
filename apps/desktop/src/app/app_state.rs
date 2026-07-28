@@ -144,6 +144,7 @@ pub struct CoduxApp {
     pub(in crate::app) file_picker_filename: String,
     pub(in crate::app) file_picker_selected: Option<String>,
     pub(in crate::app) file_picker_active_path: Option<String>,
+    pub(in crate::app) file_picker_show_hidden: bool,
     pub(in crate::app) project_editor_window: Option<AnyWindowHandle>,
     pub(in crate::app) worktree_creator_window: Option<AnyWindowHandle>,
     pub(in crate::app) child_windows: Vec<AnyWindowHandle>,

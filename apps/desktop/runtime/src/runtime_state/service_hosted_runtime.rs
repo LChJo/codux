@@ -382,11 +382,12 @@ impl RuntimeService {
         target: &ProjectRuntimeTarget,
         path: Option<&str>,
         purpose: Option<&str>,
+        show_hidden: bool,
     ) -> Result<crate::remote::RemoteDirectoryListing, String> {
         let Some(runtime) = self.hosted_runtime_for_target_blocking(target)? else {
-            return self.browse_local_directory(path, purpose);
+            return self.browse_local_directory(path, purpose, show_hidden);
         };
-        let value = runtime.file_list(path.unwrap_or_default(), purpose)?;
+        let value = runtime.file_list(path.unwrap_or_default(), purpose, show_hidden)?;
         Ok(local_directory_listing_from_payload(&value))
     }
 
@@ -639,7 +640,7 @@ impl RuntimeService {
         directory_path: Option<&str>,
     ) -> Result<Vec<FileEntry>, String> {
         let listing_dir = hosted_absolute_path(project_path, directory_path);
-        let value = runtime.file_list(&listing_dir, Some("projectFiles"))?;
+        let value = runtime.file_list(&listing_dir, Some("projectFiles"), false)?;
         Ok(value
             .get("entries")
             .and_then(Value::as_array)
@@ -742,13 +743,18 @@ impl HostedProjectRuntime {
             .and_then(|value| serde_json::from_value(value).map_err(|error| error.to_string()))
     }
 
-    fn file_list(&self, path: &str, purpose: Option<&str>) -> Result<Value, String> {
+    fn file_list(
+        &self,
+        path: &str,
+        purpose: Option<&str>,
+        show_hidden: bool,
+    ) -> Result<Value, String> {
         match self {
             Self::Wsl(client) => client.request(
                 "file.list",
-                json!({ "path": path, "purpose": purpose }),
+                json!({ "path": path, "purpose": purpose, "showHidden": show_hidden }),
             ),
-            Self::Remote(controller) => controller.file_list(Some(path), purpose),
+            Self::Remote(controller) => controller.file_list(Some(path), purpose, show_hidden),
         }
     }
 

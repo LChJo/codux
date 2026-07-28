@@ -628,13 +628,23 @@ impl RemoteController {
         serde_json::from_value(value).map_err(|error| error.to_string())
     }
 
-    pub fn file_list(&self, path: Option<&str>, purpose: Option<&str>) -> Result<Value, String> {
+    pub fn file_list(
+        &self,
+        path: Option<&str>,
+        purpose: Option<&str>,
+        show_hidden: bool,
+    ) -> Result<Value, String> {
         let mut payload = json!({});
         if let Some(path) = path {
             payload["path"] = json!(path);
         }
         if let Some(purpose) = purpose {
             payload["purpose"] = json!(purpose);
+        }
+        // Only sent when true: older hosts ignore the field and keep their
+        // dot-entry filtering, so the toggle degrades to "hidden" there.
+        if show_hidden {
+            payload["showHidden"] = json!(true);
         }
         self.request(REMOTE_FILE_LIST, REMOTE_FILE_LIST, payload)
     }
@@ -644,8 +654,9 @@ impl RemoteController {
         &self,
         path: Option<&str>,
         purpose: Option<&str>,
+        show_hidden: bool,
     ) -> Result<RemoteDirectoryListing, String> {
-        let value = self.file_list(path, purpose.or(Some("projectFiles")))?;
+        let value = self.file_list(path, purpose.or(Some("projectFiles")), show_hidden)?;
         Ok(RemoteDirectoryListing {
             path: value
                 .get("path")
@@ -1413,7 +1424,7 @@ mod e2e {
         let listing = manager
             .controller_for(&saved.device_id)
             .expect("cached controller")
-            .file_list(Some("/remote"), Some("projectFiles"))
+            .file_list(Some("/remote"), Some("projectFiles"), false)
             .expect("remote browse");
         assert_eq!(
             listing["entries"][0]["name"].as_str(),

@@ -745,7 +745,7 @@ pub(super) fn ai_provider_kind_options() -> Vec<(String, SharedString)> {
     .collect()
 }
 
-pub(super) fn ai_provider_options(
+pub(in crate::app) fn ai_provider_options(
     settings: &SettingsSummary,
     purpose: &str,
     language: &str,

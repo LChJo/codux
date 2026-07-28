@@ -137,6 +137,7 @@ impl CoduxApp {
             file_picker_filename: String::new(),
             file_picker_selected: None,
             file_picker_active_path: None,
+            file_picker_show_hidden: false,
             project_editor_window: None,
             worktree_creator_window: None,
             child_windows: Vec::new(),

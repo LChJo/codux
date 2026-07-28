@@ -114,18 +114,20 @@ impl RuntimeService {
 
     /// List a local directory for the in-app file picker — same shape as the
     /// remote browser, so the picker UI is unified for local and remote. Hidden
-    /// entries are skipped; directories sort first.
+    /// (dot) entries are skipped unless `show_hidden` (the picker's eye toggle)
+    /// or the `sshKey` purpose asks for them; directories sort first.
     pub fn browse_local_directory(
         &self,
         path: Option<&str>,
         purpose: Option<&str>,
+        show_hidden: bool,
     ) -> Result<crate::remote::RemoteDirectoryListing, String> {
         use codux_runtime_core::path::{FILE_LIST_DRIVES_SENTINEL, display_path};
-        let show_hidden = purpose == Some("sshKey");
+        let show_hidden = show_hidden || purpose == Some("sshKey");
         // Volume list (the Windows "all drives" root): reuse the shared core
         // listing so local and remote browsing expose drives identically.
         if path.map(str::trim) == Some(FILE_LIST_DRIVES_SENTINEL) {
-            let value = codux_runtime_core::file::file_list_payload(path, purpose);
+            let value = codux_runtime_core::file::file_list_payload(path, purpose, show_hidden);
             return Ok(local_directory_listing_from_payload(&value));
         }
         let dir = match path {

@@ -875,6 +875,70 @@ mod tests {
         fs::remove_dir_all(support_dir).ok();
     }
 
+    #[test]
+    fn provider_summary_defaults_memory_extraction_to_true_when_key_missing() {
+        // The summary must agree with the engine's serde default
+        // (`AIProviderSettings::use_for_memory_extraction` = default_true),
+        // otherwise providers created before the flag existed vanish from the
+        // extraction-provider picker while the engine still considers them.
+        let raw = serde_json::json!({
+            "id": "api-legacy-1",
+            "kind": "openAICompatible",
+            "displayName": "Legacy",
+            "isEnabled": true,
+            "model": "model",
+            "baseUrl": "https://example.test/v1"
+        });
+        let summary = provider_summary(&raw).expect("provider object");
+        assert!(summary.memory_extraction);
+
+        let raw = serde_json::json!({
+            "id": "api-opted-out",
+            "kind": "openAICompatible",
+            "displayName": "Opted Out",
+            "isEnabled": true,
+            "useForMemoryExtraction": false
+        });
+        let summary = provider_summary(&raw).expect("provider object");
+        assert!(!summary.memory_extraction);
+    }
+
+    #[test]
+    fn memory_provider_picker_lists_legacy_providers_without_flag() {
+        // End to end through the summary the UI reads: a provider whose JSON
+        // lacks `useForMemoryExtraction` must still be offered as an
+        // extraction-provider option.
+        let support_dir = temp_dir("settings-memory-picker-legacy");
+        let settings_path = support_dir.join("settings.json");
+        fs::write(
+            &settings_path,
+            serde_json::json!({
+                "ai": {
+                    "providers": [
+                        {
+                            "id": "api-legacy-1",
+                            "kind": "openAICompatible",
+                            "displayName": "Legacy Provider",
+                            "isEnabled": true,
+                            "model": "model",
+                            "baseUrl": "https://example.test/v1",
+                            "apiKey": "key"
+                        }
+                    ]
+                }
+            })
+            .to_string(),
+        )
+        .expect("write settings");
+        crate::config::flush_all_config_writes();
+
+        let summary = SettingsService::new(support_dir.clone()).summary();
+        let provider = summary.ai_providers.first().expect("provider");
+        assert!(provider.memory_extraction);
+
+        fs::remove_dir_all(support_dir).ok();
+    }
+
     fn temp_dir(label: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)

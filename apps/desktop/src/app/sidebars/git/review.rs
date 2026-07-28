@@ -55,6 +55,8 @@ pub(super) struct GitReviewAlignedCell {
     pub(super) line_number: Option<usize>,
     pub(super) text: String,
     pub(super) tone: Option<GitReviewLineTone>,
+    /// Collapsed-region divider ("⋯ N ⋯") instead of a real file line.
+    pub(super) separator: bool,
 }
 
 pub(super) fn git_review_content_panel(
@@ -144,6 +146,18 @@ fn review_content_width(cells: &[GitReviewAlignedCell]) -> Pixels {
 }
 
 fn git_review_code_line(cell: GitReviewAlignedCell, content_width: Pixels) -> AnyElement {
+    if cell.separator {
+        return div()
+            .h(px(18.0))
+            .w(content_width)
+            .min_w(gpui::relative(1.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .text_color(color(theme::TEXT_DIM))
+            .child(cell.text)
+            .into_any_element();
+    }
     let line_bg = match cell.tone {
         Some(GitReviewLineTone::Addition) => Some(color(theme::GREEN).opacity(0.13)),
         Some(GitReviewLineTone::Deletion) => Some(color(theme::RED).opacity(0.14)),
@@ -179,6 +193,30 @@ fn git_review_code_line(cell: GitReviewAlignedCell, content_width: Pixels) -> An
         .into_any_element()
 }
 
+/// Unchanged lines kept on each side of a changed block, like a classic diff
+/// hunk. Everything farther from a change collapses into a separator row, so
+/// the view shows every diff in a large file instead of truncating at a fixed
+/// line count.
+const REVIEW_DIFF_CONTEXT_LINES: usize = 3;
+
+/// Safety cap on rendered rows for pathological diffs (e.g. a whole generated
+/// file rewritten). Hitting it appends a separator row stating how many rows
+/// were left out, so truncation is never silent.
+const MAX_GIT_REVIEW_CONTENT_ROWS: usize = 20_000;
+
+enum ReviewRowSegment {
+    Unchanged {
+        old_start: usize,
+        new_start: usize,
+        count: usize,
+    },
+    /// Aligned (old line, new line) pairs; either side is `None` when the
+    /// other side has no counterpart (pure insertion / deletion).
+    Change {
+        pairs: Vec<(Option<usize>, Option<usize>)>,
+    },
+}
+
 pub(in crate::app) fn build_git_review_derived_rows(
     original_content: &str,
     current_content: &str,
@@ -190,14 +228,103 @@ pub(in crate::app) fn build_git_review_derived_rows(
     let deleted = deleted_lines.iter().copied().collect::<HashSet<_>>();
     let added = added_lines.iter().copied().collect::<HashSet<_>>();
 
+    let segments = collect_review_segments(&original_lines, &current_lines, &deleted, &added);
+
     let mut original_cells = Vec::new();
     let mut current_cells = Vec::new();
+    for (index, segment) in segments.iter().enumerate() {
+        match segment {
+            ReviewRowSegment::Change { pairs } => {
+                for &(old_number, new_number) in pairs {
+                    original_cells.push(review_cell(
+                        &original_lines,
+                        old_number,
+                        Some(GitReviewLineTone::Deletion),
+                    ));
+                    current_cells.push(review_cell(
+                        &current_lines,
+                        new_number,
+                        Some(GitReviewLineTone::Addition),
+                    ));
+                }
+            }
+            ReviewRowSegment::Unchanged {
+                old_start,
+                new_start,
+                count,
+            } => {
+                let after_change = index > 0
+                    && matches!(
+                        segments.get(index - 1),
+                        Some(ReviewRowSegment::Change { .. })
+                    );
+                let before_change = matches!(
+                    segments.get(index + 1),
+                    Some(ReviewRowSegment::Change { .. })
+                );
+                let head = if after_change {
+                    (*count).min(REVIEW_DIFF_CONTEXT_LINES)
+                } else {
+                    0
+                };
+                let tail = if before_change {
+                    (*count).saturating_sub(head).min(REVIEW_DIFF_CONTEXT_LINES)
+                } else {
+                    0
+                };
+                for offset in 0..head {
+                    original_cells.push(review_cell(
+                        &original_lines,
+                        Some(old_start + offset),
+                        None,
+                    ));
+                    current_cells.push(review_cell(&current_lines, Some(new_start + offset), None));
+                }
+                let hidden = *count - head - tail;
+                if hidden > 0 {
+                    let separator = review_separator_cell(format!("⋯ {hidden} ⋯"));
+                    original_cells.push(separator.clone());
+                    current_cells.push(separator);
+                }
+                for offset in (*count - tail)..*count {
+                    original_cells.push(review_cell(
+                        &original_lines,
+                        Some(old_start + offset),
+                        None,
+                    ));
+                    current_cells.push(review_cell(&current_lines, Some(new_start + offset), None));
+                }
+            }
+        }
+    }
+
+    if original_cells.len() > MAX_GIT_REVIEW_CONTENT_ROWS {
+        let hidden = original_cells.len() - MAX_GIT_REVIEW_CONTENT_ROWS;
+        original_cells.truncate(MAX_GIT_REVIEW_CONTENT_ROWS);
+        current_cells.truncate(MAX_GIT_REVIEW_CONTENT_ROWS);
+        let separator = review_separator_cell(format!("⋯ {hidden} ⋯"));
+        original_cells.push(separator.clone());
+        current_cells.push(separator);
+    }
+
+    GitReviewDerivedRows {
+        original: Rc::new(original_cells),
+        current: Rc::new(current_cells),
+    }
+}
+
+/// Splits the file into alternating unchanged runs and changed blocks, walking
+/// both sides in lockstep the way a unified diff does.
+fn collect_review_segments(
+    original_lines: &[String],
+    current_lines: &[String],
+    deleted: &HashSet<usize>,
+    added: &HashSet<usize>,
+) -> Vec<ReviewRowSegment> {
+    let mut segments = Vec::new();
     let mut old_line = 1usize;
     let mut new_line = 1usize;
-
-    while original_cells.len() < 600
-        && (old_line <= original_lines.len() || new_line <= current_lines.len())
-    {
+    while old_line <= original_lines.len() || new_line <= current_lines.len() {
         if deleted.contains(&old_line) || added.contains(&new_line) {
             let mut deleted_block = Vec::new();
             while old_line <= original_lines.len() && deleted.contains(&old_line) {
@@ -212,32 +339,34 @@ pub(in crate::app) fn build_git_review_derived_rows(
             }
 
             let block_len = deleted_block.len().max(added_block.len()).max(1);
-            for offset in 0..block_len {
-                let old_number = deleted_block.get(offset).copied();
-                let new_number = added_block.get(offset).copied();
-                original_cells.push(review_cell(
-                    &original_lines,
-                    old_number,
-                    Some(GitReviewLineTone::Deletion),
-                ));
-                current_cells.push(review_cell(
-                    &current_lines,
-                    new_number,
-                    Some(GitReviewLineTone::Addition),
-                ));
-            }
+            let pairs = (0..block_len)
+                .map(|offset| {
+                    (
+                        deleted_block.get(offset).copied(),
+                        added_block.get(offset).copied(),
+                    )
+                })
+                .collect();
+            segments.push(ReviewRowSegment::Change { pairs });
         } else {
-            original_cells.push(review_cell(&original_lines, Some(old_line), None));
-            current_cells.push(review_cell(&current_lines, Some(new_line), None));
-            old_line += 1;
-            new_line += 1;
+            let old_start = old_line;
+            let new_start = new_line;
+            let mut count = 0usize;
+            while (old_line <= original_lines.len() || new_line <= current_lines.len())
+                && !(deleted.contains(&old_line) || added.contains(&new_line))
+            {
+                old_line += 1;
+                new_line += 1;
+                count += 1;
+            }
+            segments.push(ReviewRowSegment::Unchanged {
+                old_start,
+                new_start,
+                count,
+            });
         }
     }
-
-    GitReviewDerivedRows {
-        original: Rc::new(original_cells),
-        current: Rc::new(current_cells),
-    }
+    segments
 }
 
 fn split_review_lines(content: &str) -> Vec<String> {
@@ -257,6 +386,16 @@ fn review_cell(
         line_number: if text.is_some() { line_number } else { None },
         text: text.unwrap_or_default(),
         tone,
+        separator: false,
+    }
+}
+
+fn review_separator_cell(text: String) -> GitReviewAlignedCell {
+    GitReviewAlignedCell {
+        line_number: None,
+        text,
+        tone: None,
+        separator: true,
     }
 }
 
@@ -264,12 +403,10 @@ pub(in crate::app) fn git_review_file_list(
     app_entity: gpui::Entity<CoduxApp>,
     review: &GitReviewSummary,
     selected_path: Option<&str>,
-    expanded_dirs: &HashSet<String>,
     refreshing: bool,
     labels: Rc<GitSidebarLabels>,
     cx: &mut Context<workspace_views::ReviewFileListView>,
 ) -> impl IntoElement {
-    let expanded_dirs = expanded_dirs.clone();
     div()
         .flex()
         .flex_col()
@@ -322,97 +459,53 @@ pub(in crate::app) fn git_review_file_list(
                 })
                 .into_any_element()
         } else {
-            let tree_context = GitReviewTreeContext {
-                selected_path,
-                expanded_dirs: &expanded_dirs,
-                labels,
-                app_entity,
-            };
             div()
                 .flex_1()
                 .min_h_0()
                 .overflow_y_scrollbar()
                 .py_2()
-                .children(git_review_directory_rows(
+                .children(git_review_file_rows(
                     &review.files,
-                    "",
-                    0,
-                    &tree_context,
+                    selected_path,
+                    &labels,
+                    app_entity,
                     cx,
                 ))
                 .into_any_element()
         })
 }
 
-struct GitReviewTreeContext<'a> {
-    selected_path: Option<&'a str>,
-    expanded_dirs: &'a HashSet<String>,
-    labels: Rc<GitSidebarLabels>,
-    app_entity: gpui::Entity<CoduxApp>,
-}
-
-fn git_review_directory_rows(
+/// Flat list of changed files — no directory tree. Each row carries its
+/// directory as a dim annotation after the file name.
+fn git_review_file_rows(
     files: &[GitReviewFile],
-    base_path: &str,
-    depth: usize,
-    tree_context: &GitReviewTreeContext<'_>,
+    selected_path: Option<&str>,
+    labels: &GitSidebarLabels,
+    app_entity: gpui::Entity<CoduxApp>,
     cx: &mut Context<workspace_views::ReviewFileListView>,
 ) -> Vec<AnyElement> {
-    let (dirs, direct_files) = collect_immediate_git_review_entries(base_path, files);
     let mut rows = Vec::new();
-    for (name, dir) in dirs {
-        if rows.len() >= MAX_GIT_REVIEW_TREE_ROWS {
-            rows.push(
-                git_review_tree_limit_row(files.len(), &tree_context.labels).into_any_element(),
-            );
-            return rows;
+    for file in files {
+        // Directory placeholders (trailing '/') carry no diff to review.
+        if file.path.trim().is_empty() || file.path.ends_with('/') {
+            continue;
         }
-        let expanded = tree_context
-            .expanded_dirs
-            .contains(&git_status_tree_key("review", &dir.path));
-        rows.push(
-            git_review_dir_row(
-                &name,
-                &dir,
-                expanded,
-                depth,
-                tree_context.app_entity.clone(),
-                cx,
-            )
-            .into_any_element(),
-        );
-        if expanded {
-            rows.extend(git_review_directory_rows(
-                files,
-                &dir.path,
-                depth + 1,
-                tree_context,
-                cx,
-            ));
+        if rows.len() >= MAX_GIT_REVIEW_FILE_ROWS {
+            rows.push(git_review_file_limit_row(files.len(), labels).into_any_element());
+            break;
         }
-    }
-    for file in direct_files {
-        if rows.len() >= MAX_GIT_REVIEW_TREE_ROWS {
-            rows.push(
-                git_review_tree_limit_row(files.len(), &tree_context.labels).into_any_element(),
-            );
-            return rows;
-        }
-        let selected = tree_context.selected_path == Some(file.path.as_str());
-        rows.push(
-            git_review_file_row(file, selected, depth, tree_context.app_entity.clone(), cx)
-                .into_any_element(),
-        );
+        let selected = selected_path == Some(file.path.as_str());
+        rows.push(git_review_file_row(file, selected, app_entity.clone(), cx).into_any_element());
     }
     rows
 }
 
-const MAX_GIT_REVIEW_TREE_ROWS: usize = 600;
+const MAX_GIT_REVIEW_FILE_ROWS: usize = 600;
 
-fn git_review_tree_limit_row(total: usize, labels: &GitSidebarLabels) -> impl IntoElement {
+fn git_review_file_limit_row(total: usize, labels: &GitSidebarLabels) -> impl IntoElement {
     let message = labels
         .review_tree_limit
-        .replacen("%@", &MAX_GIT_REVIEW_TREE_ROWS.to_string(), 1)
+        .replacen("%@", &MAX_GIT_REVIEW_FILE_ROWS.to_string(), 1)
         .replacen("%@", &total.to_string(), 1);
     div()
         .h(px(30.0))
@@ -426,21 +519,26 @@ fn git_review_tree_limit_row(total: usize, labels: &GitSidebarLabels) -> impl In
 }
 
 fn git_review_file_row(
-    file: GitReviewFile,
+    file: &GitReviewFile,
     selected: bool,
-    depth: usize,
     app_entity: gpui::Entity<CoduxApp>,
     cx: &mut Context<workspace_views::ReviewFileListView>,
 ) -> impl IntoElement {
     let path = file.path.clone();
     let badge = git_review_status_badge(&file.status);
-    let file_name = file
-        .path
-        .trim_end_matches('/')
+    let trimmed = file.path.trim_end_matches('/');
+    let file_name = trimmed
         .rsplit('/')
         .next()
         .filter(|name| !name.trim().is_empty())
-        .unwrap_or(file.path.as_str())
+        .unwrap_or(trimmed)
+        .to_string();
+    // Directory part shown as a dim annotation after the file name.
+    let directory = trimmed
+        .strip_suffix(&file_name)
+        .map(|dir| dir.trim_end_matches('/'))
+        .filter(|dir| !dir.is_empty())
+        .unwrap_or_default()
         .to_string();
     Button::new(format!("review-file-{path}"))
         .ghost()
@@ -473,8 +571,7 @@ fn git_review_file_row(
                         .min_w_0()
                         .overflow_hidden()
                         .items_center()
-                        .text_color(color(theme::TEXT_MUTED))
-                        .child(div().flex_none().w(px(28.0 + depth as f32 * 18.0)))
+                        .gap_2()
                         .child(
                             Icon::new(review_file_icon(&file.status))
                                 .size_3p5()
@@ -482,97 +579,28 @@ fn git_review_file_row(
                         )
                         .child(
                             div()
-                                .flex_1()
-                                .ml(px(8.0))
-                                .min_w_0()
-                                .max_w_full()
+                                .flex_none()
+                                .max_w(gpui::relative(0.6))
                                 .truncate()
                                 .text_size(rems(0.875))
                                 .line_height(rems(1.125))
                                 .child(file_name),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .text_size(rems(0.6875))
+                                .line_height(rems(1.0))
+                                .text_color(color(theme::TEXT_DIM))
+                                .child(directory),
                         ),
                 )
                 .child(git_review_stats_cells(
                     None,
                     None,
                     Some((badge.0.to_string(), badge.1, true)),
-                )),
-        )
-}
-
-fn git_review_dir_row(
-    name: &str,
-    dir: &GitReviewDirSummary,
-    expanded: bool,
-    depth: usize,
-    app_entity: gpui::Entity<CoduxApp>,
-    cx: &mut Context<workspace_views::ReviewFileListView>,
-) -> impl IntoElement {
-    let path = dir.path.clone();
-    Button::new(format!("review-dir-{path}"))
-        .ghost()
-        .w_full()
-        .h(px(24.0))
-        .px_2()
-        .rounded_sm()
-        .text_color(color(theme::TEXT_MUTED))
-        .on_click(cx.listener(move |_view, _event, _window, cx| {
-            app_entity.update(cx, |app, app_cx| {
-                app.toggle_git_review_dir(path.clone(), app_cx);
-            });
-        }))
-        .child(
-            div()
-                .w_full()
-                .min_w_0()
-                .flex()
-                .items_center()
-                .gap_2()
-                .child(
-                    div()
-                        .flex()
-                        .flex_1()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .items_center()
-                        .child(div().flex_none().w(px(depth as f32 * 18.0)))
-                        .child(
-                            Icon::new(if expanded {
-                                HeroIconName::ChevronDown
-                            } else {
-                                HeroIconName::ChevronRight
-                            })
-                            .size_3()
-                            .flex_none()
-                            .text_color(color(theme::TEXT_DIM)),
-                        )
-                        .child(
-                            Icon::new(if expanded {
-                                HeroIconName::FolderOpen
-                            } else {
-                                HeroIconName::Folder
-                            })
-                            .size_4()
-                            .ml(px(8.0))
-                            .flex_none()
-                            .text_color(color(theme::ACCENT)),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .ml(px(8.0))
-                                .min_w_0()
-                                .max_w_full()
-                                .truncate()
-                                .text_size(rems(0.875))
-                                .line_height(rems(1.125))
-                                .child(name.to_string()),
-                        ),
-                )
-                .child(git_review_stats_cells(
-                    None,
-                    None,
-                    Some((dir.count.to_string(), color(theme::TEXT_DIM), false)),
                 )),
         )
 }
@@ -642,63 +670,6 @@ fn review_file_icon(status: &str) -> HeroIconName {
     }
 }
 
-#[derive(Clone)]
-pub(super) struct GitReviewDirSummary {
-    pub(super) path: String,
-    pub(super) count: usize,
-    pub(super) additions: i64,
-    pub(super) deletions: i64,
-}
-
-pub(super) fn collect_immediate_git_review_entries(
-    base_path: &str,
-    files: &[GitReviewFile],
-) -> (BTreeMap<String, GitReviewDirSummary>, Vec<GitReviewFile>) {
-    let mut dirs = BTreeMap::<String, GitReviewDirSummary>::new();
-    let mut direct_files = Vec::<GitReviewFile>::new();
-    for file in files {
-        let Some(relative_path) = relative_git_status_path(base_path, &file.path) else {
-            continue;
-        };
-        let relative_path = relative_path.trim_end_matches('/');
-        if relative_path.is_empty() {
-            continue;
-        }
-        if let Some((dir_name, _rest)) = relative_path.split_once('/') {
-            let dir_path = join_git_path(base_path, dir_name);
-            dirs.entry(dir_name.to_string())
-                .and_modify(|dir| {
-                    dir.count += 1;
-                    dir.additions += file.additions.max(0);
-                    dir.deletions += file.deletions.max(0);
-                })
-                .or_insert(GitReviewDirSummary {
-                    path: dir_path,
-                    count: 1,
-                    additions: file.additions.max(0),
-                    deletions: file.deletions.max(0),
-                });
-        } else if file.path.ends_with('/') {
-            let dir_path = join_git_path(base_path, relative_path);
-            dirs.entry(relative_path.to_string())
-                .and_modify(|dir| {
-                    dir.count += 1;
-                    dir.additions += file.additions.max(0);
-                    dir.deletions += file.deletions.max(0);
-                })
-                .or_insert(GitReviewDirSummary {
-                    path: dir_path,
-                    count: 1,
-                    additions: file.additions.max(0),
-                    deletions: file.deletions.max(0),
-                });
-        } else {
-            direct_files.push(file.clone());
-        }
-    }
-    (dirs, direct_files)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -724,5 +695,101 @@ mod tests {
         ));
         assert_eq!(rows.original[2].text, "tail");
         assert_eq!(rows.current[2].text, "tail");
+    }
+
+    #[test]
+    fn derived_rows_collapse_unchanged_runs_into_separators() {
+        let mut original = Vec::new();
+        let mut current = Vec::new();
+        for i in 1..=50 {
+            original.push(format!("line {i}"));
+            current.push(format!("line {i}"));
+        }
+        current[39] = "edited".to_string();
+        let rows =
+            build_git_review_derived_rows(&original.join("\n"), &current.join("\n"), &[40], &[40]);
+
+        // separator + 3 context + 1 change + 3 context + separator = 9 rows.
+        assert_eq!(rows.original.len(), 9);
+        assert_eq!(rows.current.len(), 9);
+        assert!(rows.original[0].separator);
+        assert_eq!(rows.original[1].line_number, Some(37));
+        assert_eq!(rows.original[3].line_number, Some(39));
+        assert_eq!(rows.original[4].line_number, Some(40));
+        assert!(matches!(
+            rows.original[4].tone,
+            Some(GitReviewLineTone::Deletion)
+        ));
+        assert!(matches!(
+            rows.current[4].tone,
+            Some(GitReviewLineTone::Addition)
+        ));
+        assert_eq!(rows.current[4].text, "edited");
+        assert_eq!(rows.original[5].line_number, Some(41));
+        assert_eq!(rows.original[7].line_number, Some(43));
+        assert!(rows.original[8].separator);
+    }
+
+    #[test]
+    fn derived_rows_show_changes_beyond_previous_line_cap() {
+        let mut original = Vec::new();
+        let mut current = Vec::new();
+        for i in 1..=3000 {
+            original.push(format!("line {i}"));
+            current.push(format!("line {i}"));
+        }
+        current[2499] = "edited".to_string();
+        let rows = build_git_review_derived_rows(
+            &original.join("\n"),
+            &current.join("\n"),
+            &[2500],
+            &[2500],
+        );
+
+        assert!(
+            rows.current.iter().any(|cell| cell.text == "edited"),
+            "a change at line 2500 must be rendered"
+        );
+        assert!(
+            rows.original.len() < 20,
+            "unchanged regions should collapse, got {} rows",
+            rows.original.len()
+        );
+    }
+
+    #[test]
+    fn derived_rows_keep_adjacent_changes_together() {
+        let rows = build_git_review_derived_rows(
+            "a\nb\nc\nd\ne\nf\n",
+            "a\nB\nC\nd\ne\nf\n",
+            &[2, 3],
+            &[2, 3],
+        );
+
+        assert_eq!(rows.original.len(), 6);
+        assert!(!rows.original.iter().any(|cell| cell.separator));
+        assert_eq!(rows.original[1].text, "b");
+        assert_eq!(rows.current[1].text, "B");
+        assert_eq!(rows.current[2].text, "C");
+    }
+
+    #[test]
+    fn derived_rows_render_whole_added_file_without_collapsing() {
+        let rows = build_git_review_derived_rows("", "one\ntwo\nthree\n", &[], &[1, 2, 3]);
+
+        assert_eq!(rows.current.len(), 3);
+        assert!(!rows.current.iter().any(|cell| cell.separator));
+        assert_eq!(rows.current[0].text, "one");
+        assert!(rows.original.iter().all(|cell| cell.line_number.is_none()));
+    }
+
+    #[test]
+    fn derived_rows_collapse_fully_unchanged_file_to_separator() {
+        let rows = build_git_review_derived_rows("a\nb\nc\n", "a\nb\nc\n", &[], &[]);
+
+        assert_eq!(rows.original.len(), 1);
+        assert!(rows.original[0].separator);
+        assert_eq!(rows.current.len(), 1);
+        assert!(rows.current[0].separator);
     }
 }

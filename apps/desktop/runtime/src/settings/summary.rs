@@ -416,10 +416,15 @@ fn provider_summary(value: &Value) -> Option<AIProviderSummary> {
             .get("isEnabled")
             .and_then(Value::as_bool)
             .unwrap_or(true),
+        // Missing key means "eligible": this must match the serde default
+        // (`default_true`) on `AIProviderSettings::use_for_memory_extraction`
+        // that the extraction engine reads. Defaulting the summary to `false`
+        // hid legacy/hand-edited providers from the extraction-provider picker
+        // even though the engine would still use them.
         memory_extraction: provider
             .get("useForMemoryExtraction")
             .and_then(Value::as_bool)
-            .unwrap_or(false),
+            .unwrap_or(true),
         priority: provider
             .get("priority")
             .and_then(Value::as_i64)

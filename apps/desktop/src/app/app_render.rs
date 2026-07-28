@@ -141,6 +141,7 @@ impl Render for CoduxApp {
                 .child(memory_manager_window_workspace(
                     MemoryManagerWindowInput {
                         manager: &self.state.memory_manager,
+                        settings: &self.state.settings,
                         active_tab: self.memory_manager_tab,
                         selected_scope: &self.memory_manager_scope,
                         selected_project_id: self.memory_manager_project_id.as_deref(),

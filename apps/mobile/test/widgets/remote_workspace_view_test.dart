@@ -26,6 +26,35 @@ void main() {
     expect(find.text('/repo'), findsOneWidget);
     expect(find.text('main.dart'), findsOneWidget);
   });
+
+  testWidgets('review mode loads then lists changed files', (tester) async {
+    await tester.pumpWidget(
+      _wrap(_workspace(workspaceMode: WorkspaceMode.review)),
+    );
+    // No summary yet: loading spinner.
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    const review = RemoteGitReviewSummary(
+      mode: 'workingTreeAudit',
+      title: 'Uncommitted Audit',
+      diffStat: '1 changed file, 2 insertions(+), 0 deletions(-)',
+      files: [
+        RemoteGitReviewFile(
+          path: 'lib/screens/home/home_page.dart',
+          status: 'modified',
+          additions: 2,
+          deletions: 0,
+        ),
+      ],
+      isRepository: true,
+    );
+    await tester.pumpWidget(
+      _wrap(_workspace(workspaceMode: WorkspaceMode.review, gitReview: review)),
+    );
+    expect(find.text('home_page.dart'), findsOneWidget);
+    expect(find.text('lib/screens/home'), findsOneWidget);
+    expect(find.text('+2'), findsOneWidget);
+  });
 }
 
 Widget _wrap(Widget child) {
@@ -40,7 +69,10 @@ Widget _wrap(Widget child) {
   );
 }
 
-RemoteWorkspaceView _workspace({required WorkspaceMode workspaceMode}) {
+RemoteWorkspaceView _workspace({
+  required WorkspaceMode workspaceMode,
+  RemoteGitReviewSummary? gitReview,
+}) {
   const project = ProjectInfo(id: 'project-1', name: 'Project', path: '/repo');
   return RemoteWorkspaceView(
     topInset: 0,
@@ -75,6 +107,14 @@ RemoteWorkspaceView _workspace({required WorkspaceMode workspaceMode}) {
     onShowTerminal: () {},
     onShowStats: () {},
     onShowFiles: () {},
+    onShowReview: () {},
+    gitReview: gitReview,
+    gitDiff: null,
+    gitDiffError: null,
+    reviewSelectedPath: null,
+    onSelectReviewDiffFile: (_) {},
+    onClearReviewSelection: () {},
+    onRefreshReview: () {},
     onBack: () {},
     onEditProject: () {},
     onAddProject: () {},

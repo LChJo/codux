@@ -97,6 +97,53 @@ mod tests {
     }
 
     #[test]
+    fn extraction_prompt_caps_existing_summary_at_injection_budget() {
+        // Over budget: hard-capped by maxInjectedSummaryTokens (tokens × 3 chars).
+        let long = "x".repeat(5000);
+        let prompt = make_extraction_prompt(
+            "User asked to keep runtime code split.",
+            Some(&PromptMemorySummary {
+                version: 7,
+                content: long,
+            }),
+            &[],
+            &[],
+            "codux-gpui",
+            "en",
+            &MemorySettings {
+                max_injected_summary_tokens: 200,
+                ..Default::default()
+            },
+        );
+        assert!(prompt.contains("version=7"));
+        assert!(prompt.contains("[Memory extraction input truncated]"));
+        assert!(
+            !prompt.contains(&"x".repeat(700)),
+            "summary must be truncated to ~600 chars at a 200-token budget"
+        );
+
+        // Under budget: passes through untouched.
+        let short = "User prefers compact summaries.";
+        let prompt = make_extraction_prompt(
+            "User asked something.",
+            Some(&PromptMemorySummary {
+                version: 3,
+                content: short.to_string(),
+            }),
+            &[],
+            &[],
+            "codux-gpui",
+            "en",
+            &MemorySettings {
+                max_injected_summary_tokens: 200,
+                ..Default::default()
+            },
+        );
+        assert!(prompt.contains(short));
+        assert!(!prompt.contains("[Memory extraction input truncated]"));
+    }
+
+    #[test]
     fn memory_extraction_schema_requires_stable_item_keys() {
         let schema = memory_extraction_json_schema();
         let required = schema

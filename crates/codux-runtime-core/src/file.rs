@@ -14,8 +14,11 @@ pub const MOBILE_TEXT_FILE_LIMIT_BYTES: u64 = 2 * 1024 * 1024;
 pub use crate::path::FILE_LIST_DRIVES_SENTINEL;
 use crate::path::{display_path, drive_root_parent};
 
-pub fn file_list_payload(path: Option<&str>, purpose: Option<&str>) -> Value {
-    let show_hidden = purpose == Some("sshKey");
+/// List a directory for pickers/file browsers. Dot entries are skipped unless
+/// the caller opts in with `show_hidden` (the picker's eye toggle) or asks for
+/// the `sshKey` purpose (keys live under `~/.ssh`).
+pub fn file_list_payload(path: Option<&str>, purpose: Option<&str>, show_hidden: bool) -> Value {
+    let show_hidden = show_hidden || purpose == Some("sshKey");
     let requested = path.map(str::trim).filter(|value| !value.is_empty());
     if requested == Some(FILE_LIST_DRIVES_SENTINEL) {
         return drive_list_payload(purpose);
@@ -314,7 +317,7 @@ mod tests {
 
     #[test]
     fn drives_sentinel_returns_volume_listing() {
-        let payload = file_list_payload(Some(FILE_LIST_DRIVES_SENTINEL), Some("projectFiles"));
+        let payload = file_list_payload(Some(FILE_LIST_DRIVES_SENTINEL), Some("projectFiles"), false);
         assert_eq!(payload["path"], FILE_LIST_DRIVES_SENTINEL);
         assert_eq!(payload["purpose"], "projectFiles");
         let entries = payload["entries"].as_array().expect("entries array");
@@ -336,7 +339,7 @@ mod tests {
         let ssh_dir = dir.join(".ssh");
         fs::create_dir_all(&ssh_dir).expect("ssh dir");
 
-        let project_payload = file_list_payload(dir.to_str(), Some("projectFiles"));
+        let project_payload = file_list_payload(dir.to_str(), Some("projectFiles"), false);
         let project_entries = project_payload["entries"]
             .as_array()
             .expect("project entries");
@@ -346,7 +349,18 @@ mod tests {
                 .any(|entry| entry["name"].as_str() == Some(".ssh"))
         );
 
-        let ssh_payload = file_list_payload(dir.to_str(), Some("sshKey"));
+        // The picker's show-hidden toggle reveals dot entries for any purpose.
+        let revealed_payload = file_list_payload(dir.to_str(), Some("projectFiles"), true);
+        let revealed_entries = revealed_payload["entries"]
+            .as_array()
+            .expect("revealed entries");
+        assert!(
+            revealed_entries
+                .iter()
+                .any(|entry| entry["name"].as_str() == Some(".ssh"))
+        );
+
+        let ssh_payload = file_list_payload(dir.to_str(), Some("sshKey"), false);
         let ssh_entries = ssh_payload["entries"].as_array().expect("ssh entries");
         assert!(
             ssh_entries

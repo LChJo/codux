@@ -319,6 +319,8 @@ extension _HomePageWorkspace on HomeController {
     _workspaceModeActions.requestGitDiff(path);
   }
 
+  void _requestGitReview() => _workspaceModeActions.requestGitReview();
+
   /// Open a changed file's diff in the center review view. Used by both the
   /// review list and the git panel (which switches over to review on tap).
   void _openReviewFile(String path) {
@@ -328,14 +330,48 @@ extension _HomePageWorkspace on HomeController {
     _requestGitDiff(path);
   }
 
+  /// Phone review list tap: like [_openReviewFile] but requests the
+  /// base-branch-aware `review_diff` op and clears any prior diff error.
+  void _openReviewDiffFile(String path) {
+    if (_workspaceMode != WorkspaceMode.review) {
+      _applyState(() => _workspaceMode = WorkspaceMode.review);
+    }
+    _applyState(() {
+      _gitDiffPath = path;
+      _gitDiff = null;
+      _gitDiffError = null;
+    });
+    _workspaceModeActions.requestReviewDiff(path);
+  }
+
+  /// Phone diff pane back button — return to the review file list.
+  void _clearReviewSelection() => _applyState(() {
+        _gitDiffPath = null;
+        _gitDiff = null;
+        _gitDiffError = null;
+      });
+
   void _handleGitRead(Object? payload) {
     if (payload is! Map) return;
     final op = '${payload['op'] ?? ''}';
     final result = payload['result'];
-    if (op == 'diff' && result is Map && mounted) {
-      _applyState(() {
-        _gitDiff = RemoteGitDiff.fromResult(Map<String, dynamic>.from(result));
-      });
+    if (result is! Map || !mounted) return;
+    switch (op) {
+      case 'diff':
+      case 'review_diff':
+        _applyState(() {
+          _gitDiffError = null;
+          _gitDiff = RemoteGitDiff.fromResult(Map<String, dynamic>.from(result));
+        });
+      case 'review':
+        // git.read replies carry no project/mode correlation — ignore stale
+        // summaries arriving after the user left the review screen.
+        if (_workspaceMode != WorkspaceMode.review) return;
+        _applyState(() {
+          _gitReview = RemoteGitReviewSummary.fromResult(
+            Map<String, dynamic>.from(result),
+          );
+        });
     }
   }
 
@@ -356,6 +392,7 @@ extension _HomePageWorkspace on HomeController {
   void _showReviewMode() {
     _applyState(() => _workspaceMode = WorkspaceMode.review);
     _requestGitStatus();
+    _requestGitReview();
   }
 
   void _showSshMode() {

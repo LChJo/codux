@@ -492,7 +492,14 @@ fn make_handler(
             REMOTE_FILE_LIST => {
                 let path = payload.get("path").and_then(Value::as_str);
                 let purpose = payload.get("purpose").and_then(Value::as_str);
-                Some((REMOTE_FILE_LIST, file_list_payload(path, purpose)))
+                let show_hidden = payload
+                    .get("showHidden")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                Some((
+                    REMOTE_FILE_LIST,
+                    file_list_payload(path, purpose, show_hidden),
+                ))
             }
             REMOTE_FILE_READ => match payload.get("path").and_then(Value::as_str) {
                 Some(path) => match file_read_payload(path) {

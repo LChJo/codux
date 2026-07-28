@@ -85,7 +85,7 @@ pub fn make_extraction_prompt(
     let output_language = memory_extraction_language_label(output_locale);
     format!(
         "Memory extraction schema: codux-memory-v4\nProject: {project_name}\n\nExisting user summary:\n{}\n\nRelevant user memories:\n{}\n\nRelevant project memories:\n{}\n\nTranscript:\n<transcript>\n{}\n</transcript>\n\nReturn minified JSON only, with no markdown and no line breaks:\n{{\"user_summary\":\"\",\"working_add\":[],\"working_archive\":[],\"merged_entry_ids\":[],\"project_profile_refresh_recommended\":false}}\n\nRules:\n- If nothing durable should be stored, return the exact empty JSON shape above.\n- Add at most 3 working_add items total. Prefer the highest value durable memories only.\n- Each working_add item must include content, kind, scope, and module_key. scope must be exactly user or project; module_key must be a non-empty concise module name.\n- Optional item fields: rationale, merge_with, replace, archive, skip_reason. Because the structured-output schema requires stable keys, use empty strings for unused optional string fields and [] for unused optional arrays.\n- project_profile_refresh_recommended must be true only when the transcript reveals likely project-wide changes to purpose, architecture, tech stack, major modules, or common commands. Do not set it for ordinary bug fixes, logs, or task progress.\n- merge_with and replace must be a single existing UUID string, not an array. If multiple existing memories are duplicates, set merge_with to the best target id and put the other duplicate ids in archive.\n- Use merge_with for semantic duplicates, replace for conflicts where the new memory supersedes an old entry, archive for stale or duplicate entry ids, skip_reason for candidates that should not be stored.\n- Write user_summary, working_add.content, rationale, and skip_reason in {output_language}. Preserve code identifiers, file paths, commands, URLs, API names, branch names, model/tool names, and quoted error text exactly. JSON keys and enum values must remain in English.\n- Keep each working_add.content concise: target 120-220 Chinese characters or 60-110 English words. Summarize the memory naturally; do not hard-truncate, cut mid-sentence, or drop critical qualifiers just to hit a number.\n- Keep rationale short: target one brief sentence. Summarize rather than truncating.\n- user_summary <= about {} tokens; empty string means keep existing user summary unchanged. If it would exceed the budget, rewrite it as a compact summary instead of truncating it.\n- Do not produce project_summary. Project profile is generated from repository files, not chat transcripts.\n- Extract only durable engineering memory. Omit temporary tasks, logs, timestamps, greetings, tool output, generic knowledge, and assistant-invented preferences.\n- scope=user only for explicit cross-project user habits/preferences; user entries should use module_key=\"user\".\n- Repository facts, commands, release flow, UI decisions, bugs, diagnostics, paths, APIs, and conventions must be scope=project and assigned a concise module_key such as frontend, tauri, terminal, memory, git, release, remote, pet, performance, or general.\n- Ambiguous or low-value information must be omitted.\n- kind must be one of exactly four: preference (how the user wants you to work / their habits and style), decision (a chosen approach, architecture, or standing project rule/convention/standard), bug_lesson (what broke and the fix or guard), fact (a durable concrete fact: path, command, config, API). Pick the single best fit; do not store low-value items just to fill a kind. Do not output a tier field; importance is derived automatically.",
-        render_existing_summary(user_summary),
+        render_existing_summary(user_summary, settings.max_injected_summary_tokens),
         render_existing_memories(user_memories),
         render_existing_memories(project_memories),
         trim_memory_text(transcript, settings.max_extraction_transcript_tokens),
@@ -132,11 +132,21 @@ pub fn trim_memory_text(text: &str, max_tokens: i32) -> String {
     )
 }
 
-fn render_existing_summary(summary: Option<&PromptMemorySummary>) -> String {
+fn render_existing_summary(summary: Option<&PromptMemorySummary>, max_tokens: i32) -> String {
+    // The injected summary is the one memory payload without a count cap, so
+    // enforce maxInjectedSummaryTokens here: a runaway summary would otherwise
+    // ride along on every extraction call and seed the model's rewrite from an
+    // ever-growing block. Steady state (summary kept near summaryTargetTokenBudget)
+    // never trips this; it is the safety net for non-compliant rewrites.
     summary
         .and_then(|summary| {
-            normalized_non_empty(&summary.content)
-                .map(|content| format!("version={}\n{}", summary.version, content))
+            normalized_non_empty(&summary.content).map(|content| {
+                format!(
+                    "version={}\n{}",
+                    summary.version,
+                    trim_memory_text(&content, max_tokens)
+                )
+            })
         })
         .unwrap_or_else(|| "(none)".to_string())
 }

@@ -463,6 +463,10 @@ extension _HomePageProtocol on HomeController {
         _terminalOutputController.resetSessionTransient(message.sessionId!);
         _setTerminalBufferLoading(false);
       }
+      // A failed git.read (e.g. review_diff) answers with REMOTE_ERROR rather
+      // than a git.read envelope — surface it in the pending diff pane instead
+      // of leaving an endless spinner.
+      if (_gitDiffPath != null && _gitDiff == null) _gitDiffError = errorMessage;
       _status = errorMessage;
     });
   }

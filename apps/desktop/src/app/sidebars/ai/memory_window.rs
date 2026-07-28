@@ -1,8 +1,11 @@
 use super::memory_rows::*;
 use super::*;
+use crate::app::app_select::{CoduxSelectConfig, CoduxSelectOption, codux_select};
+use codux_runtime::settings::SettingsSummary;
 
 pub(in crate::app) struct MemoryManagerWindowInput<'a> {
     pub(in crate::app) manager: &'a MemoryManagerSnapshot,
+    pub(in crate::app) settings: &'a SettingsSummary,
     pub(in crate::app) active_tab: MemoryManagerTab,
     pub(in crate::app) selected_scope: &'a str,
     pub(in crate::app) selected_project_id: Option<&'a str>,
@@ -21,6 +24,7 @@ pub(in crate::app) fn memory_manager_window_workspace(
 ) -> impl IntoElement {
     let MemoryManagerWindowInput {
         manager,
+        settings,
         active_tab,
         selected_scope,
         selected_project_id,
@@ -184,7 +188,8 @@ pub(in crate::app) fn memory_manager_window_workspace(
                                     )
                                     .into_any_element()
                                 })),
-                        ),
+                        )
+                        .child(ai_memory_extraction_provider_footer(settings, language, cx)),
                 )
                 .child(
                     div()
@@ -348,6 +353,70 @@ pub(in crate::app) fn memory_manager_window_workspace(
                 ),
         )
         .child(ai_memory_manager_status_bar(manager, language))
+}
+
+/// Footer of the left sidebar: picks which AI provider runs memory extraction.
+/// Memory extraction fails outright when no eligible provider exists, so this
+/// keeps the fix one click away from the queue / failed-records views.
+fn ai_memory_extraction_provider_footer(
+    settings: &SettingsSummary,
+    language: &str,
+    cx: &mut Context<CoduxApp>,
+) -> impl IntoElement {
+    let options = crate::app::settings::ai_provider_options(settings, "memory", language);
+    // Option 0 is always "Automatic"; anything beyond it is a real provider.
+    let has_eligible_provider = options.len() > 1;
+    let select_options = options
+        .into_iter()
+        .map(|(value, label)| CoduxSelectOption::new(value, label))
+        .collect();
+    div()
+        .flex_shrink_0()
+        .border_t_1()
+        .border_color(cx.theme().sidebar_border)
+        .px(px(10.0))
+        .pt(px(8.0))
+        .pb(px(10.0))
+        .child(
+            div()
+                .mb(px(6.0))
+                .text_size(rems(0.6875))
+                .line_height(rems(1.0))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(cx.theme().muted_foreground)
+                .child(ai_sidebar_text(
+                    language,
+                    "settings.ai.memory.default_extraction_provider",
+                    "Default Extraction Provider",
+                )),
+        )
+        .child(codux_select(
+            CoduxSelectConfig {
+                id: "memory-manager-extraction-provider".to_string(),
+                value: settings.memory_default_extractor_provider_id.clone(),
+                options: select_options,
+                placeholder: ai_sidebar_text(language, "common.choose", "Choose").into(),
+                width: gpui::relative(1.0).into(),
+                menu_width: px(220.0),
+                disabled: false,
+            },
+            cx,
+            |app, value, window, cx| app.set_ai_memory_provider(value, window, cx),
+        ))
+        .when(!has_eligible_provider, |this| {
+            this.child(
+                div()
+                    .mt(px(6.0))
+                    .text_size(rems(0.6875))
+                    .line_height(rems(1.4))
+                    .text_color(cx.theme().muted_foreground)
+                    .child(ai_sidebar_text(
+                        language,
+                        "memory.manager.extraction_provider.empty",
+                        "No eligible providers. Enable \"Use For Memory Extraction\" for a provider in Settings → AI.",
+                    )),
+            )
+        })
 }
 
 /// Shared card shell for every memory manager card (queue / failed / summary /

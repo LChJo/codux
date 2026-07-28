@@ -4,9 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added a show-hidden-files toggle to the folder and file pickers: an eye button in the picker toolbar and the standard Ctrl/Cmd+Shift+. shortcut reveal dot-prefixed entries (such as `.config` or `.claude`) when browsing local, WSL, and remote directories; remote hosts that predate the toggle keep hiding them until updated.
+- Added an extraction-provider picker to the Memory Manager sidebar so the default memory extraction provider can be set from the memory page itself, with a hint when no eligible provider is enabled.
+
 ### Fixed
 
 - Paused automatic memory queue processing when no eligible extraction provider is configured, preventing repeated failures and UI refresh churn while preserving queued work until a provider becomes available.
+- Fixed providers created before the `useForMemoryExtraction` flag (or hand-edited without it) disappearing from the extraction-provider picker: the settings summary now defaults the flag to on, matching what the extraction engine already does.
+- Enforced the previously inert `maxInjectedSummaryTokens` memory setting: the existing user summary injected into the extraction prompt is now capped at the configured token budget, so a runaway summary can no longer inflate every extraction request.
 - Hardened AI CLI wrapper tool-permission resolution: when the managed permission cache under the temp directory is missing, corrupt, or mid-write, launches now fall back to the app settings source of truth and log every resolution outcome, instead of silently dropping fullAccess/model injection; terminals keep the managed settings path wired even when the permission sync reports an error, and elevated (Administrator/root) terminals print a one-line warning whenever `--dangerously-skip-permissions` is active because Claude Code refuses the bypass there.
 
 ## [2.0.3] - 2026-07-21

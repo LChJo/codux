@@ -51,6 +51,10 @@ impl RuntimeStdioService {
             "file.list" => Ok(file_list_payload(
                 params.get("path").and_then(Value::as_str),
                 params.get("purpose").and_then(Value::as_str),
+                params
+                    .get("showHidden")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
             )),
             "file.read" => file_read_payload(required_str(params, "path")?),
             "file.readBytes" => {

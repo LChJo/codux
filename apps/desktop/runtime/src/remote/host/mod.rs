@@ -584,10 +584,15 @@ impl RemoteHostRuntime {
             REMOTE_FILE_LIST => {
                 let path = envelope.payload.get("path").and_then(Value::as_str);
                 let purpose = envelope.payload.get("purpose").and_then(Value::as_str);
+                let show_hidden = envelope
+                    .payload
+                    .get("showHidden")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
                 self.reply(
                     &envelope,
                     REMOTE_FILE_LIST,
-                    files::remote_file_list(path, purpose),
+                    files::remote_file_list(path, purpose, show_hidden),
                 );
             }
             REMOTE_FILE_READ => self.handle_file_read(&envelope),

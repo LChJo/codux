@@ -147,6 +147,11 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   String? _editingFilePath;
   RemoteGitDiff? _gitDiff;
   String? _gitDiffPath;
+  RemoteGitReviewSummary? _gitReview;
+  /// Transport error text for an in-flight review diff — the host answers a
+  /// failed git.read with REMOTE_ERROR (not git.read), so without this the
+  /// phone diff pane would spin forever on failure.
+  String? _gitDiffError;
   List<AISessionRecord> _aiSessions = const [];
   String? _aiSessionsProjectId;
   List<RemoteSshProfile> _sshProfiles = const [];

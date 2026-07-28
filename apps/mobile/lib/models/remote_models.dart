@@ -591,6 +591,66 @@ class RemoteGitDiff {
       );
 }
 
+/// One file entry of a `git.read {op: "review"}` summary. Mirrors the host
+/// `GitReviewFile` shape (camelCase). `status` is a word, not a letter:
+/// added / deleted / renamed / copied / typeChanged / modified.
+class RemoteGitReviewFile {
+  const RemoteGitReviewFile({
+    required this.path,
+    required this.status,
+    required this.additions,
+    required this.deletions,
+  });
+
+  final String path;
+  final String status;
+  final int additions;
+  final int deletions;
+
+  factory RemoteGitReviewFile.fromJson(Map<String, dynamic> json) =>
+      RemoteGitReviewFile(
+        path: '${json['path'] ?? ''}',
+        status: '${json['status'] ?? ''}',
+        additions: _intValue(json['additions']) ?? 0,
+        deletions: _intValue(json['deletions']) ?? 0,
+      );
+}
+
+/// Result of a `git.read {op: "review"}` query — the changed-file list vs.
+/// the base branch (or the working tree in audit mode). Mirrors the host
+/// `GitReviewSummary` shape. A non-repo is reported inline via
+/// `isRepository`/`error`, never as a transport error.
+class RemoteGitReviewSummary {
+  const RemoteGitReviewSummary({
+    required this.mode,
+    required this.title,
+    this.baseBranch,
+    required this.diffStat,
+    required this.files,
+    required this.isRepository,
+    this.error,
+  });
+
+  final String mode;
+  final String title;
+  final String? baseBranch;
+  final String diffStat;
+  final List<RemoteGitReviewFile> files;
+  final bool isRepository;
+  final String? error;
+
+  factory RemoteGitReviewSummary.fromResult(Map<String, dynamic> result) =>
+      RemoteGitReviewSummary(
+        mode: '${result['mode'] ?? ''}',
+        title: '${result['title'] ?? ''}',
+        baseBranch: result['baseBranch']?.toString(),
+        diffStat: '${result['diffStat'] ?? ''}',
+        files: _listOf(result['files'], RemoteGitReviewFile.fromJson),
+        isRepository: result['isRepository'] == true,
+        error: result['error']?.toString(),
+      );
+}
+
 /// One AI conversation-history record from `ai.session` (op `list`). Mirrors the
 /// shared `RemoteAISessionSummary` DTO — same fields from any host.
 class AISessionRecord {

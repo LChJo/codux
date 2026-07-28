@@ -46,6 +46,10 @@ impl CoduxApp {
         self.git_review_content = Some(content);
         self.git_review_derived_rows = None;
         self.ensure_git_review_derived_rows();
+        // Fresh file content: jump back to the top so the first diff hunk is
+        // visible instead of inheriting the previous file's scroll position.
+        self.git_review_code_scroll_handle
+            .set_offset(point(px(0.0), px(0.0)));
     }
 
     pub(in crate::app) fn toggle_git_status_section(
@@ -99,83 +103,6 @@ impl CoduxApp {
         self.git_expanded_dirs.insert(tree_key);
         self.status_message = format!("git tree expanded: {directory_path}");
         self.invalidate_git_panel(cx);
-    }
-
-    pub(in crate::app) fn toggle_git_review_dir(
-        &mut self,
-        directory_path: String,
-        cx: &mut Context<Self>,
-    ) {
-        let tree_key = git_status_tree_key("review", &directory_path);
-        if self.git_expanded_dirs.contains(&tree_key) {
-            self.git_expanded_dirs.remove(&tree_key);
-            self.invalidate_ui(cx, [UiRegion::GitSidebar, UiRegion::WorkspaceBody]);
-            return;
-        }
-
-        let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project for Git review tree".to_string();
-            self.invalidate_ui(cx, [UiRegion::GitSidebar, UiRegion::WorkspaceBody]);
-            return;
-        };
-
-        if !self.git_tree_children.contains_key(&tree_key) {
-            match self
-                .runtime_service
-                .read_project_git_path_status(&project.path, &directory_path)
-            {
-                Ok(files) => {
-                    self.merge_git_review_path_status_files(&files);
-                    self.git_tree_children.insert(tree_key.clone(), files);
-                }
-                Err(error) => {
-                    self.status_message = format!("failed to load Git review tree: {error}");
-                    self.invalidate_ui(cx, [UiRegion::GitSidebar, UiRegion::WorkspaceBody]);
-                    return;
-                }
-            }
-        } else {
-            let files = self
-                .git_tree_children
-                .get(&tree_key)
-                .cloned()
-                .unwrap_or_default();
-            self.merge_git_review_path_status_files(&files);
-        }
-        self.git_expanded_dirs.insert(tree_key);
-        self.invalidate_ui(cx, [UiRegion::GitSidebar, UiRegion::WorkspaceBody]);
-    }
-
-    fn merge_git_review_path_status_files(&mut self, files: &[GitFileStatus]) {
-        let mut seen = self
-            .git_review
-            .files
-            .iter()
-            .map(|file| file.path.clone())
-            .collect::<HashSet<_>>();
-        for file in files {
-            if file.path.trim().is_empty()
-                || file.path.ends_with('/')
-                || !seen.insert(file.path.clone())
-            {
-                continue;
-            }
-            let status = if file.index_status.trim() == "?" {
-                "added"
-            } else if !file.index_status.trim().is_empty() && file.index_status.trim() != "?" {
-                "staged"
-            } else if !file.worktree_status.trim().is_empty() {
-                "modified"
-            } else {
-                continue;
-            };
-            self.git_review.files.push(GitReviewFile {
-                path: file.path.clone(),
-                status: status.to_string(),
-                additions: 0,
-                deletions: 0,
-            });
-        }
     }
 
     pub(in crate::app) fn select_git_file_only(

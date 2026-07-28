@@ -133,6 +133,35 @@ class HomeWorkspaceModeActions {
     );
   }
 
+  /// Request the review summary — changed files relative to the base branch
+  /// (or the working tree in audit mode). Host replies `git.read {op:
+  /// "review", result: GitReviewSummary}`.
+  void requestGitReview({String? baseBranch}) {
+    final project = selectedProject;
+    if (!remoteProtocolReady || project == null) return;
+    sendEnvelope(
+      projectController.gitReadEnvelope(
+        project,
+        'review',
+        args: {'baseBranch': ?baseBranch},
+      ),
+    );
+  }
+
+  /// Request the base-branch-aware unified diff for one review path. Unlike
+  /// the plain `diff` op, the host honors `baseBranch` here.
+  void requestReviewDiff(String path, {String? baseBranch}) {
+    final project = selectedProject;
+    if (!remoteProtocolReady || project == null) return;
+    sendEnvelope(
+      projectController.gitReadEnvelope(
+        project,
+        'review_diff',
+        args: {'filePath': path, 'baseBranch': ?baseBranch},
+      ),
+    );
+  }
+
   void syncTerminalToSelectedProject({bool requestListIfMissing = true}) {
     if (!terminalDataVisible) return;
     final plan = runtime.ensureTerminalForSelectedProject(

@@ -1,7 +1,7 @@
 use super::*;
 
-pub(crate) fn remote_file_list(path: Option<&str>, purpose: Option<&str>) -> Value {
-    runtime_file::file_list_payload(path, purpose)
+pub(crate) fn remote_file_list(path: Option<&str>, purpose: Option<&str>, show_hidden: bool) -> Value {
+    runtime_file::file_list_payload(path, purpose, show_hidden)
 }
 
 pub(crate) fn remote_file_read(path: &str) -> Result<Value, String> {
