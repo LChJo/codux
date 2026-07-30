@@ -228,6 +228,25 @@ impl RuntimeService {
         .is_some()
     }
 
+    /// Why pending extraction tasks cannot run, if anything is actually waiting.
+    /// Returns the provider-availability error only while memory is enabled, no
+    /// provider can run extractions, and the queue still holds pending tasks --
+    /// the frontend surfaces this as the queue's last error. Without it the
+    /// processing gates bounce silently and pending tasks look stuck forever
+    /// (the kimiCode-kind case: selectable nowhere, error shown nowhere).
+    pub fn memory_queue_blocked_error(&self) -> Option<String> {
+        let settings = SettingsService::new(self.support_dir.clone()).ai_settings();
+        let config = crate::memory::memory_config(&settings);
+        if !config.memory.enabled {
+            return None;
+        }
+        let error = crate::memory::extraction::ensure_memory_provider_available(&config).err()?;
+        let has_pending = MemoryService::new(self.support_dir.clone())
+            .has_pending_extraction_task()
+            .unwrap_or(false);
+        has_pending.then_some(error)
+    }
+
     pub fn cancel_memory_extraction_queue(&self) -> Result<MemoryExtractionStatusSnapshot, String> {
         MemoryService::new(self.support_dir.clone()).cancel_extraction_queue()
     }

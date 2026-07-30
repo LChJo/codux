@@ -113,6 +113,19 @@ impl CoduxApp {
         .detach();
     }
 
+    /// Surface why pending extraction tasks cannot run -- e.g. no enabled
+    /// provider with Use For Memory Extraction -- as the queue's last error.
+    /// The processing gates used to bounce silently in that case, leaving the
+    /// queue visibly "queued" forever with no diagnostic anywhere.
+    fn surface_memory_queue_blocked_error(&mut self, cx: &mut Context<Self>) {
+        let blocked = self.runtime_service.memory_queue_blocked_error();
+        if self.state.memory_manager.extraction.last_error != blocked {
+            self.state.memory_manager.extraction.last_error = blocked;
+            self.invalidate_status_bar(cx);
+            self.invalidate_memory_panel(cx);
+        }
+    }
+
     pub(super) fn process_queued_memory_extraction_async(&mut self, cx: &mut Context<Self>) {
         let pending = self.state.memory_manager.extraction.queued.max(0);
         let running = self.state.memory_manager.extraction.running.max(0);
@@ -122,6 +135,9 @@ impl CoduxApp {
             pending,
             running,
         ) {
+            if !self.memory_processing {
+                self.surface_memory_queue_blocked_error(cx);
+            }
             return;
         }
 
@@ -159,6 +175,7 @@ impl CoduxApp {
             return;
         }
         if !self.runtime_service.automatic_memory_extraction_available() {
+            self.surface_memory_queue_blocked_error(cx);
             return;
         }
 

@@ -63,17 +63,11 @@ pub fn provider_summary(provider: &MemoryProvider) -> String {
     )
 }
 
+/// Whether a provider kind can run chat completions. Delegates to the shared
+/// `codux-llm` crate instead of keeping a second allowlist here: the previous
+/// hardcoded list silently excluded newer kinds (`kimi`, `kimiCode`), which
+/// made `select_memory_provider` return `None` and stalled the extraction
+/// queue with no error surfaced.
 pub fn supports_completion(kind: &str) -> bool {
-    matches!(
-        kind,
-        "openai"
-            | "openAICompatible"
-            | "anthropic"
-            | "deepseek"
-            | "gemini"
-            | "groq"
-            | "openrouter"
-            | "ollama"
-            | "localLlama"
-    )
+    codux_llm::supports_completion(kind)
 }

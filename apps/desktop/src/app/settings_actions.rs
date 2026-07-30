@@ -1614,6 +1614,11 @@ impl CoduxApp {
                 app.apply_async_settings_summary(settings);
                 app.status_message = "memory setting saved".to_string();
                 prepare_memory_launch_artifacts(&app.runtime_service, &app.state);
+                // Enabling memory (or changing its flags) must drain a queue
+                // that was stranded while the setting/provider was wrong --
+                // the slow tick would eventually notice, but "now" is what
+                // the user expects right after flipping the switch.
+                app.enqueue_automatic_memory_extraction_async(cx);
                 app.invalidate_ui_region(cx, UiRegion::Root);
             },
             cx,
@@ -1655,6 +1660,10 @@ impl CoduxApp {
             |app, settings, cx| {
                 app.apply_async_settings_summary(settings);
                 app.status_message = "memory extraction provider saved".to_string();
+                // A new extractor provider should immediately pick up any
+                // tasks that piled up while the previous selection could not
+                // run extractions (or surfaces why this one cannot either).
+                app.enqueue_automatic_memory_extraction_async(cx);
                 app.invalidate_ui_region(cx, UiRegion::Root);
             },
             cx,

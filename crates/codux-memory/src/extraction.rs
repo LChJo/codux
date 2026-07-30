@@ -50,6 +50,28 @@ mod tests {
     }
 
     #[test]
+    fn selects_memory_provider_for_every_completion_capable_kind() {
+        // Provider kinds the shared `codux-llm` core can complete with must be
+        // selectable for memory extraction. The previous hardcoded allowlist
+        // missed `kimi`/`kimiCode`, so `select_memory_provider` returned None
+        // and the extraction queue stalled with no error surfaced.
+        for kind in ["kimi", "kimiCode"] {
+            assert!(supports_completion(kind), "{kind} must support completion");
+            let mut provider = provider("provider-1", "Kimi Code", 0, true);
+            provider.kind = kind.to_string();
+            let settings = MemoryConfig {
+                providers: vec![provider],
+                ..Default::default()
+            };
+            assert!(
+                select_memory_provider(&settings, None).is_some(),
+                "{kind} provider must be selectable"
+            );
+        }
+        assert!(!supports_completion("not-a-real-kind"));
+    }
+
+    #[test]
     fn selects_memory_provider_with_tool_bonus() {
         let settings = MemoryConfig {
             providers: vec![
