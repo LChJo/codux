@@ -8,6 +8,10 @@
 /apps/desktop/runtime/Cargo.lock
 /plan/
 
+# Local tool / IDE state
+/.claude/
+/.vscode/
+
 # Monorepo app build outputs
 /apps/mobile/.dart_tool/
 /apps/mobile/build/
@@ -19,6 +23,7 @@
 /apps/mobile/dist/
 /apps/mobile/flutter_*.log
 /apps/mobile/.idea/
+/apps/mobile/codux_protocol_ffi.dll
 /apps/relay-server/dist/
 /apps/relay-server/*.sqlite3
 /apps/relay-server/build/
