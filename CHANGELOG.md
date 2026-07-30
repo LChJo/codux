@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Added separate Kimi API (Open Platform) and Kimi Code (membership) provider presets with their respective endpoints, model IDs, and authentication schemes for built-in AI features such as memory extraction; 401 errors now point out likely key/product mismatches.
 - Added a show-hidden-files toggle to the folder and file pickers: an eye button in the picker toolbar and the standard Ctrl/Cmd+Shift+. shortcut reveal dot-prefixed entries (such as `.config` or `.claude`) when browsing local, WSL, and remote directories; remote hosts that predate the toggle keep hiding them until updated.
 - Added an extraction-provider picker to the Memory Manager sidebar so the default memory extraction provider can be set from the memory page itself, with a hint when no eligible provider is enabled.
 

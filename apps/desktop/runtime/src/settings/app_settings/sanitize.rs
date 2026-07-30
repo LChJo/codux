@@ -244,6 +244,8 @@ fn sanitize_ai_provider(mut provider: AIProviderSettings) -> Option<AIProviderSe
         "openai" => "openai".to_string(),
         "openAICompatible" => "openAICompatible".to_string(),
         "anthropic" => "anthropic".to_string(),
+        "kimi" => "kimi".to_string(),
+        "kimiCode" => "kimiCode".to_string(),
         "deepseek" => "deepseek".to_string(),
         "gemini" => "gemini".to_string(),
         "groq" => "groq".to_string(),
@@ -261,6 +263,8 @@ fn sanitize_ai_provider(mut provider: AIProviderSettings) -> Option<AIProviderSe
         provider.display_name = match provider.kind.as_str() {
             "openai" => "OpenAI API".to_string(),
             "anthropic" => "Claude API".to_string(),
+            "kimi" => "Kimi API".to_string(),
+            "kimiCode" => "Kimi Code".to_string(),
             "deepseek" => "DeepSeek API".to_string(),
             "gemini" => "Gemini API".to_string(),
             "groq" => "Groq API".to_string(),
@@ -274,6 +278,8 @@ fn sanitize_ai_provider(mut provider: AIProviderSettings) -> Option<AIProviderSe
         provider.model = match provider.kind.as_str() {
             "openai" => "gpt-4.1-mini".to_string(),
             "anthropic" => "claude-3-5-haiku-latest".to_string(),
+            "kimi" => "kimi-k3".to_string(),
+            "kimiCode" => "kimi-for-coding".to_string(),
             "deepseek" => "deepseek-chat".to_string(),
             "gemini" => "gemini-2.5-flash".to_string(),
             "groq" => "llama-3.3-70b-versatile".to_string(),
@@ -294,6 +300,8 @@ fn provider_supports_completion(kind: &str) -> bool {
         "openai"
             | "openAICompatible"
             | "anthropic"
+            | "kimi"
+            | "kimiCode"
             | "deepseek"
             | "gemini"
             | "groq"

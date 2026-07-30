@@ -939,6 +939,42 @@ mod tests {
         fs::remove_dir_all(support_dir).ok();
     }
 
+    #[test]
+    fn kimi_provider_uses_moonshot_anthropic_defaults() {
+        let support_dir = temp_dir("settings-kimi-provider");
+        let summary = SettingsService::new(support_dir.clone())
+            .add_ai_provider("kimi")
+            .expect("add kimi provider");
+
+        let provider = summary.ai_providers.first().expect("kimi provider");
+        assert_eq!(provider.kind, "kimi");
+        assert_eq!(provider.display_name, "Kimi API");
+        assert_eq!(provider.model, "kimi-k3");
+        assert_eq!(provider.base_url, "https://api.moonshot.cn/anthropic");
+        assert!(provider.enabled);
+        assert!(provider.memory_extraction);
+
+        fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
+    fn kimi_code_provider_uses_membership_api_defaults() {
+        let support_dir = temp_dir("settings-kimi-code-provider");
+        let summary = SettingsService::new(support_dir.clone())
+            .add_ai_provider("kimiCode")
+            .expect("add kimi code provider");
+
+        let provider = summary.ai_providers.first().expect("kimi code provider");
+        assert_eq!(provider.kind, "kimiCode");
+        assert_eq!(provider.display_name, "Kimi Code");
+        assert_eq!(provider.model, "kimi-for-coding");
+        assert_eq!(provider.base_url, "https://api.kimi.com/coding/");
+        assert!(provider.enabled);
+        assert!(provider.memory_extraction);
+
+        fs::remove_dir_all(support_dir).ok();
+    }
+
     fn temp_dir(label: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)

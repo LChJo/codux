@@ -112,6 +112,8 @@ fn provider_supports_completion(kind: &str) -> bool {
         "openai"
             | "openAICompatible"
             | "anthropic"
+            | "kimi"
+            | "kimiCode"
             | "deepseek"
             | "gemini"
             | "groq"

@@ -734,6 +734,8 @@ pub(super) fn ai_provider_kind_options() -> Vec<(String, SharedString)> {
         ("openai", "OpenAI"),
         ("openAICompatible", "OpenAI-Compatible API"),
         ("anthropic", "Claude API"),
+        ("kimi", "Kimi API (Open Platform)"),
+        ("kimiCode", "Kimi Code"),
         ("deepseek", "DeepSeek"),
         ("gemini", "Gemini"),
         ("groq", "Groq"),

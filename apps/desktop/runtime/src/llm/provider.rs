@@ -52,6 +52,8 @@ fn sanitize_test_provider(mut provider: AIProviderSettings) -> Result<AIProvider
     if provider.display_name.is_empty() {
         provider.display_name = match provider.kind.as_str() {
             "anthropic" => "Claude API".to_string(),
+            "kimi" => "Kimi API".to_string(),
+            "kimiCode" => "Kimi Code".to_string(),
             "deepseek" => "DeepSeek API".to_string(),
             "gemini" => "Gemini API".to_string(),
             "groq" => "Groq API".to_string(),
@@ -78,6 +80,8 @@ fn fallback_model(provider: &AIProviderSettings, fallback: &str) -> String {
 fn default_model_for_provider_kind(kind: &str) -> &'static str {
     match kind {
         "anthropic" => "claude-3-5-haiku-latest",
+        "kimi" => "kimi-k3",
+        "kimiCode" => "kimi-for-coding",
         "deepseek" => "deepseek-chat",
         "gemini" => "gemini-2.5-flash",
         "groq" => "llama-3.3-70b-versatile",

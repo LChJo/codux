@@ -12,7 +12,7 @@ use std::time::Duration;
 use genai::adapter::AdapterKind;
 use genai::chat::{ChatMessage, ChatOptions, ChatRequest, ChatResponseFormat, JsonSpec};
 use genai::resolver::{AuthData, Endpoint};
-use genai::{Client, ModelIden, ModelSpec, ServiceTarget, WebConfig};
+use genai::{Client, Headers, ModelIden, ModelSpec, ServiceTarget, WebConfig};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -214,7 +214,7 @@ fn fallback_model(provider: &LlmProvider, fallback: &str) -> String {
 fn provider_adapter_kind(kind: &str) -> Option<AdapterKind> {
     match kind {
         "openai" | "openAICompatible" => Some(AdapterKind::OpenAI),
-        "anthropic" => Some(AdapterKind::Anthropic),
+        "anthropic" | "kimi" | "kimiCode" => Some(AdapterKind::Anthropic),
         "deepseek" => Some(AdapterKind::DeepSeek),
         "gemini" => Some(AdapterKind::Gemini),
         "groq" => Some(AdapterKind::Groq),
@@ -235,6 +235,8 @@ fn provider_supports_json_schema_response_format(provider: &LlmProvider) -> bool
 fn default_model_for_provider_kind(kind: &str) -> &'static str {
     match kind {
         "anthropic" => "claude-3-5-haiku-latest",
+        "kimi" => "kimi-k3",
+        "kimiCode" => "kimi-for-coding",
         "deepseek" => "deepseek-chat",
         "gemini" => "gemini-2.5-flash",
         "groq" => "llama-3.3-70b-versatile",
@@ -247,6 +249,8 @@ fn default_model_for_provider_kind(kind: &str) -> &'static str {
 fn default_endpoint_for_provider_kind(kind: &str) -> &'static str {
     match kind {
         "anthropic" => "https://api.anthropic.com/v1/",
+        "kimi" => "https://api.moonshot.cn/anthropic/",
+        "kimiCode" => "https://api.kimi.com/coding/",
         "deepseek" => "https://api.deepseek.com/",
         "gemini" => "https://generativelanguage.googleapis.com/v1beta/",
         "groq" => "https://api.groq.com/openai/v1/",
@@ -262,7 +266,25 @@ fn genai_service_target(
     model: &str,
 ) -> Result<ServiceTarget, String> {
     let endpoint = provider_endpoint(provider)?;
-    let auth = if provider_kind_allows_empty_api_key(&provider.kind) {
+    let auth = if provider.kind == "kimi" {
+        let api_key = required_api_key(provider)?;
+        AuthData::RequestOverride {
+            url: anthropic_compatible_messages_url(&endpoint),
+            headers: Headers::from(vec![
+                ("Authorization", format!("Bearer {api_key}")),
+                ("anthropic-version", "2023-06-01".to_string()),
+            ]),
+        }
+    } else if provider.kind == "kimiCode" {
+        let api_key = required_api_key(provider)?;
+        AuthData::RequestOverride {
+            url: anthropic_compatible_messages_url(&endpoint),
+            headers: Headers::from(vec![
+                ("x-api-key", api_key.to_string()),
+                ("anthropic-version", "2023-06-01".to_string()),
+            ]),
+        }
+    } else if provider_kind_allows_empty_api_key(&provider.kind) {
         AuthData::None
     } else {
         AuthData::from_single(required_api_key(provider)?.to_string())
@@ -272,6 +294,15 @@ fn genai_service_target(
         auth,
         model: ModelIden::new(adapter_kind, model),
     })
+}
+
+fn anthropic_compatible_messages_url(endpoint: &str) -> String {
+    let endpoint = endpoint.trim_end_matches('/');
+    if endpoint.ends_with("/v1") {
+        format!("{endpoint}/messages")
+    } else {
+        format!("{endpoint}/v1/messages")
+    }
 }
 
 fn provider_endpoint(provider: &LlmProvider) -> Result<String, String> {
@@ -300,6 +331,7 @@ fn normalized_provider_base_url(base_url: &str, fallback: &str) -> String {
 }
 
 fn provider_call_error(provider: &LlmProvider, model: &str, error: genai::Error) -> String {
+    let error = sanitize_response_line(&error.to_string());
     trace(
         "ai-llm",
         &format!(
@@ -307,12 +339,30 @@ fn provider_call_error(provider: &LlmProvider, model: &str, error: genai::Error)
             provider.kind, provider.id, model, error
         ),
     );
-    format!(
+    let mut message = format!(
         "{} request failed for model {}: {}",
-        provider.display_name,
-        model,
-        sanitize_response_line(&error.to_string())
-    )
+        provider.display_name, model, error
+    );
+    if let Some(hint) = provider_authentication_hint(&provider.kind, &error) {
+        message.push_str(" Hint: ");
+        message.push_str(hint);
+    }
+    message
+}
+
+fn provider_authentication_hint(kind: &str, error: &str) -> Option<&'static str> {
+    if !error.contains("401") && !error.contains("Invalid Authentication") {
+        return None;
+    }
+    match kind {
+        "kimi" => Some(
+            "This endpoint requires a Kimi Open Platform key from platform.kimi.com; Kimi Code membership keys must use the Kimi Code provider.",
+        ),
+        "kimiCode" => Some(
+            "This endpoint requires a membership key from the Kimi Code Console; Kimi Open Platform keys must use the Kimi API provider.",
+        ),
+        _ => None,
+    }
 }
 
 fn sanitize_provider_response(text: &str, preserve_formatting: bool) -> String {
@@ -335,4 +385,117 @@ pub fn sanitize_response_line(text: &str) -> String {
         .chars()
         .take(500)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kimi_provider_uses_anthropic_messages_with_bearer_auth() {
+        let provider = LlmProvider {
+            id: "kimi-test".to_string(),
+            kind: "kimi".to_string(),
+            display_name: "Kimi API".to_string(),
+            model: String::new(),
+            base_url: "https://api.moonshot.cn/anthropic".to_string(),
+            api_key: "moonshot-key".to_string(),
+        };
+
+        assert!(supports_completion("kimi"));
+        assert!(matches!(
+            provider_adapter_kind("kimi"),
+            Some(AdapterKind::Anthropic)
+        ));
+        assert_eq!(default_model_for_provider_kind("kimi"), "kimi-k3");
+        assert_eq!(
+            default_endpoint_for_provider_kind("kimi"),
+            "https://api.moonshot.cn/anthropic/"
+        );
+
+        let target = genai_service_target(&provider, AdapterKind::Anthropic, "kimi-k3")
+            .expect("kimi service target");
+        let AuthData::RequestOverride { url, headers } = target.auth else {
+            panic!("kimi must override Anthropic x-api-key auth");
+        };
+        assert_eq!(url, "https://api.moonshot.cn/anthropic/v1/messages");
+        let headers = headers.iter().collect::<std::collections::HashMap<_, _>>();
+        assert_eq!(
+            headers
+                .get(&"Authorization".to_string())
+                .map(|value| value.as_str()),
+            Some("Bearer moonshot-key")
+        );
+        assert_eq!(
+            headers
+                .get(&"anthropic-version".to_string())
+                .map(|value| value.as_str()),
+            Some("2023-06-01")
+        );
+        assert!(!headers.contains_key(&"x-api-key".to_string()));
+    }
+
+    #[test]
+    fn kimi_code_provider_uses_anthropic_messages_with_x_api_key() {
+        let provider = LlmProvider {
+            id: "kimi-code-test".to_string(),
+            kind: "kimiCode".to_string(),
+            display_name: "Kimi Code".to_string(),
+            model: String::new(),
+            base_url: "https://api.kimi.com/coding/".to_string(),
+            api_key: "kimi-code-key".to_string(),
+        };
+
+        assert!(supports_completion("kimiCode"));
+        assert!(matches!(
+            provider_adapter_kind("kimiCode"),
+            Some(AdapterKind::Anthropic)
+        ));
+        assert_eq!(
+            default_model_for_provider_kind("kimiCode"),
+            "kimi-for-coding"
+        );
+        assert_eq!(
+            default_endpoint_for_provider_kind("kimiCode"),
+            "https://api.kimi.com/coding/"
+        );
+
+        let target = genai_service_target(&provider, AdapterKind::Anthropic, "kimi-for-coding")
+            .expect("kimi code service target");
+        let AuthData::RequestOverride { url, headers } = target.auth else {
+            panic!("kimi code must use its Anthropic-compatible endpoint");
+        };
+        assert_eq!(url, "https://api.kimi.com/coding/v1/messages");
+        let headers = headers.iter().collect::<std::collections::HashMap<_, _>>();
+        assert_eq!(
+            headers
+                .get(&"x-api-key".to_string())
+                .map(|value| value.as_str()),
+            Some("kimi-code-key")
+        );
+        assert_eq!(
+            headers
+                .get(&"anthropic-version".to_string())
+                .map(|value| value.as_str()),
+            Some("2023-06-01")
+        );
+        assert!(!headers.contains_key(&"Authorization".to_string()));
+    }
+
+    #[test]
+    fn kimi_authentication_hint_distinguishes_key_products() {
+        let error = "Request failed with status code '401 Unauthorized'. Invalid Authentication";
+        assert_eq!(
+            provider_authentication_hint("kimi", error),
+            Some("This endpoint requires a Kimi Open Platform key from platform.kimi.com; Kimi Code membership keys must use the Kimi Code provider.")
+        );
+        assert_eq!(
+            provider_authentication_hint("kimiCode", error),
+            Some("This endpoint requires a membership key from the Kimi Code Console; Kimi Open Platform keys must use the Kimi API provider.")
+        );
+        assert_eq!(
+            provider_authentication_hint("kimi", "429 Too Many Requests"),
+            None
+        );
+    }
 }

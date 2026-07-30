@@ -262,6 +262,8 @@ fn sanitize_provider_kind(value: &str) -> String {
     match value.trim() {
         "openai" => "openai",
         "anthropic" => "anthropic",
+        "kimi" => "kimi",
+        "kimiCode" => "kimiCode",
         "deepseek" => "deepseek",
         "gemini" => "gemini",
         "groq" => "groq",
@@ -305,6 +307,12 @@ fn provider_defaults(kind: &str) -> (&'static str, &'static str, &'static str) {
             "Claude API",
             "claude-3-5-haiku-latest",
             "https://api.anthropic.com/v1",
+        ),
+        "kimi" => ("Kimi API", "kimi-k3", "https://api.moonshot.cn/anthropic"),
+        "kimiCode" => (
+            "Kimi Code",
+            "kimi-for-coding",
+            "https://api.kimi.com/coding/",
         ),
         "deepseek" => ("DeepSeek API", "deepseek-chat", "https://api.deepseek.com"),
         "gemini" => (
