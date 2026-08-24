@@ -1,4 +1,5 @@
 use super::*;
+use crate::terminal_pty::environment::{CONFIGURED_ENV_KEYS, configured_dotenv};
 
 #[test]
 fn terminal_environment_forces_utf8_locale() {
@@ -73,6 +74,64 @@ fn terminal_environment_applies_project_env_before_runtime_env() {
         env.get("CODUX_PROJECT_ID").map(String::as_str),
         Some("bad-project")
     );
+}
+
+#[test]
+fn tavily_api_key_is_loaded_from_dotenv_and_allowed_for_passthrough() {
+    let home = std::env::temp_dir().join(format!("codux-terminal-dotenv-{}", Uuid::new_v4()));
+    fs::create_dir_all(home.join(".gemini")).unwrap();
+    fs::write(
+        home.join(".gemini/.env"),
+        "TAVILY_API_KEY=tvly-test\nUNRELATED_SECRET=should-not-leak\n",
+    )
+    .unwrap();
+
+    let env = configured_dotenv(home.to_str().unwrap());
+
+    assert_eq!(
+        env.get("TAVILY_API_KEY").map(String::as_str),
+        Some("tvly-test")
+    );
+    assert!(CONFIGURED_ENV_KEYS.contains(&"TAVILY_API_KEY"));
+    assert!(!env.contains_key("UNRELATED_SECRET"));
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn configured_env_keys_cover_common_tool_settings() {
+    for key in [
+        "ANTHROPIC_AUTH_TOKEN",
+        "OPENAI_ORG_ID",
+        "OPENAI_PROJECT_ID",
+        "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "AWS_PROFILE",
+        "OPENCODE_DB",
+        "MIMOCODE_HOME",
+        "KIMI_SHARE_DIR",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "SSL_CERT_FILE",
+        "http_proxy",
+        "https_proxy",
+    ] {
+        assert!(
+            CONFIGURED_ENV_KEYS.contains(&key),
+            "missing configured environment key {key}"
+        );
+    }
+    for key in [
+        "PAGER",
+        "GIT_EDITOR",
+        "GIT_CONFIG_GLOBAL",
+        "CARGO_HOME",
+        "PYTHONPATH",
+    ] {
+        assert!(
+            COMMON_PASSTHROUGH_ENV_KEYS.contains(&key),
+            "missing common passthrough environment key {key}"
+        );
+    }
 }
 
 #[test]

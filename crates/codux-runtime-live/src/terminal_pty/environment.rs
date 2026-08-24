@@ -1,26 +1,74 @@
 use super::*;
 
-pub(super) const DOTENV_KEYS: &[&str] = &[
+// User-configurable tool settings use the same allowlist for both sources:
+// the Codux process environment and the supported per-tool dotenv files.
+// Keep this explicit so arbitrary project secrets are not copied into every
+// managed terminal just because they happen to exist in the parent process.
+pub(super) const CONFIGURED_ENV_KEYS: &[&str] = &[
+    // Gemini / Google.
     "GEMINI_API_KEY",
     "GEMINI_MODEL",
     "GOOGLE_API_KEY",
     "GOOGLE_GEMINI_BASE_URL",
+    "GOOGLE_GENAI_USE_VERTEXAI",
+    "GOOGLE_CLOUD_PROJECT",
+    "GOOGLE_CLOUD_LOCATION",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    // Claude / Anthropic.
     "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_VERTEX_PROJECT_ID",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+    // OpenAI-compatible clients.
     "OPENAI_API_KEY",
     "OPENAI_BASE_URL",
+    "OPENAI_ORG_ID",
+    "OPENAI_PROJECT_ID",
+    "AZURE_OPENAI_API_KEY",
+    "AZURE_OPENAI_ENDPOINT",
+    "AZURE_OPENAI_API_VERSION",
+    // Codex / OpenCode / Kimi / CodeWhale paths and credentials.
     "CODEX_HOME",
     "OPENCODE_API_KEY",
     "OPENCODE_BASE_URL",
+    "OPENCODE_CONFIG_DIR",
+    "OPENCODE_DB",
+    "MIMOCODE_HOME",
+    "MIMOCODE_DB",
+    "KIMI_SHARE_DIR",
     "CODEWHALE_PROVIDER",
+    "CODEWHALE_HOME",
     "DEEPSEEK_API_KEY",
     "DEEPSEEK_BASE_URL",
     "DEEPSEEK_MODEL",
     "DEEPSEEK_AUTH_TOKEN",
+    "TAVILY_API_KEY",
+    // Cloud provider selectors. Credential files remain in their normal
+    // per-user locations unless explicitly configured through project env.
+    "AWS_PROFILE",
+    "AWS_REGION",
+    "AWS_DEFAULT_REGION",
+    // Proxy, certificate, and standard XDG configuration.
     "HTTPS_PROXY",
     "HTTP_PROXY",
     "ALL_PROXY",
     "NO_PROXY",
+    "https_proxy",
+    "http_proxy",
+    "all_proxy",
+    "no_proxy",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "NODE_EXTRA_CA_CERTS",
+    "REQUESTS_CA_BUNDLE",
+    "CURL_CA_BUNDLE",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_STATE_HOME",
+    "XDG_RUNTIME_DIR",
 ];
 
 pub fn terminal_environment(
@@ -326,6 +374,7 @@ pub(super) fn is_utf8_locale(value: Option<&str>) -> bool {
 
 pub(super) fn append_passthrough_env(values: &mut HashMap<String, String>) {
     append_env_keys(values, COMMON_PASSTHROUGH_ENV_KEYS);
+    append_env_keys(values, CONFIGURED_ENV_KEYS);
     #[cfg(unix)]
     append_env_keys(values, UNIX_PASSTHROUGH_ENV_KEYS);
     #[cfg(windows)]
@@ -385,7 +434,7 @@ pub(super) fn captured_shell_environment(
 
 pub(super) fn configured_dotenv(home: &str) -> HashMap<String, String> {
     let mut values = HashMap::new();
-    let allowed = DOTENV_KEYS
+    let allowed = CONFIGURED_ENV_KEYS
         .iter()
         .copied()
         .collect::<std::collections::HashSet<_>>();

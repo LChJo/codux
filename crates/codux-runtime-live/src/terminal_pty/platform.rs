@@ -11,7 +11,10 @@ pub(super) const FALLBACK_PATH: &str = "C:\\Windows\\System32;C:\\Windows;C:\\Wi
 pub(super) const FALLBACK_PATH: &str =
     "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin";
 
-// Runtime screen only serves remote scrollback views, so cap it to mobile depth.
+// Keep the inherited environment explicit: PTY sessions start with a clean
+// environment, so these safe terminal/developer preferences must be restored
+// without copying arbitrary parent-process secrets. Tool credentials and
+// config paths live in CONFIGURED_ENV_KEYS below.
 pub(super) const COMMON_PASSTHROUGH_ENV_KEYS: &[&str] = &[
     "LANG",
     "LC_ALL",
@@ -28,10 +31,49 @@ pub(super) const COMMON_PASSTHROUGH_ENV_KEYS: &[&str] = &[
     "LC_ADDRESS",
     "LC_TELEPHONE",
     "LC_RESPONSETIME",
+    "EDITOR",
+    "VISUAL",
+    "PAGER",
+    "GIT_PAGER",
+    "GIT_EDITOR",
+    "LESS",
+    "NO_COLOR",
+    "FORCE_COLOR",
+    "TZ",
+    "HOSTNAME",
+    "GIT_SSH_COMMAND",
+    "GIT_SSH",
+    "GIT_SSH_VARIANT",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_NOSYSTEM",
+    "GIT_TERMINAL_PROMPT",
+    "GIT_ASKPASS",
+    "SSH_ASKPASS",
+    "SSH_ASKPASS_REQUIRE",
+    "CARGO_HOME",
+    "RUSTUP_HOME",
+    "JAVA_HOME",
+    "GOPATH",
+    "GOBIN",
+    "VIRTUAL_ENV",
+    "CONDA_PREFIX",
+    "PYTHONHOME",
+    "PYTHONPATH",
+    "NVM_HOME",
+    "VOLTA_HOME",
+    "PNPM_HOME",
+    "BUN_INSTALL",
 ];
 #[cfg(unix)]
-pub(super) const UNIX_PASSTHROUGH_ENV_KEYS: &[&str] =
-    &["TMPDIR", "SSH_AUTH_SOCK", "__CF_USER_TEXT_ENCODING"];
+pub(super) const UNIX_PASSTHROUGH_ENV_KEYS: &[&str] = &[
+    "TMPDIR",
+    "SSH_AUTH_SOCK",
+    "__CF_USER_TEXT_ENCODING",
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+    "DBUS_SESSION_BUS_ADDRESS",
+    "XAUTHORITY",
+];
 #[cfg(windows)]
 pub(super) const WINDOWS_PASSTHROUGH_ENV_KEYS: &[&str] = &[
     // Core system paths. A missing SystemDrive/ProgramData makes Windows
@@ -107,6 +149,7 @@ pub(super) fn capture_shell_environment_uncached(
         .stdin(Stdio::null());
     for key in COMMON_PASSTHROUGH_ENV_KEYS
         .iter()
+        .chain(CONFIGURED_ENV_KEYS.iter())
         .chain(UNIX_PASSTHROUGH_ENV_KEYS.iter())
     {
         if let Ok(value) = std::env::var(key)
