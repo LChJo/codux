@@ -31,6 +31,7 @@ pub(super) fn upsert_project(
                 last_git_refresh: None,
                 last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
+                last_worktree_refresh: None,
                 last_ai_refresh: Some(Instant::now()),
             }
         });

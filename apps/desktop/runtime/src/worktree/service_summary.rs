@@ -22,7 +22,6 @@ impl WorktreeService {
                 false,
             ));
         }
-        persist_worktree_git_summaries(&self.support_dir, &worktrees);
 
         let selected_worktree_id = selected_worktree_id_for_project(
             &state.selected_worktree_id_by_project,
@@ -40,6 +39,16 @@ impl WorktreeService {
             .unwrap_or_default();
 
         let active_git = GitService::status(&active_path);
+        // Rows were built from counts-only scans; the active worktree already
+        // has a full snapshot in `active_git`, so reuse it for exact
+        // additions/deletions instead of diffing that repository twice.
+        if let Some(active_row) = worktrees
+            .iter_mut()
+            .find(|worktree| worktree.path == active_path)
+        {
+            active_row.git_summary = project_worktree_git_summary_from_status(&active_git);
+        }
+        persist_worktree_git_summaries(&self.support_dir, &worktrees);
         let base_branches = codux_runtime_core::worktree::worktree_base_branches(
             &active_git.branch,
             &crate::git::wire::wire_branches(&active_git.branches),
@@ -199,7 +208,10 @@ fn state_worktree_rows(
         .filter(|worktree| worktree.project_id == project_id)
         .map(|worktree| {
             let git_summary = if refresh_git {
-                project_worktree_git_summary(&worktree.path)
+                // Counts-only scan; additions/deletions reuse the cached full
+                // value (a full diff per worktree dominated refresh time).
+                let cached = worktree_git_summary_from_cache(support_dir, &worktree.id);
+                project_worktree_git_summary_light(&worktree.path, cached.as_ref())
             } else {
                 worktree_git_summary_from_cache(support_dir, &worktree.id).unwrap_or_default()
             };
@@ -230,7 +242,9 @@ fn selected_worktree_id_for_project(
     )
 }
 
-fn runtime_worktree_item(worktree: &WorktreeInfo) -> codux_runtime_core::worktree::RuntimeWorktreeItem {
+fn runtime_worktree_item(
+    worktree: &WorktreeInfo,
+) -> codux_runtime_core::worktree::RuntimeWorktreeItem {
     codux_runtime_core::worktree::RuntimeWorktreeItem {
         id: worktree.id.clone(),
         project_id: worktree.project_id.clone(),
@@ -302,7 +316,9 @@ fn default_project_worktree(
 ) -> WorktreeInfo {
     WorktreeInfo {
         git_summary: if include_git_stats {
-            project_worktree_git_summary(project_path)
+            // Counts only; the summary() caller backfills the exact full
+            // numbers from the active worktree's snapshot.
+            project_worktree_git_summary_light(project_path, None)
         } else {
             ProjectWorktreeGitSummary::default()
         },

@@ -13,11 +13,7 @@ fn repo_root(repo: &GitRepository) -> &Path {
 
 const MAX_GIT_STATUS_FILES: usize = 1200;
 const MAX_GIT_PATH_STATUS_FILES: usize = 1200;
-type GitStatusFiles = (
-    Vec<GitFileStatus>,
-    Vec<GitFileStatus>,
-    Vec<GitFileStatus>,
-);
+type GitStatusFiles = (Vec<GitFileStatus>, Vec<GitFileStatus>, Vec<GitFileStatus>);
 
 fn git_status_and_files_from_repo(repo: &GitRepository) -> (GitSummary, Vec<GitFileStatus>) {
     let branch = current_branch_name(repo);
@@ -25,9 +21,10 @@ fn git_status_and_files_from_repo(repo: &GitRepository) -> (GitSummary, Vec<GitF
     let (ahead, behind) = ahead_behind(repo).unwrap_or((0, 0));
     let head_pushed = head_commit_pushed_from_repo(repo);
     let (raw_changed_files, status_error) = match git2_status_files(repo) {
-        Ok((staged, unstaged, untracked)) => {
-            (flatten_unique_status_files(staged, unstaged, untracked), None)
-        }
+        Ok((staged, unstaged, untracked)) => (
+            flatten_unique_status_files(staged, unstaged, untracked),
+            None,
+        ),
         // Surface the errno instead of a silent empty panel — the swallow made EPERM/EMFILE incidents undiagnosable.
         Err(error) => (Vec::new(), Some(error)),
     };
@@ -94,6 +91,34 @@ fn git_workspace_snapshot_from_repo(repo: &GitRepository) -> GitWorkspaceSnapsho
     status.additions = review.files.iter().map(|file| file.additions).sum();
     status.deletions = review.files.iter().map(|file| file.deletions).sum();
     GitWorkspaceSnapshot { status, review }
+}
+
+/// Cheap status for background worktree badges: branch, ahead/behind and
+/// staged/unstaged/untracked counts only. Skips branch listings, commit log,
+/// stashes, tags, remotes and the review diff, which dominate snapshot cost
+/// on large repositories when a scan covers many worktrees.
+fn git_status_counts_from_repo(repo: &GitRepository) -> GitSummary {
+    let branch = current_branch_name(repo);
+    let upstream = upstream_branch_name(repo);
+    let (ahead, behind) = ahead_behind(repo).unwrap_or((0, 0));
+    let ((staged, unstaged, untracked), status_error) = match git2_status_files(repo) {
+        Ok((staged, unstaged, untracked)) => {
+            ((staged.len(), unstaged.len(), untracked.len()), None)
+        }
+        Err(error) => ((0, 0, 0), Some(error)),
+    };
+    GitSummary {
+        branch,
+        upstream,
+        ahead,
+        behind,
+        staged,
+        unstaged,
+        untracked,
+        is_repository: true,
+        error: status_error,
+        ..Default::default()
+    }
 }
 
 fn git_workspace_error_snapshot(error: String) -> GitWorkspaceSnapshot {
@@ -233,7 +258,8 @@ fn flatten_status_files(repo: &GitRepository) -> Vec<GitFileStatus> {
 }
 
 fn flatten_path_status_files(repo: &GitRepository, directory_path: &str) -> Vec<GitFileStatus> {
-    let (staged, unstaged, untracked) = git2_path_status_files(repo, directory_path).unwrap_or_default();
+    let (staged, unstaged, untracked) =
+        git2_path_status_files(repo, directory_path).unwrap_or_default();
     flatten_unique_status_files(staged, unstaged, untracked)
 }
 
@@ -258,7 +284,9 @@ fn collapse_path_status_files(
             let path = join_git_path(base_path, directory_name);
             let marker_path = format!("{}/", path.trim_end_matches('/'));
             for marker in git_status_directory_markers(marker_path, &file) {
-                directory_markers.entry(git_status_marker_key(&marker)).or_insert(marker);
+                directory_markers
+                    .entry(git_status_marker_key(&marker))
+                    .or_insert(marker);
             }
         } else {
             collapsed.push(file);
@@ -340,12 +368,7 @@ fn git2_path_status_files(
     repo: &GitRepository,
     directory_path: &str,
 ) -> Result<GitStatusFiles, String> {
-    git2_status_files_with_options(
-        repo,
-        true,
-        Some(directory_path),
-        MAX_GIT_PATH_STATUS_FILES,
-    )
+    git2_status_files_with_options(repo, true, Some(directory_path), MAX_GIT_PATH_STATUS_FILES)
 }
 
 fn git2_status_files_with_options(

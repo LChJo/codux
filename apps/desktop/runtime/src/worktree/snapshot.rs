@@ -1,4 +1,4 @@
-use crate::git::GitService;
+use crate::git::{GitService, GitSummary};
 
 use super::{
     scan::{ScannedTask, ScannedWorktree},
@@ -24,7 +24,7 @@ pub(super) fn scanned_task_to_snapshot(task: ScannedTask) -> WorktreeTaskSnapsho
 }
 
 pub(super) fn project_worktree_snapshot(worktree: ScannedWorktree) -> ProjectWorktreeSnapshot {
-    let git_summary = project_worktree_git_summary(&worktree.path);
+    let git_summary = project_worktree_git_summary_light(&worktree.path, None);
     ProjectWorktreeSnapshot {
         id: worktree.id,
         project_id: worktree.project_id,
@@ -39,8 +39,30 @@ pub(super) fn project_worktree_snapshot(worktree: ScannedWorktree) -> ProjectWor
     }
 }
 
-pub(super) fn project_worktree_git_summary(path: &str) -> ProjectWorktreeGitSummary {
-    let status_snapshot = GitService::status(path);
+/// Live change/ahead/behind counts without the review diff. `additions` and
+/// `deletions` need a full diff, so reuse the last known values from `cached`
+/// — the worktree scan runs for every worktree on each refresh, and paying the
+/// diff cost per worktree dominated the refresh time on large repositories.
+pub(super) fn project_worktree_git_summary_light(
+    path: &str,
+    cached: Option<&ProjectWorktreeGitSummary>,
+) -> ProjectWorktreeGitSummary {
+    let status_snapshot = GitService::status_counts(path);
+    let (additions, deletions) = cached
+        .map(|summary| (summary.additions, summary.deletions))
+        .unwrap_or_default();
+    ProjectWorktreeGitSummary {
+        changes: status_snapshot.staged + status_snapshot.unstaged + status_snapshot.untracked,
+        incoming: status_snapshot.behind,
+        outgoing: status_snapshot.ahead,
+        additions,
+        deletions,
+    }
+}
+
+pub(super) fn project_worktree_git_summary_from_status(
+    status_snapshot: &GitSummary,
+) -> ProjectWorktreeGitSummary {
     ProjectWorktreeGitSummary {
         changes: status_snapshot.staged + status_snapshot.unstaged + status_snapshot.untracked,
         incoming: status_snapshot.behind,

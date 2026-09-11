@@ -3,6 +3,17 @@ impl GitService {
         Self::workspace_snapshot(project_path).status
     }
 
+    /// Branch + ahead/behind + status counts without the expensive parts of a
+    /// full workspace snapshot (branch listings, commit log, stashes, tags and
+    /// the review diff). Used by the worktree-list scan, which runs this for
+    /// every worktree on each refresh.
+    pub fn status_counts(project_path: &str) -> GitSummary {
+        match open_git_repository(project_path) {
+            Ok(repo) => git_status_counts_from_repo(&repo),
+            Err(error) => git_workspace_error_snapshot(error).status,
+        }
+    }
+
     pub fn workspace_snapshot(project_path: &str) -> GitWorkspaceSnapshot {
         let repo = match open_git_repository(project_path) {
             Ok(repo) => repo,
@@ -44,8 +55,7 @@ impl GitService {
         if remote_url.is_empty() {
             return Err("Remote URL cannot be empty.".to_string());
         }
-        if credentials.username.trim().is_empty()
-            || credentials.password_or_token.trim().is_empty()
+        if credentials.username.trim().is_empty() || credentials.password_or_token.trim().is_empty()
         {
             return Err("Username and password or token cannot be empty.".to_string());
         }
@@ -55,7 +65,8 @@ impl GitService {
 
     pub fn trust_project_directory(project_path: &str) -> Result<(), String> {
         let safe_directory = safe_directory_path(project_path);
-        let mut config = git2::Config::open_default().map_err(|error| error.message().to_string())?;
+        let mut config =
+            git2::Config::open_default().map_err(|error| error.message().to_string())?;
         if safe_directory_is_configured(&config, &safe_directory)? {
             return Ok(());
         }
@@ -79,9 +90,9 @@ impl GitService {
             flatten_path_status_files(&repo, &directory_path),
             &directory_path,
         )
-            .into_iter()
-            .filter(|file| file.path == directory_path || file.path.starts_with(&prefix))
-            .collect())
+        .into_iter()
+        .filter(|file| file.path == directory_path || file.path.starts_with(&prefix))
+        .collect())
     }
 
     pub fn file_diff(project_path: &str, file_path: &str) -> Result<String, String> {
@@ -150,7 +161,10 @@ impl GitService {
     }
 }
 
-fn safe_directory_is_configured(config: &git2::Config, safe_directory: &str) -> Result<bool, String> {
+fn safe_directory_is_configured(
+    config: &git2::Config,
+    safe_directory: &str,
+) -> Result<bool, String> {
     let mut found = false;
     let mut entries = match config.entries(Some("safe.directory")) {
         Ok(entries) => entries,

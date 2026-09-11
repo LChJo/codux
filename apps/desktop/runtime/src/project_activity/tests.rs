@@ -18,6 +18,7 @@ fn ai_refresh_uses_foreground_and_background_intervals() {
                 last_git_refresh: None,
                 last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
+                last_worktree_refresh: None,
                 last_ai_refresh: Some(now - Duration::from_secs(180)),
             },
         );
@@ -31,6 +32,7 @@ fn ai_refresh_uses_foreground_and_background_intervals() {
                 last_git_refresh: None,
                 last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
+                last_worktree_refresh: None,
                 last_ai_refresh: Some(now - Duration::from_secs(180)),
             },
         );
@@ -61,6 +63,7 @@ fn ai_background_refresh_is_skipped_during_idle_tick() {
                 last_git_refresh: None,
                 last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
+                last_worktree_refresh: None,
                 last_ai_refresh: Some(now - Duration::from_secs(700)),
             },
         );
@@ -74,6 +77,7 @@ fn ai_background_refresh_is_skipped_during_idle_tick() {
                 last_git_refresh: None,
                 last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
+                last_worktree_refresh: None,
                 last_ai_refresh: Some(now - Duration::from_secs(700)),
             },
         );
@@ -103,6 +107,7 @@ fn git_background_refresh_is_limited_per_tick() {
                     last_git_refresh: Some(now - Duration::from_secs(700)),
                     last_remote_git_refresh: None,
                     last_git_changed_refresh: None,
+                    last_worktree_refresh: None,
                     last_ai_refresh: None,
                 },
             );
@@ -117,6 +122,7 @@ fn git_background_refresh_is_limited_per_tick() {
                 last_git_refresh: Some(now - Duration::from_secs(30)),
                 last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
+                last_worktree_refresh: None,
                 last_ai_refresh: None,
             },
         );
@@ -227,6 +233,139 @@ fn remote_git_refresh_is_throttled_per_project() {
 }
 
 #[test]
+fn branch_sensitive_paths_are_detected() {
+    assert!(is_branch_sensitive_changed_path("/tmp/project/.git/HEAD"));
+    assert!(is_branch_sensitive_changed_path(
+        "/tmp/project/.git/refs/heads/main"
+    ));
+    assert!(is_branch_sensitive_changed_path(
+        "/tmp/project/.git/packed-refs"
+    ));
+    assert!(is_branch_sensitive_changed_path(
+        "/tmp/project/.git/worktrees/wt1/HEAD"
+    ));
+    assert!(is_branch_sensitive_changed_path(
+        "f:/project/.git/ORIG_HEAD"
+    ));
+    assert!(is_branch_sensitive_changed_path(
+        "/tmp/project/.git/logs/HEAD"
+    ));
+    // Working-tree files never count, even with a matching file name.
+    assert!(!is_branch_sensitive_changed_path("/tmp/project/src/HEAD"));
+    assert!(!is_branch_sensitive_changed_path("/tmp/project/README.md"));
+    // Staging touches the index but not the branch.
+    assert!(!is_branch_sensitive_changed_path("/tmp/project/.git/index"));
+}
+
+#[test]
+fn branch_sensitive_change_bypasses_refresh_throttles() {
+    let support_dir = std::env::temp_dir().join(format!(
+        "codux-project-activity-sensitive-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&support_dir);
+    std::fs::create_dir_all(&support_dir).expect("create temp support dir");
+    std::fs::write(
+        support_dir.join("state.json"),
+        r#"{"projects":[{"id":"p1","name":"Project","path":"/tmp/project"}]}"#,
+    )
+    .expect("write state");
+
+    let coordinator = ProjectActivityCoordinator::new(support_dir.clone(), AIHistoryIndexer::new());
+    let store = ProjectStore::new(support_dir.clone());
+
+    // Seed the tracked project with backdated stamps sitting inside the
+    // 1.2s/3s throttle windows.
+    let backdated = Instant::now() - Duration::from_millis(100);
+    {
+        let mut guard = coordinator.projects.lock().unwrap();
+        guard.insert(
+            "p1".to_string(),
+            TrackedProject {
+                id: "p1".to_string(),
+                name: "Project".to_string(),
+                path: "/tmp/project".to_string(),
+                runtime_target: ProjectRuntimeTarget::Local,
+                last_git_refresh: Some(backdated),
+                last_remote_git_refresh: None,
+                last_git_changed_refresh: Some(backdated),
+                last_worktree_refresh: Some(backdated),
+                last_ai_refresh: None,
+            },
+        );
+    }
+
+    // A plain file change inside the window is coalesced away.
+    coordinator.refresh_git_changed(
+        &store,
+        "/tmp/project".to_string(),
+        "/tmp/project".to_string(),
+        vec!["/tmp/project/src/main.rs".to_string()],
+    );
+    {
+        let guard = coordinator.projects.lock().unwrap();
+        let tracked = guard.get("p1").expect("tracked project");
+        assert_eq!(tracked.last_git_changed_refresh, Some(backdated));
+        assert_eq!(tracked.last_worktree_refresh, Some(backdated));
+    }
+
+    // A branch/HEAD mutation inside the same window bypasses both gates.
+    coordinator.refresh_git_changed(
+        &store,
+        "/tmp/project".to_string(),
+        "/tmp/project".to_string(),
+        vec!["/tmp/project/.git/HEAD".to_string()],
+    );
+    {
+        let guard = coordinator.projects.lock().unwrap();
+        let tracked = guard.get("p1").expect("tracked project");
+        assert!(tracked.last_git_changed_refresh > Some(backdated));
+        assert!(tracked.last_worktree_refresh > Some(backdated));
+    }
+
+    let _ = std::fs::remove_dir_all(support_dir);
+}
+
+#[test]
+fn run_tick_schedules_worktree_rescan_for_due_projects() {
+    let coordinator =
+        ProjectActivityCoordinator::new(std::env::temp_dir(), AIHistoryIndexer::new());
+    let now = Instant::now();
+    {
+        let mut projects = coordinator.projects.lock().unwrap();
+        projects.insert(
+            "active".to_string(),
+            TrackedProject {
+                id: "active".to_string(),
+                name: "Active".to_string(),
+                path: "/tmp/active".to_string(),
+                runtime_target: ProjectRuntimeTarget::Local,
+                last_git_refresh: Some(now - Duration::from_secs(700)),
+                last_remote_git_refresh: None,
+                last_git_changed_refresh: None,
+                last_worktree_refresh: None,
+                last_ai_refresh: Some(now),
+            },
+        );
+    }
+    *coordinator.active_project_id.lock().unwrap() = Some("active".to_string());
+    coordinator.mark_main_window_visible(true);
+
+    coordinator.run_tick(&SettingsSummary::default());
+
+    let stamped = coordinator
+        .projects
+        .lock()
+        .unwrap()
+        .get("active")
+        .and_then(|project| project.last_worktree_refresh);
+    assert!(
+        stamped.is_some(),
+        "scheduled tick must rescan the worktree list, not only git status"
+    );
+}
+
+#[test]
 fn hosted_projects_are_excluded_from_local_git_refresh() {
     let projects = Mutex::new(HashMap::from([(
         "wsl".to_string(),
@@ -240,6 +379,7 @@ fn hosted_projects_are_excluded_from_local_git_refresh() {
             last_git_refresh: None,
             last_remote_git_refresh: None,
             last_git_changed_refresh: None,
+            last_worktree_refresh: None,
             last_ai_refresh: None,
         },
     )]));
