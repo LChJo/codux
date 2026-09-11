@@ -5,6 +5,26 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
+
+if (process.platform === "win32") {
+  const localGuardResult = spawnSync("node", ["apps/desktop/scripts/release/package-gpui.mjs"], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      CODUX_PACKAGE_GPUI_TEST_MODE: "false",
+      CODUX_PACKAGE_VERSION_PREPARED: "",
+      GITHUB_ACTIONS: "",
+      RELEASE_STAGE_DIR: path.join(os.tmpdir(), "codux-unprepared-package-test"),
+    },
+    encoding: "utf8",
+  });
+  assert.notEqual(localGuardResult.status, 0);
+  assert.match(
+    localGuardResult.stderr,
+    /Local packaging must increment and build the version first\. Run tools\/package-windows\.ps1/,
+  );
+}
 
 process.env.CODUX_PACKAGE_GPUI_TEST_MODE = "true";
 process.env.RELEASE_STAGE_DIR = "target/release-package-test";
@@ -18,7 +38,7 @@ const script = __testWindowsNsisScript(
 
 assert.match(script, /!include MUI2\.nsh/);
 assert.match(script, /ManifestDPIAware true/);
-assert.match(script, /VIProductVersion "\d+\.\d+\.\d+\.\d+"/);
+assert.match(script, /VIProductVersion "2\.0\.0\.6"/);
 assert.match(script, /!insertmacro MUI_PAGE_DIRECTORY/);
 assert.match(script, /!insertmacro MUI_LANGUAGE "English"/);
 assert.match(script, /!insertmacro MUI_LANGUAGE "SimpChinese"/);

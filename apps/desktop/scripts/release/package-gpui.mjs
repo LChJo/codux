@@ -25,6 +25,7 @@ const writeSha256Sidecars = process.env.RELEASE_WRITE_SHA256 === "true";
 // (no per-release README edits). Only for real release builds, not debug.
 const writeStableAlias = !artifactSuffix && process.env.RELEASE_WRITE_STABLE_ALIAS !== "false";
 
+assertLocalPackageVersionPrepared();
 fs.rmSync(outputDir, { recursive: true, force: true });
 fs.mkdirSync(outputDir, { recursive: true });
 
@@ -321,6 +322,22 @@ function readCargoVersion() {
   return content.match(/^version = "(.+)"$/m)?.[1] || "0.0.0";
 }
 
+function assertLocalPackageVersionPrepared() {
+  if (
+    process.platform !== "win32" ||
+    process.env.CODUX_PACKAGE_GPUI_TEST_MODE === "true" ||
+    process.env.GITHUB_ACTIONS === "true"
+  ) {
+    return;
+  }
+  const version = readCargoVersion();
+  if (process.env.CODUX_PACKAGE_VERSION_PREPARED !== version) {
+    throw new Error(
+      `Local packaging must increment and build the version first. Run tools/package-windows.ps1 (current version: ${version}).`,
+    );
+  }
+}
+
 function macosInfoPlist() {
   const version = readCargoVersion();
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -415,7 +432,7 @@ function isReleaseBuild() {
 
 function windowsNsisScript(packageDir, installerPath) {
   const version = readCargoVersion();
-  const fileVersion = `${version.match(/^(\d+)\.(\d+)\.(\d+)/)?.slice(1).join(".") || "0.0.0"}.0`;
+  const fileVersion = windowsFileVersion(version);
   const headerBitmap = path.join(desktopRoot, "scripts", "release", "installer-header.bmp");
   const estimatedSizeKB = directorySizeKB(packageDir);
   return `Unicode true
@@ -559,6 +576,17 @@ Section "Uninstall"
   DeleteRegKey HKCU "\${UNINSTALL_KEY}"
 SectionEnd
 `;
+}
+
+function windowsFileVersion(version) {
+  const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/);
+  if (!match) return "0.0.0.0";
+  const prereleaseSequence = match[4]?.match(/(?:^|\.)(\d+)$/)?.[1] || "0";
+  const build = Number(prereleaseSequence);
+  if (build > 65535) {
+    throw new Error(`Windows file version component exceeds 65535: ${version}`);
+  }
+  return `${match[1]}.${match[2]}.${match[3]}.${build}`;
 }
 
 function directorySizeKB(dir) {

@@ -68,6 +68,7 @@ jobs:
       - name: Test release scripts
         shell: bash
         run: |
+          node apps/desktop/scripts/release/test-bump-local-version.mjs
           node apps/desktop/scripts/release/test-package-gpui.mjs
           node apps/desktop/scripts/release/test-publish-github-release.mjs
 
