@@ -30,9 +30,21 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $builtExecutable = Join-Path $RepoRoot "target\$Target\release\codux.exe"
-$reportedVersion = ((& $builtExecutable --version) -join "`n").Trim()
-if ($LASTEXITCODE -ne 0 -or $reportedVersion -ne "codux $packageVersion") {
-    throw "Built binary version mismatch: expected 'codux $packageVersion', got '$reportedVersion'."
+# `codux.exe` is a GUI-subsystem binary. Under Windows PowerShell 5.1, capturing
+# its stdout with `& $exe --version` intermittently yields nothing, which made
+# this check fail on a binary that had just printed its version correctly during
+# the build's own smoke test. Redirecting through Start-Process is reliable.
+$versionOutputFile = Join-Path ([System.IO.Path]::GetTempPath()) "codux-package-version.txt"
+Remove-Item $versionOutputFile -Force -ErrorAction SilentlyContinue
+$versionProcess = Start-Process -FilePath $builtExecutable `
+    -ArgumentList "--version" `
+    -NoNewWindow -Wait -PassThru `
+    -RedirectStandardOutput $versionOutputFile
+$reportedVersion = (Get-Content $versionOutputFile -Raw -ErrorAction SilentlyContinue)
+if ($null -ne $reportedVersion) { $reportedVersion = $reportedVersion.Trim() }
+Remove-Item $versionOutputFile -Force -ErrorAction SilentlyContinue
+if ($versionProcess.ExitCode -ne 0 -or $reportedVersion -ne "codux $packageVersion") {
+    throw "Built binary version mismatch: expected 'codux $packageVersion', got '$reportedVersion' (exit code $($versionProcess.ExitCode))."
 }
 
 $previousTarget = $env:CARGO_BUILD_TARGET
