@@ -6,6 +6,23 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Added **Handoff records**, replacing the Session History list in the task column. Every completed AI turn now produces a durable record of where the work stopped — goal, host-verified facts, constraints, decisions, unfinished steps, blockers, the live plan snapshot, and the final result — stored in a new `handoff.sqlite3` with an integrity digest and a monotonic revision per session. Records are built deterministically from user-authored transcript lines and runtime state, so they are reproducible and never present model text as fact.
+- Added **draggable handoff artifacts**: plan documents, task documents, the turn's final result, the changed-file list, and the cleaned transcript tail are each staged as an individually addressable, content-addressed product. Drag one onto any terminal to attach it — the resolved path is pasted into the AI CLI's input line, so a single unfinished tail can be handed to different work instead of forking the whole session.
+- Added a **Record Handoff Point** action that fixes a named snapshot on demand, plus open-document, reveal-artifacts, rename, delete, and resume-session actions on each handoff row.
+- Added a delivery ledger recording which artifact was handed to which terminal, so "which tail went where" is answerable after the fact.
+
+### Changed
+
+- The task column's Session History section is now the **Handoffs** section. Session token statistics remain available in the AI stats sidebar.
+- Removed the session **fork** action and its one-shot temp prompt file. Handing work to another session now goes through a persisted handoff artifact; the `fork` operation was dropped from the shared `ai.session` dispatch table on both the desktop and headless hosts.
+- Transcript tail reading and cleaning moved into the shared `codux-handoff` crate so there is one cleaner rather than two that could drift on what is safe to carry forward.
+
+### Fixed
+
+- Handoff artifacts whose source file changed or disappeared after staging are now reported as unavailable and refused at drop time, instead of delivering a stale copy as if it were current.
+
+### Added
+
 - Added separate Kimi API (Open Platform) and Kimi Code (membership) provider presets with their respective endpoints, model IDs, and authentication schemes for built-in AI features such as memory extraction; 401 errors now point out likely key/product mismatches.
 - Added a show-hidden-files toggle to the folder and file pickers: an eye button in the picker toolbar and the standard Ctrl/Cmd+Shift+. shortcut reveal dot-prefixed entries (such as `.config` or `.claude`) when browsing local, WSL, and remote directories; remote hosts that predate the toggle keep hiding them until updated.
 - Added an extraction-provider picker to the Memory Manager sidebar so the default memory extraction provider can be set from the memory page itself, with a hint when no eligible provider is enabled.

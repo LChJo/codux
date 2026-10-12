@@ -13,6 +13,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 codux-ai-history = { path = "../../../crates/codux-ai-history" }
 codux-ai-sessions = { path = "../../../crates/codux-ai-sessions" }
 codux-git = { path = "../../../crates/codux-git" }
+codux-handoff = { path = "../../../crates/codux-handoff" }
 codux-llm = { path = "../../../crates/codux-llm" }
 codux-memory = { path = "../../../crates/codux-memory" }
 codux-protocol = { path = "../../../crates/codux-protocol" }

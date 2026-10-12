@@ -483,66 +483,6 @@ impl CoduxApp {
         self.restore_ai_session_in_main_split(session.title.clone(), command, window, cx);
     }
 
-    pub(super) fn fork_ai_session_to_tool(
-        &mut self,
-        session_id: String,
-        target_tool: AISessionForkTarget,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(project) = self.state.selected_project.clone() else {
-            self.status_message = "no selected project for AI session".to_string();
-            self.invalidate_memory_panel(cx);
-            return;
-        };
-        if !self
-            .state
-            .ai_history
-            .sessions
-            .iter()
-            .any(|session| session.id == session_id)
-        {
-            self.status_message = "no AI session to continue".to_string();
-            self.invalidate_memory_panel(cx);
-            return;
-        }
-
-        self.state.tool_permissions = self.runtime_service.sync_tool_permissions();
-        self.status_message = format!("preparing {} session handoff", target_tool.display_name());
-        self.invalidate_memory_panel(cx);
-
-        let service = self.runtime_service.clone();
-        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
-            let target = target_tool;
-            let result = codux_runtime::async_runtime::spawn_blocking(move || {
-                service.fork_ai_session(AISessionForkRequest {
-                    project_id: project.id,
-                    project_name: project.name,
-                    project_path: project.path,
-                    session_id,
-                    target_tool: target,
-                })
-            })
-            .await
-            .map_err(|error| error.to_string())
-            .and_then(|result| result);
-
-            let _ = this.update(cx, |app, cx| match result {
-                Ok(result) => {
-                    let command = ai_session_fork_command(target_tool, &result.prompt_path);
-                    app.status_message =
-                        format!("prepared {} session handoff", target_tool.display_name());
-                    app.restore_ai_session_in_main_split_without_focus(result.title, command, cx);
-                }
-                Err(error) => {
-                    app.status_message = format!("failed to prepare session handoff: {error}");
-                    app.invalidate_memory_panel(cx);
-                }
-            });
-        })
-        .detach();
-    }
-
     pub(super) fn reload_memory(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.reload_memory_manager_snapshot_async(cx);
     }

@@ -1373,6 +1373,7 @@ name = "codux-ai-sessions"
 version = "0.1.0"
 dependencies = [
  "codux-ai-history",
+ "codux-handoff",
  "codux-protocol",
  "rusqlite",
  "serde",
@@ -1390,6 +1391,19 @@ dependencies = [
  "notify 8.2.0",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "codux-handoff"
+version = "0.1.0"
+dependencies = [
+ "codux-ai-history",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "uuid",
 ]
 
 [[package]]
@@ -1474,6 +1488,7 @@ dependencies = [
  "codux-ai-history",
  "codux-ai-sessions",
  "codux-git",
+ "codux-handoff",
  "codux-llm",
  "codux-memory",
  "codux-protocol",

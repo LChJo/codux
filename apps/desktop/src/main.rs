@@ -6,6 +6,7 @@
 
 mod app;
 mod assets;
+mod handoff;
 mod heroicons;
 mod terminal;
 mod theme;

@@ -25,6 +25,20 @@ pub fn file_list_children(request: FileChildrenRequest) -> Result<Vec<FileEntry>
     FilesService::list_children(&request.root_path, request.directory_path.as_deref())
 }
 
+/// Open an absolute path with the platform's default handler.
+///
+/// Unlike `open_project_file_entry`, this takes no project root: it exists for
+/// files that live outside any checkout, such as a rendered handoff document
+/// under the support directory.
+pub fn open_absolute_path(path: &str) -> Result<(), String> {
+    open_path(Path::new(path))
+}
+
+/// Reveal an absolute path in the platform file manager.
+pub fn reveal_absolute_path(path: &str) -> Result<(), String> {
+    reveal_path(Path::new(path))
+}
+
 pub fn file_read(request: FilePathRequest) -> Result<FileReadResult, String> {
     FilesService::read_text(&request.root_path, &request.path)
 }

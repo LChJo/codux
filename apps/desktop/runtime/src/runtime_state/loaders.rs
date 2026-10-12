@@ -123,12 +123,27 @@ fn load_global_ai_history(support_dir: &Path) -> AIGlobalHistorySummary {
     }
 }
 
+/// Handoff records for one project, newest first.
+///
+/// Failures degrade to an empty list: a corrupt or missing handoff store must not
+/// block the rest of the runtime state from loading.
+fn load_handoffs(support_dir: &Path, project_id: Option<&str>) -> Vec<crate::handoff::HandoffListRow> {
+    let Some(project_id) = project_id else {
+        return Vec::new();
+    };
+    codux_handoff::service::HandoffService::new(support_dir.to_path_buf())
+        .list(project_id, HANDOFF_LIST_LIMIT)
+        .unwrap_or_default()
+}
+
+/// Rows loaded into the task column's handoff section.
+pub(crate) const HANDOFF_LIST_LIMIT: usize = 50;
+
 fn load_ai_session_detail(
     support_dir: &Path,
     project_path: &str,
     session_id: &str,
-) -> AISessionDetail {
-    AIHistoryService::new(support_dir.to_path_buf())
+) -> AISessionDetail {    AIHistoryService::new(support_dir.to_path_buf())
         .project_session_detail(project_path, session_id)
         .unwrap_or_else(|error| AISessionDetail {
             id: session_id.to_string(),

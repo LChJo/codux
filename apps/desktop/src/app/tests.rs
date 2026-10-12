@@ -1,8 +1,6 @@
 use crate::{
     app::{
-        ai_history_mapping::{
-            AI_SESSION_FORK_TARGETS, ai_session_fork_command, ai_session_restore_command,
-        },
+        ai_history_mapping::ai_session_restore_command,
         app_helpers::{
             file_search_status_message, generated_git_commit_message, git_remote_action_label,
             project_badge_text_from_name, ssh_connect_command,
@@ -24,7 +22,7 @@ use crate::{
     terminal::TerminalLaunchContext,
 };
 use codux_runtime::{
-    ai_history::{AISessionForkTarget, AISessionSummary},
+    ai_history::AISessionSummary,
     git::GitSummary,
     ssh::SSHProfileSummary,
     terminal_layout::{
@@ -713,39 +711,6 @@ fn ai_session_restore_command_matches_tauri_history_restore() {
         ai_session_restore_command(&session),
         "codewhale resume external-2"
     );
-}
-
-#[test]
-fn ai_session_fork_command_reads_prompt_file_for_all_targets() {
-    let path = "/tmp/codux session handoff.md";
-    for target in AI_SESSION_FORK_TARGETS {
-        let command = ai_session_fork_command(target, path);
-        if cfg!(windows) {
-            assert!(
-                command.contains("Get-Content -Raw -LiteralPath '/tmp/codux session handoff.md'"),
-                "{command}"
-            );
-        } else {
-            assert!(
-                command.contains("$(cat '/tmp/codux session handoff.md')"),
-                "{command}"
-            );
-        }
-        assert!(!command.contains("Continue Cleaned AI Session"));
-    }
-    assert!(ai_session_fork_command(AISessionForkTarget::Codex, path).starts_with("codex "));
-    assert!(ai_session_fork_command(AISessionForkTarget::Claude, path).starts_with("claude "));
-    assert!(ai_session_fork_command(AISessionForkTarget::Agy, path).starts_with("agy "));
-    assert!(ai_session_fork_command(AISessionForkTarget::Omp, path).starts_with("omp "));
-    assert!(
-        ai_session_fork_command(AISessionForkTarget::OpenCode, path).starts_with("opencode run ")
-    );
-    assert!(ai_session_fork_command(AISessionForkTarget::Kiro, path).starts_with("kiro-cli "));
-    assert!(
-        ai_session_fork_command(AISessionForkTarget::CodeWhale, path).starts_with("codewhale ")
-    );
-    assert!(ai_session_fork_command(AISessionForkTarget::Kimi, path).starts_with("kimi "));
-    assert!(ai_session_fork_command(AISessionForkTarget::MiMo, path).starts_with("mimo run "));
 }
 
 #[test]

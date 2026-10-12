@@ -1,50 +1,24 @@
-use gpui_component::{InteractiveElementExt as _, menu::ContextMenuExt as _};
+use gpui_component::menu::ContextMenuExt as _;
 
 use super::agent_display::{agent_lifecycle_color, agent_lifecycle_status_dot, spin_icon};
 use super::ai_runtime_status::AgentLifecycleState;
-use super::scroll_compat::codux_uniform_list_with_sizing;
-use super::ui_helpers::{codux_tooltip_container, titlebar_drag_area};
-use super::{
-    formatting::{relative_time_label_for_language, usage_amount_label},
-    *,
-};
-use gpui::ListSizingBehavior;
+use super::ui_helpers::codux_tooltip_container;
+use super::ui_helpers::titlebar_drag_area;
+use super::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum TaskSectionKind {
+pub(in crate::app) enum TaskSectionKind {
     Terminals,
     Sessions,
+    Handoffs,
 }
 
 pub(in crate::app) struct TaskColumnView {
     header_view: gpui::Entity<TaskColumnHeaderView>,
     worktree_list_view: gpui::Entity<TaskWorktreeListView>,
     terminal_list_view: gpui::Entity<TaskTerminalListView>,
-    session_list_view: gpui::Entity<TaskSessionListView>,
-    sessions_collapsed: bool,
-}
-
-#[derive(Clone)]
-pub(in crate::app) struct TaskSessionDrag {
-    pub(in crate::app) session_id: String,
-    pub(in crate::app) title: String,
-}
-
-impl Render for TaskSessionDrag {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .px_3()
-            .py(px(6.0))
-            .rounded(px(8.0))
-            .border_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().popover)
-            .text_sm()
-            .text_color(color(theme::TEXT))
-            .max_w(px(220.0))
-            .truncate()
-            .child(self.title.clone())
-    }
+    handoff_list_view: gpui::Entity<TaskHandoffListView>,
+    handoffs_collapsed: bool,
 }
 
 #[derive(Clone, PartialEq)]
@@ -61,24 +35,14 @@ struct TaskWorktreeRow {
     lifecycle: Option<AgentLifecycleState>,
 }
 
-#[derive(Clone, PartialEq)]
-struct TaskSessionRow {
-    id: String,
-    title: String,
-    source: String,
-    last_seen_at: f64,
-    total_tokens: i64,
-    usage_amounts: Vec<codux_runtime::ai_history::AIUsageAmount>,
-}
-
 impl Render for TaskColumnView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         task_column_content(
             self.header_view.clone(),
             self.worktree_list_view.clone(),
             self.terminal_list_view.clone(),
-            self.session_list_view.clone(),
-            self.sessions_collapsed,
+            self.handoff_list_view.clone(),
+            self.handoffs_collapsed,
         )
         .into_any_element()
     }
@@ -89,12 +53,12 @@ impl CoduxApp {
         &mut self,
         cx: &mut Context<Self>,
     ) -> gpui::Entity<TaskColumnView> {
-        let sessions_collapsed = self.task_section_sessions_collapsed;
+        let handoffs_collapsed = self.task_section_handoffs_collapsed;
         if let Some(view) = self.task_column_view.clone() {
             self.update_task_column_child_views(cx);
             view.update(cx, |view, cx| {
-                if view.sessions_collapsed != sessions_collapsed {
-                    view.sessions_collapsed = sessions_collapsed;
+                if view.handoffs_collapsed != handoffs_collapsed {
+                    view.handoffs_collapsed = handoffs_collapsed;
                     cx.notify();
                 }
             });
@@ -103,13 +67,13 @@ impl CoduxApp {
         let header_view = self.task_column_header_view(cx);
         let worktree_list_view = self.task_worktree_list_view(cx);
         let terminal_list_view = self.task_terminal_list_view(cx);
-        let session_list_view = self.task_session_list_view(cx);
+        let handoff_list_view = self.task_handoff_list_view(cx);
         let view = cx.new(|_| TaskColumnView {
             header_view,
             worktree_list_view,
             terminal_list_view,
-            session_list_view,
-            sessions_collapsed,
+            handoff_list_view,
+            handoffs_collapsed,
         });
         self.task_column_view = Some(view.clone());
         view
@@ -119,7 +83,7 @@ impl CoduxApp {
         let _ = self.task_column_header_view(cx);
         let _ = self.task_worktree_list_view(cx);
         let _ = self.task_terminal_list_view(cx);
-        let _ = self.task_session_list_view(cx);
+        let _ = self.task_handoff_list_view(cx);
     }
 }
 
@@ -128,15 +92,11 @@ struct TaskColumnLabels {
     language: String,
     no_project: String,
     no_worktrees_title: String,
-    no_sessions_title: String,
     no_branch: String,
-    sessions: String,
     terminals: String,
     changed_format: String,
     create: String,
     refresh: String,
-    open: String,
-    new_session: String,
     open_folder: String,
     merge: String,
     delete_branch: String,
@@ -150,30 +110,15 @@ fn task_column_labels(language: &str) -> TaskColumnLabels {
         language: language.to_string(),
         no_project: tr("files.panel.no_project", "No project selected"),
         no_worktrees_title: tr("worktree.sidebar.empty_title", "No worktrees yet"),
-        no_sessions_title: tr("ai.sessions.empty", "No Sessions"),
         no_branch: tr("git.branch.none", "No Branch"),
-        sessions: tr("ai.sessions.history", "Session History"),
         terminals: tr("terminal.title", "Terminal"),
         changed_format: tr("worktree.sidebar.changed_format", "%@ changed"),
         create: tr("worktree.create.title", "New Worktree"),
         refresh: tr("common.refresh", "Refresh"),
-        open: tr("common.open", "Open"),
-        new_session: tr("ai.sessions.new_session", "New Session"),
         open_folder: tr("worktree.menu.open_folder", "Open Folder"),
         merge: tr("worktree.menu.merge", "Merge to Mainline"),
         delete_branch: tr("worktree.menu.delete_branch", "Delete Branch"),
         delete: tr("common.delete", "Delete"),
-    }
-}
-
-fn task_session_row(session: &AISessionSummary) -> TaskSessionRow {
-    TaskSessionRow {
-        id: session.id.clone(),
-        title: session.title.clone(),
-        source: session.source.clone(),
-        last_seen_at: session.last_seen_at,
-        total_tokens: session.total_tokens,
-        usage_amounts: session.usage_amounts.clone(),
     }
 }
 
@@ -304,42 +249,6 @@ impl Render for TaskTerminalListView {
     }
 }
 
-#[derive(Clone, PartialEq)]
-pub(in crate::app) struct TaskSessionListSnapshot {
-    labels: TaskColumnLabels,
-    sessions: Vec<TaskSessionRow>,
-    collapsed: bool,
-}
-
-pub(in crate::app) struct TaskSessionListView {
-    app_entity: gpui::Entity<CoduxApp>,
-    snapshot: TaskSessionListSnapshot,
-    scroll_handle: UniformListScrollHandle,
-}
-
-impl TaskSessionListView {
-    fn set_snapshot(&mut self, snapshot: TaskSessionListSnapshot, cx: &mut Context<Self>) {
-        if self.snapshot == snapshot {
-            return;
-        }
-        self.snapshot = snapshot;
-        cx.notify();
-    }
-}
-
-impl Render for TaskSessionListView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        recent_session_area(
-            self.snapshot.sessions.clone(),
-            self.snapshot.labels.clone(),
-            self.snapshot.collapsed,
-            self.scroll_handle.clone(),
-            self.app_entity.clone(),
-            cx,
-        )
-        .into_any_element()
-    }
-}
 
 impl CoduxApp {
     fn task_column_header_view(
@@ -399,23 +308,22 @@ impl CoduxApp {
         view
     }
 
-    fn task_session_list_view(
+    fn task_handoff_list_view(
         &mut self,
         cx: &mut Context<Self>,
-    ) -> gpui::Entity<TaskSessionListView> {
-        let snapshot = self.task_session_list_snapshot();
-        if let Some(view) = self.task_session_list_view.clone() {
+    ) -> gpui::Entity<TaskHandoffListView> {
+        let snapshot = self.task_handoff_list_snapshot(cx);
+        if let Some(view) = self.task_handoff_list_view.clone() {
             view.update(cx, |view, cx| view.set_snapshot(snapshot, cx));
             return view;
         }
         let app_entity = cx.entity();
-        let scroll_handle = self.session_scroll_handle.clone();
-        let view = cx.new(|_| TaskSessionListView {
+        let view = cx.new(|_| TaskHandoffListView {
             app_entity,
             snapshot,
-            scroll_handle,
+            scroll_handle: UniformListScrollHandle::new(),
         });
-        self.task_session_list_view = Some(view.clone());
+        self.task_handoff_list_view = Some(view.clone());
         view
     }
 
@@ -541,21 +449,54 @@ impl CoduxApp {
         }
     }
 
-    fn task_session_list_snapshot(&self) -> TaskSessionListSnapshot {
-        let labels = task_column_labels(&self.state.settings.language);
-        let sessions = self
-            .state
-            .ai_history
-            .sessions
-            .iter()
-            .map(task_session_row)
-            .collect::<Vec<_>>();
+    /// Build the handoff section snapshot.
+    ///
+    /// Artifacts are only loaded for rows the user has expanded, so a long list
+    /// does not deserialize every record payload on every refresh.
+    fn task_handoff_list_snapshot(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> TaskHandoffListSnapshot {
+        let labels = handoff_labels(&self.state.settings.language);
+        let expanded = self.expanded_handoff_ids.clone();
+        let pending_delete = self.handoff_delete_confirm_id.clone();
+        let service = self.runtime_service.clone();
 
-        TaskSessionListSnapshot {
-            labels,
-            sessions,
-            collapsed: self.task_section_sessions_collapsed,
+        let mut handoffs = Vec::with_capacity(self.state.handoffs.len());
+        let mut needs_artifacts = Vec::new();
+        for row in self.state.handoffs.clone() {
+            let is_expanded = expanded.contains(&row.id);
+            if is_expanded {
+                needs_artifacts.push(row.id.clone());
+            }
+            handoffs.push(TaskHandoffRow {
+                pending_delete: pending_delete.as_deref() == Some(row.id.as_str()),
+                expanded: is_expanded,
+                artifacts: Vec::new(),
+                row,
+            });
         }
+
+        // Fill expanded rows synchronously: the artifact index is a single small
+        // query per row, and only expanded rows are loaded.
+        for id in needs_artifacts {
+            let artifacts = service.handoff_artifacts(&id).unwrap_or_default();
+            if let Some(entry) = handoffs.iter_mut().find(|entry| entry.row.id == id) {
+                entry.artifacts = artifacts;
+            }
+        }
+
+        let snapshot = TaskHandoffListSnapshot {
+            labels,
+            handoffs,
+            collapsed: self.task_section_handoffs_collapsed,
+            refreshing: self.handoffs_refreshing,
+        };
+
+        // Kick a background refresh so the next frame reflects any handoff built
+        // since the last load. Guarded inside against concurrent loads.
+        self.reload_project_handoffs(cx);
+        snapshot
     }
 }
 
@@ -563,8 +504,8 @@ fn task_column_content(
     header_view: gpui::Entity<TaskColumnHeaderView>,
     worktree_list_view: gpui::Entity<TaskWorktreeListView>,
     terminal_list_view: gpui::Entity<TaskTerminalListView>,
-    session_list_view: gpui::Entity<TaskSessionListView>,
-    sessions_collapsed: bool,
+    handoff_list_view: gpui::Entity<TaskHandoffListView>,
+    handoffs_collapsed: bool,
 ) -> impl IntoElement {
     div()
         .flex()
@@ -600,9 +541,9 @@ fn task_column_content(
                         .flex()
                         .flex_col()
                         .min_h_0()
-                        .when(sessions_collapsed, |this| this.flex_none())
-                        .when(!sessions_collapsed, |this| this.flex_1())
-                        .child(gpui::AnyView::from(session_list_view)),
+                        .when(handoffs_collapsed, |this| this.flex_none())
+                        .when(!handoffs_collapsed, |this| this.flex_1())
+                        .child(gpui::AnyView::from(handoff_list_view)),
                 ),
         )
 }
@@ -774,7 +715,7 @@ fn task_list_area(
         .into_any_element()
 }
 
-fn task_empty_state(
+pub(in crate::app) fn task_empty_state(
     title: String,
     icon: HeroIconName,
     cx: &mut Context<impl Render>,
@@ -817,90 +758,6 @@ fn task_empty_state(
         .into_any_element()
 }
 
-fn recent_session_area(
-    sessions: Vec<TaskSessionRow>,
-    labels: TaskColumnLabels,
-    collapsed: bool,
-    scroll_handle: UniformListScrollHandle,
-    app_entity: gpui::Entity<CoduxApp>,
-    cx: &mut Context<TaskSessionListView>,
-) -> impl IntoElement {
-    let session_count = sessions.len();
-
-    if collapsed {
-        return div()
-            .relative()
-            .flex()
-            .flex_col()
-            .flex_none()
-            .child(session_section_heading(
-                labels.sessions.clone(),
-                session_count,
-                true,
-                app_entity,
-                TaskSectionKind::Sessions,
-                cx,
-            ))
-            .into_any_element();
-    }
-
-    let sessions = Rc::new(sessions);
-    let row_labels = labels.clone();
-    let row_app_entity = app_entity.clone();
-
-    div()
-        .relative()
-        .flex()
-        .flex_col()
-        .size_full()
-        .min_h_0()
-        .child(session_section_heading(
-            labels.sessions.clone(),
-            session_count,
-            false,
-            app_entity,
-            TaskSectionKind::Sessions,
-            cx,
-        ))
-        .child(
-            div()
-                .relative()
-                .flex_1()
-                .w_full()
-                .min_w_0()
-                .min_h_0()
-                .p_2()
-                .overflow_hidden()
-                .child(if session_count == 0 {
-                    task_empty_state(labels.no_sessions_title, HeroIconName::CommandLine, cx)
-                } else {
-                    codux_uniform_list_with_sizing(
-                        "task-column-recent-sessions",
-                        sessions,
-                        scroll_handle,
-                        None,
-                        ListSizingBehavior::Auto,
-                        cx,
-                        move |session, _index, _window, cx| {
-                            div()
-                                .w_full()
-                                .min_w_0()
-                                .pb(px(4.0))
-                                .child(ai_session_compact_row(
-                                    session,
-                                    row_labels.clone(),
-                                    row_app_entity.clone(),
-                                    cx,
-                                ))
-                                .into_any_element()
-                        },
-                    )
-                    .into_any_element()
-                }),
-        )
-        .into_any_element()
-}
-
 const TERMINAL_LIST_ROW_HEIGHT: f32 = 34.0;
 const TERMINAL_LIST_MAX_VISIBLE_ROWS: usize = 6;
 
@@ -922,7 +779,7 @@ fn terminal_list_area(
             .flex_col()
             .w_full()
             .flex_none()
-            .child(session_section_heading(
+            .child(task_section_heading(
                 labels.terminals.clone(),
                 count,
                 true,
@@ -946,7 +803,7 @@ fn terminal_list_area(
         .flex_col()
         .w_full()
         .h(px(height))
-        .child(session_section_heading(
+        .child(task_section_heading(
             labels.terminals.clone(),
             count,
             false,
@@ -1103,7 +960,7 @@ fn terminal_compact_row(
         })
 }
 
-fn session_section_heading(
+pub(in crate::app) fn task_section_heading(
     title: String,
     count: usize,
     collapsed: bool,
@@ -1137,6 +994,10 @@ fn session_section_heading(
                     }
                     TaskSectionKind::Sessions => {
                         app.task_section_sessions_collapsed = !app.task_section_sessions_collapsed;
+                    }
+                    TaskSectionKind::Handoffs => {
+                        app.task_section_handoffs_collapsed =
+                            !app.task_section_handoffs_collapsed;
                     }
                 }
                 // Getter (not just child refresh) syncs the collapsed flag into the view and notifies it, so the docked flex re-renders now.
@@ -1370,143 +1231,6 @@ fn worktree_row_title(worktree: &WorktreeInfo, no_branch: &str) -> String {
         .rfind(|segment| !segment.is_empty())
         .unwrap_or(branch)
         .to_string()
-}
-
-fn ai_session_compact_row(
-    session: TaskSessionRow,
-    labels: TaskColumnLabels,
-    app_entity: gpui::Entity<CoduxApp>,
-    _cx: &mut Context<TaskSessionListView>,
-) -> impl IntoElement {
-    let restore_session_id = session.id.clone();
-    let menu_session_id = session.id.clone();
-    let last_seen = relative_time_label_for_language(session.last_seen_at, &labels.language);
-    let restore_entity = app_entity.clone();
-    let drag_payload = TaskSessionDrag {
-        session_id: session.id.clone(),
-        title: session.title.clone(),
-    };
-    div()
-        .id(SharedString::from(format!(
-            "compact-session-{}",
-            session.id
-        )))
-        .w_full()
-        .min_w_0()
-        .flex()
-        .flex_col()
-        .gap(px(4.0))
-        .rounded(px(8.0))
-        .px_3()
-        .py(px(8.0))
-        .cursor_pointer()
-        .hover(|style| style.bg(theme::elevate(color(theme::BG_COLUMN), 0.07)))
-        .on_drag(drag_payload, move |drag, _, _, cx| {
-            cx.stop_propagation();
-            cx.new(|_| drag.clone())
-        })
-        .on_double_click(move |_, window, cx| {
-            cx.update_entity(&restore_entity, |app, cx| {
-                app.selected_ai_session_id = Some(restore_session_id.clone());
-                app.restore_selected_ai_session(window, cx);
-            });
-        })
-        .child(
-            div()
-                .min_w_0()
-                .text_sm()
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(color(theme::TEXT))
-                .truncate()
-                .child(session.title.clone()),
-        )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap_2()
-                .min_w_0()
-                .text_size(rems(0.75))
-                .text_color(color(theme::TEXT_DIM))
-                .child(
-                    div()
-                        .min_w_0()
-                        .flex_1()
-                        .truncate()
-                        .child(session.source.clone()),
-                )
-                .child(div().flex_shrink_0().text_right().child(format!(
-                    "{} · {}",
-                    session_usage_label(&session),
-                    last_seen
-                ))),
-        )
-        .context_menu(move |menu, _window, _cx| {
-            let open_entity = app_entity.clone();
-            let open_session_id = menu_session_id.clone();
-            let fork_entity = app_entity.clone();
-            let fork_session_id = menu_session_id.clone();
-            let fork_label = labels.new_session.clone();
-            let remove_entity = app_entity.clone();
-            let remove_session_id = menu_session_id.clone();
-
-            menu.item(
-                PopupMenuItem::new(labels.open.clone())
-                    .icon(HeroIconName::CommandLine)
-                    .on_click(move |_, window, cx| {
-                        cx.update_entity(&open_entity, |app, cx| {
-                            app.selected_ai_session_id = Some(open_session_id.clone());
-                            app.restore_selected_ai_session(window, cx);
-                        });
-                    }),
-            )
-            .submenu_with_icon(
-                Some(Icon::new(HeroIconName::Plus)),
-                fork_label,
-                _window,
-                _cx,
-                move |menu, _window, _cx| {
-                    AI_SESSION_FORK_TARGETS
-                        .iter()
-                        .copied()
-                        .fold(menu, |menu, target| {
-                            let target_entity = fork_entity.clone();
-                            let target_session_id = fork_session_id.clone();
-                            menu.item(
-                                PopupMenuItem::new(target.display_name().to_string())
-                                    .icon(HeroIconName::CommandLine)
-                                    .on_click(move |_, window, cx| {
-                                        cx.update_entity(&target_entity, |app, cx| {
-                                            app.fork_ai_session_to_tool(
-                                                target_session_id.clone(),
-                                                target,
-                                                window,
-                                                cx,
-                                            );
-                                        });
-                                    }),
-                            )
-                        })
-                },
-            )
-            .item(
-                PopupMenuItem::new(labels.delete.clone())
-                    .icon(HeroIconName::Trash)
-                    .on_click(move |_, window, cx| {
-                        cx.update_entity(&remove_entity, |app, cx| {
-                            app.request_remove_ai_session(remove_session_id.clone(), window, cx);
-                        });
-                    }),
-            )
-        })
-}
-
-fn session_usage_label(session: &TaskSessionRow) -> String {
-    if session.total_tokens > 0 {
-        return compact_number(session.total_tokens);
-    }
-    usage_amount_label(&session.usage_amounts).unwrap_or_else(|| compact_number(0))
 }
 
 #[cfg(test)]

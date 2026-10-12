@@ -117,27 +117,48 @@ impl CoduxApp {
             return div().hidden().into_any_element();
         };
 
+        // GPUI's `WhiteSpace` has no `pre-line`, so newlines in a tooltip string
+        // would collapse into spaces under `whitespace_normal`. Split into one
+        // child per line instead: a single-line tooltip yields exactly one child,
+        // so every existing tooltip renders identically.
+        let text = self.tooltip_state.text.clone();
+        let lines = text.split('\n').map(str::to_string).collect::<Vec<_>>();
+        let multiline = lines.len() > 1;
+        // A detail block needs more room than a button label.
+        let max_width = if multiline { px(420.0) } else { px(260.0) };
+
         deferred(
             codux_tooltip_positioner(self.tooltip_state.bounds, self.tooltip_state.placement)
                 .child(
                     div()
                         .id("codux-tooltip-layer")
-                        .max_w(px(260.0))
+                        .max_w(max_width)
                         .rounded(px(6.0))
                         .border_1()
                         .border_color(color(0xFFFFFF).opacity(0.22))
                         .bg(color(0x000000))
                         .px_2()
                         .py_1()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.0))
                         .text_size(rems(0.75))
-                        .line_height(rems(1.0))
+                        .line_height(if multiline { rems(1.15) } else { rems(1.0) })
                         .text_color(color(0xF4F6FA))
                         .whitespace_normal()
                         .on_click(cx.listener(|app, _event, _window, cx| {
                             app.clear_codux_tooltip(cx);
                             cx.stop_propagation();
                         }))
-                        .child(self.tooltip_state.text.clone()),
+                        .children(lines.into_iter().map(|line| {
+                            // An empty line still needs height, or a blank
+                            // separator between sections disappears.
+                            div().w_full().child(if line.is_empty() {
+                                SharedString::from(" ")
+                            } else {
+                                SharedString::from(line)
+                            })
+                        })),
                 ),
         )
         .with_priority(2)

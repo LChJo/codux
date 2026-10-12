@@ -2,7 +2,6 @@ use crate::{
     ai_history::{
         AIGlobalHistorySummary, AIHistoryCurrentSessionView, AIHistoryDailyLevelView,
         AIHistoryService, AIHistoryStatsView, AIHistorySummary, AISessionDetail,
-        AISessionForkRequest, AISessionForkResult,
     },
     ai_history_indexer::{AIHistoryEvent, AIHistoryIndexer, AIHistoryProjectState},
     ai_history_normalized::{
@@ -116,6 +115,7 @@ include!("service_ai_runtime.rs");
 include!("service_core_tests.rs");
 include!("service_git_files.rs");
 include!("service_ai_memory.rs");
+include!("service_handoff.rs");
 include!("service_ssh_worktree.rs");
 include!("service_system.rs");
 include!("service_remote_controller.rs");

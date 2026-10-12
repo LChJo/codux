@@ -1,4 +1,5 @@
 use super::*;
+use crate::handoff::{HandoffArtifactDrag, HandoffRecordDrag};
 
 const TERMINAL_SPLIT_BASE_SIZE: Pixels = px(640.0);
 const TERMINAL_SPLIT_BASE_WIDTH: Pixels = px(1200.0);
@@ -555,9 +556,14 @@ fn terminal_pane(
     let float_id = SharedString::from(format!("terminal-pane-float-{index}"));
     let collapse_id = SharedString::from(format!("terminal-pane-collapse-{index}"));
     let add_id = SharedString::from(format!("terminal-pane-add-{index}"));
-    let session_drop_entity = app_entity.clone();
+    let handoff_artifact_drop_entity = app_entity.clone();
+    let handoff_record_drop_entity = app_entity.clone();
     let pane_view = slot.view.clone();
     let drop_terminal_id = slot.terminal_id.clone();
+    // One clone per `move` drop listener; a single binding cannot be captured by
+    // all three.
+    let handoff_artifact_terminal_id = drop_terminal_id.clone();
+    let handoff_record_terminal_id = drop_terminal_id.clone();
     // The search bar floats over the same top-right corner as the controls.
     let search_open = slot.search_open;
 
@@ -677,19 +683,44 @@ fn terminal_pane(
                 .left_0()
                 .invisible()
                 .p_2()
-                .group_drag_over::<TaskSessionDrag>("terminal-pane", |this| this.visible())
+                // Handoff drops: an artifact chip (or a whole record) dragged from
+                // the task column lands here and is pasted as a shell-quoted path,
+                // which is how a single tail becomes an attachment in another
+                // conversation. Highlighted by the same overlay as session drags.
+                .group_drag_over::<HandoffArtifactDrag>("terminal-pane", |this| this.visible())
+                .group_drag_over::<HandoffRecordDrag>("terminal-pane", |this| this.visible())
                 .on_drop(
-                    cx.listener(move |_view, drag: &TaskSessionDrag, window, cx| {
-                        let session_id = drag.session_id.clone();
-                        let terminal_id = drop_terminal_id.clone();
+                    cx.listener(move |_view, drag: &HandoffArtifactDrag, window, cx| {
+                        let payload = drag.clone();
+                        let terminal_id = handoff_artifact_terminal_id.clone();
                         defer_terminal_workspace_app_update(
-                            session_drop_entity.clone(),
+                            handoff_artifact_drop_entity.clone(),
                             window,
                             cx,
                             move |app, window, app_cx| {
-                                app.paste_ai_session_restore_to_main_pane(
+                                app.deliver_handoff_artifact(
+                                    &payload,
                                     terminal_id.as_deref(),
-                                    &session_id,
+                                    window,
+                                    app_cx,
+                                );
+                            },
+                        );
+                        cx.stop_propagation();
+                    }),
+                )
+                .on_drop(
+                    cx.listener(move |_view, drag: &HandoffRecordDrag, window, cx| {
+                        let payload = drag.clone();
+                        let terminal_id = handoff_record_terminal_id.clone();
+                        defer_terminal_workspace_app_update(
+                            handoff_record_drop_entity.clone(),
+                            window,
+                            cx,
+                            move |app, window, app_cx| {
+                                app.deliver_handoff_record(
+                                    &payload,
+                                    terminal_id.as_deref(),
                                     window,
                                     app_cx,
                                 );

@@ -1,0 +1,11 @@
+{
+  "change_id": "refactor-session-records-to-handoff",
+  "created_at": "2026-10-12",
+  "status": "in-progress",
+  "capabilities": [
+    "handoff-records",
+    "handoff-artifacts",
+    "handoff-delivery"
+  ],
+  "updated_at": "2026-10-12T00:00:00Z"
+}

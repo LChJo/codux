@@ -41,6 +41,10 @@ const I18N_SHARDS: &[(&str, &str)] = &[
         include_str!("../../runtime-assets/i18n/locales/git.json"),
     ),
     (
+        "locales/handoff.json",
+        include_str!("../../runtime-assets/i18n/locales/handoff.json"),
+    ),
+    (
         "locales/memory.json",
         include_str!("../../runtime-assets/i18n/locales/memory.json"),
     ),

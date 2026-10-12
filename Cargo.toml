@@ -7,6 +7,7 @@ members = [
     "crates/codux-ai-history",
     "crates/codux-ai-sessions",
     "crates/codux-git",
+    "crates/codux-handoff",
     "crates/codux-llm",
     "crates/codux-memory",
     "crates/codux-protocol",

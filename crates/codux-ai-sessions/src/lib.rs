@@ -1,7 +1,11 @@
-//! The AI-session history layer (project/global summaries, session detail, fork,
+//! The AI-session history layer (project/global summaries, session detail,
 //! rename, remove), extracted from the desktop runtime so the headless host can
 //! serve a remote-hosted project's sessions. Operates on the shared
 //! `ai-usage.sqlite3` the indexer populates.
+//!
+//! Session handover lives in `codux-handoff`. This crate no longer builds fork
+//! prompts; the transcript cleaners that used to back them now live in
+//! `codux_handoff::transcript` and are shared from there.
 //!
 //! The desktop keeps its live-stats view (`stats_view`, which merges
 //! `AIRuntimeStateSummary`) on top of this crate; only the DB/session layer moves.
@@ -10,7 +14,6 @@ mod dispatch;
 mod helpers;
 mod queries;
 mod restore;
-mod session_fork;
 mod sessions;
 mod summary;
 #[cfg(test)]

@@ -5,7 +5,7 @@ use crate::{
 };
 use anyhow::Result;
 use codux_runtime::{
-    ai_history::{AIHistorySummary, AISessionForkRequest, AISessionForkTarget, AISessionSummary},
+    ai_history::{AIHistorySummary, AISessionSummary},
     ai_history_indexer::AIHistoryEvent,
     db::{DBConnectionProfile, DBProfileSummary, DBProfileUpsertRequest, DBSummary},
     desktop_pet::{
@@ -113,6 +113,8 @@ mod file_actions;
 mod file_editor;
 mod formatting;
 mod git_actions;
+mod handoff_actions;
+mod handoff_column;
 pub(crate) mod macos_window;
 pub(crate) mod native_menu;
 mod pet;
@@ -173,10 +175,9 @@ pub(crate) const ASSISTANT_PANEL_WIDTH: f32 = 320.0;
 
 use self::{
     ai_history_mapping::{
-        AI_SESSION_FORK_TARGETS, ai_history_should_replace, ai_history_summary_from_project_state,
+        ai_history_should_replace, ai_history_summary_from_project_state,
         ai_history_summary_from_state_or_status, ai_history_worktree_request,
-        ai_session_fork_command, ai_session_restore_command,
-        normalized_ai_history_snapshot_to_summary,
+        ai_session_restore_command, normalized_ai_history_snapshot_to_summary,
         normalized_global_ai_history_snapshot_to_summary,
     },
     app_events::{
@@ -208,6 +209,7 @@ use self::{
     db_profile_editor::db_profile_editor_workspace,
     desktop_pet::*,
     formatting::compact_number,
+    handoff_column::{TaskHandoffListView, TaskHandoffListSnapshot, TaskHandoffRow, handoff_labels},
     project_column::{ProjectColumnView, ProjectListState},
     scroll_compat::{ScrollableElement, codux_uniform_list},
     settings::SettingsPane,
@@ -223,8 +225,7 @@ use self::{
     ssh_profile_editor::ssh_profile_editor_workspace,
     status_bar::StatusBarView,
     task_column::{
-        TaskColumnHeaderView, TaskColumnView, TaskSessionDrag, TaskSessionListView,
-        TaskTerminalListView, TaskWorktreeListView,
+        TaskColumnHeaderView, TaskColumnView, TaskTerminalListView, TaskWorktreeListView,
     },
     terminal_float::{TerminalFloatRequest, terminal_float_window},
     terminal_state::{

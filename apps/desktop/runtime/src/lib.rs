@@ -34,6 +34,7 @@ pub mod host_browser;
 // `wire` dispatch) lives in the AppKit-free `codux-git` crate so the headless
 // agent runs the exact same git logic. Re-exported as `crate::git`.
 pub use codux_git as git;
+pub mod handoff;
 pub mod i18n;
 pub mod llm;
 pub mod memory;

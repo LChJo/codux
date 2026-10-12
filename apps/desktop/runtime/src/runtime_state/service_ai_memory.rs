@@ -40,26 +40,6 @@ impl RuntimeService {
             })
     }
 
-    pub fn fork_ai_session(
-        &self,
-        request: AISessionForkRequest,
-    ) -> Result<AISessionForkResult, String> {
-        let mut args = serde_json::Map::new();
-        args.insert("projectId".to_string(), request.project_id.clone().into());
-        args.insert("projectName".to_string(), request.project_name.clone().into());
-        args.insert("sessionId".to_string(), request.session_id.clone().into());
-        args.insert(
-            "targetTool".to_string(),
-            serde_json::to_value(request.target_tool).map_err(|error| error.to_string())?,
-        );
-        if let Some(result) = self.hosted_ai_session(&request.project_path, "fork", args) {
-            return result.and_then(|value| {
-                serde_json::from_value(value).map_err(|error| error.to_string())
-            });
-        }
-        AIHistoryService::new(self.support_dir.clone()).fork_project_session(request)
-    }
-
     pub fn rename_ai_session(
         &self,
         project_path: &str,

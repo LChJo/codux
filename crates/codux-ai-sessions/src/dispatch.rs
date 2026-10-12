@@ -1,13 +1,17 @@
 //! Shared `ai.session` op dispatch. Both the desktop and headless remote hosts
-//! route the wire op (`list` / `detail` / `rename` / `remove` / `restore` /
-//! `fork`) through this single table so neither host serves a partial set or
-//! drifts on shape.
+//! route the wire op (`list` / `detail` / `rename` / `remove` / `restore`)
+//! through this single table so neither host serves a partial set or drifts on
+//! shape.
+//!
+//! `fork` was removed with the session-record refactor: handing work to another
+//! session now goes through `codux-handoff`, which delivers a persisted,
+//! individually addressable artifact instead of a throwaway prompt file.
 //! The host resolves `project_path` (its own projectId fallback) and supplies
 //! the service; this returns the inner `result` value for `{op, result}`.
 
 use serde_json::{Value, json};
 
-use crate::{AIHistoryService, AISessionForkRequest, AISessionForkTarget};
+use crate::AIHistoryService;
 use codux_ai_history::{indexer::AIHistoryIndexer, normalized::AIHistoryProjectRequest};
 
 pub fn session_op_result_with_indexer(
@@ -80,23 +84,6 @@ pub fn session_op_result(
                 })
             })
             .ok_or_else(|| "Session not found.".to_string()),
-        "fork" => {
-            let target_tool = match payload.get("targetTool").cloned() {
-                Some(value) => serde_json::from_value::<AISessionForkTarget>(value)
-                    .map_err(|error| error.to_string())?,
-                None => AISessionForkTarget::Codex,
-            };
-            let request = AISessionForkRequest {
-                project_id: string_field(payload, "projectId"),
-                project_name: string_field(payload, "projectName"),
-                project_path: project_path.to_string(),
-                session_id: session_id.to_string(),
-                target_tool,
-            };
-            service
-                .fork_project_session(request)
-                .and_then(|result| serde_json::to_value(result).map_err(|error| error.to_string()))
-        }
         _ => Err(format!("Unsupported AI session operation: {op}")),
     }
 }

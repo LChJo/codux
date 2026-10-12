@@ -1,37 +1,14 @@
 use codux_runtime::{
-    ai_history::{AIGlobalHistorySummary, AIHistorySummary, AISessionForkTarget, AISessionSummary},
+    ai_history::{AIGlobalHistorySummary, AIHistorySummary, AISessionSummary},
     ai_history_indexer::AIHistoryProjectState,
     ai_history_normalized::{AIGlobalHistorySnapshot, AIHistoryProjectRequest, AIHistorySnapshot},
     runtime_state::ProjectInfo,
 };
 
-use super::shell_utils::shell_read_file_arg;
-
 pub(in crate::app) fn ai_session_restore_command(session: &AISessionSummary) -> String {
     // Single source of truth lives in the shared sessions crate so the desktop
     // "open" action and the remote `ai.session` `restore` op never drift.
     codux_runtime::ai_history::session_restore_command(session)
-}
-
-pub(in crate::app) const AI_SESSION_FORK_TARGETS: [AISessionForkTarget; 9] = [
-    AISessionForkTarget::Codex,
-    AISessionForkTarget::Claude,
-    AISessionForkTarget::Agy,
-    AISessionForkTarget::Omp,
-    AISessionForkTarget::OpenCode,
-    AISessionForkTarget::Kiro,
-    AISessionForkTarget::CodeWhale,
-    AISessionForkTarget::Kimi,
-    AISessionForkTarget::MiMo,
-];
-
-pub(in crate::app) fn ai_session_fork_command(
-    target: AISessionForkTarget,
-    prompt_path: &str,
-) -> String {
-    let prompt = shell_read_file_arg(prompt_path);
-    codux_runtime::ai_runtime::tool_driver::initial_prompt_command(target.tool_id(), &prompt)
-        .expect("fork target must have a runtime tool driver")
 }
 
 pub(in crate::app) fn normalized_ai_history_snapshot_to_summary(

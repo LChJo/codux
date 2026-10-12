@@ -238,68 +238,6 @@ pub struct AISessionDetail {
     pub error: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum AISessionForkTarget {
-    Codex,
-    Claude,
-    Agy,
-    Omp,
-    OpenCode,
-    Kiro,
-    CodeWhale,
-    Kimi,
-    MiMo,
-}
-
-impl AISessionForkTarget {
-    pub fn display_name(self) -> &'static str {
-        match self {
-            Self::Codex => "Codex",
-            Self::Claude => "Claude",
-            Self::Agy => "Agy",
-            Self::Omp => "Oh My Pi",
-            Self::OpenCode => "OpenCode",
-            Self::Kiro => "Kiro",
-            Self::CodeWhale => "CodeWhale",
-            Self::Kimi => "Kimi Code",
-            Self::MiMo => "MiMo-Code",
-        }
-    }
-
-    pub fn tool_id(self) -> &'static str {
-        match self {
-            Self::Codex => "codex",
-            Self::Claude => "claude",
-            Self::Agy => "agy",
-            Self::Omp => "omp",
-            Self::OpenCode => "opencode",
-            Self::Kiro => "kiro",
-            Self::CodeWhale => "codewhale",
-            Self::Kimi => "kimi",
-            Self::MiMo => "mimo",
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct AISessionForkRequest {
-    pub project_id: String,
-    pub project_name: String,
-    pub project_path: String,
-    pub session_id: String,
-    pub target_tool: AISessionForkTarget,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AISessionForkResult {
-    pub title: String,
-    pub prompt_path: String,
-    pub prompt_chars: usize,
-    pub omitted_items: usize,
-}
-
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AISessionFileSummary {
