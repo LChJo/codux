@@ -260,7 +260,6 @@ pub struct CoduxApp {
     pub(in crate::app) pet_sprite_paths: HashMap<String, ImageSource>,
     pub(in crate::app) project_scroll_handle: UniformListScrollHandle,
     pub(in crate::app) task_scroll_handle: UniformListScrollHandle,
-    pub(in crate::app) session_scroll_handle: UniformListScrollHandle,
     pub(in crate::app) ssh_scroll_handle: UniformListScrollHandle,
     pub(in crate::app) git_history_scroll_handle: VirtualListScrollHandle,
     pub(in crate::app) pet_dex_scroll_handle: VirtualListScrollHandle,
@@ -387,7 +386,6 @@ pub struct CoduxApp {
     pub(in crate::app) project_column_collapsed: bool,
     pub(in crate::app) task_column_collapsed: bool,
     pub(in crate::app) task_section_terminals_collapsed: bool,
-    pub(in crate::app) task_section_sessions_collapsed: bool,
     pub(in crate::app) task_section_handoffs_collapsed: bool,
     pub(in crate::app) project_list_state: Option<gpui::Entity<ProjectListState>>,
     /// Last polled client→host link state per host device id. Drives the project

@@ -489,25 +489,12 @@ impl CoduxApp {
         };
 
         let command = super::ai_history_mapping::ai_session_restore_command(&session);
-        let terminal_id = self.active_terminal_runtime_id();
-        let Some(target_terminal_id) = non_empty(Some(terminal_id.as_str())) else {
-            self.status_message =
-                self.text("terminal.split.not_found", "Terminal split not found.");
-            self.invalidate_terminal_workspace(cx);
-            return;
-        };
-        // Paste without a newline so the user reviews the resume command first.
-        let success = self
-            .text("terminal.ai_restore.pasted", "AI session restore command pasted.")
-            .to_string();
-        self.paste_into_terminal(
-            target_terminal_id,
-            &command,
-            &row.title,
-            &success,
-            window,
-            cx,
-        );
+        // Open in a fresh main-split pane, matching what the Session History
+        // list's "Open" did. Pasting into whichever terminal happens to be active
+        // would drop a resume command into a pane the user may be working in.
+        // This path also prepares the memory launch artifacts the resumed session
+        // expects, which a bare paste does not.
+        self.restore_ai_session_in_main_split(session.title.clone(), command, window, cx);
     }
 }
 
@@ -517,28 +504,18 @@ fn non_empty(value: Option<&str>) -> Option<&str> {
 
 /// Shell-quote paths for pasting into a terminal input line.
 ///
-/// Must stay in step with `crate::terminal::keys::terminal_paths_input`, which is
-/// private to the terminal module; `app::tests` pins the two against each other.
+/// Quoting comes from `shell_utils::shell_quote` — the same helper the file-tree
+/// "send to terminal" path uses — so an artifact dragged from the handoff list and
+/// a file dragged from the sidebar land in the input line identically. The
+/// trailing separator keeps the path from gluing onto whatever is typed next.
 fn terminal_paths_input(paths: &[std::path::PathBuf]) -> String {
     let mut values = paths
         .iter()
-        .map(|path| shell_quote_path(&path.to_string_lossy()))
+        .map(|path| super::shell_quote(&path.to_string_lossy()))
         .filter(|path| !path.trim().is_empty())
         .collect::<Vec<_>>();
-    // Trailing space so the path does not glue onto whatever is typed next.
     values.push(String::new());
     values.join(" ")
-}
-
-fn shell_quote_path(value: &str) -> String {
-    if value
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '/' | ':' | '='))
-    {
-        value.to_string()
-    } else {
-        format!("'{}'", value.replace('\'', "'\\''"))
-    }
 }
 
 #[cfg(test)]

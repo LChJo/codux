@@ -935,67 +935,6 @@ impl CoduxApp {
         self.invalidate_terminal_workspace(cx);
     }
 
-    pub(in crate::app) fn paste_ai_session_restore_to_main_pane(
-        &mut self,
-        terminal_id: Option<&str>,
-        session_id: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(session) = self
-            .state
-            .ai_history
-            .sessions
-            .iter()
-            .find(|session| session.id == session_id)
-            .cloned()
-        else {
-            self.status_message = self.text(
-                "terminal.ai_restore.no_session",
-                "No AI session to restore.",
-            );
-            self.invalidate_terminal_workspace(cx);
-            return;
-        };
-        let Some(target_terminal_id) = terminal_id
-            .map(str::trim)
-            .filter(|terminal_id| !terminal_id.is_empty())
-        else {
-            self.status_message =
-                self.text("terminal.split.not_found", "Terminal split not found.");
-            self.invalidate_terminal_workspace(cx);
-            return;
-        };
-        prepare_memory_launch_artifacts(&self.runtime_service, &self.state);
-        self.state.tool_permissions = self.runtime_service.sync_tool_permissions();
-        // Paste without enter so the user can review the command before running it.
-        let command = ai_session_restore_command(&session);
-        let target = self.terminal_pane_registry.get(target_terminal_id);
-        match target.map(|pane| pane.send_text(&command)) {
-            Some(Ok(())) => {
-                self.select_active_terminal_runtime_id(Some(target_terminal_id));
-                self.focus_active_terminal(window, cx);
-                self.status_message = self.text(
-                    "terminal.ai_restore.pasted",
-                    "AI session restore command pasted.",
-                );
-            }
-            Some(Err(error)) => {
-                self.status_message = self
-                    .text(
-                        "terminal.ai_restore.paste_failed_format",
-                        "Failed to paste restore command: %@",
-                    )
-                    .replace("%@", &error.to_string());
-            }
-            None => {
-                self.status_message =
-                    self.text("terminal.split.not_found", "Terminal split not found.");
-            }
-        }
-        self.invalidate_terminal_workspace(cx);
-    }
-
     pub(in crate::app) fn restore_ai_session_in_main_split(
         &mut self,
         title: String,
@@ -1004,15 +943,6 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) {
         self.restore_ai_session_in_main_split_internal(title, command, Some(window), cx);
-    }
-
-    pub(in crate::app) fn restore_ai_session_in_main_split_without_focus(
-        &mut self,
-        title: String,
-        command: String,
-        cx: &mut Context<Self>,
-    ) {
-        self.restore_ai_session_in_main_split_internal(title, command, None, cx);
     }
 
     fn restore_ai_session_in_main_split_internal(

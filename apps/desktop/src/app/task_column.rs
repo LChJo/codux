@@ -9,7 +9,6 @@ use super::*;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::app) enum TaskSectionKind {
     Terminals,
-    Sessions,
     Handoffs,
 }
 
@@ -991,9 +990,6 @@ pub(in crate::app) fn task_section_heading(
                     TaskSectionKind::Terminals => {
                         app.task_section_terminals_collapsed =
                             !app.task_section_terminals_collapsed;
-                    }
-                    TaskSectionKind::Sessions => {
-                        app.task_section_sessions_collapsed = !app.task_section_sessions_collapsed;
                     }
                     TaskSectionKind::Handoffs => {
                         app.task_section_handoffs_collapsed =

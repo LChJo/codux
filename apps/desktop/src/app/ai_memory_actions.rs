@@ -252,16 +252,6 @@ impl CoduxApp {
             .max(1.0)
     }
 
-    pub(super) fn selected_ai_session(&self) -> Option<&AISessionSummary> {
-        self.selected_ai_session_id.as_deref().and_then(|id| {
-            self.state
-                .ai_history
-                .sessions
-                .iter()
-                .find(|session| session.id == id)
-        })
-    }
-
     pub(super) fn normalize_selected_ai_session(&mut self) {
         let selected_still_exists = self
             .selected_ai_session_id
@@ -293,137 +283,6 @@ impl CoduxApp {
         {
             self.ai_session_delete_confirm_id = None;
         }
-    }
-
-    pub(super) fn reload_selected_ai_session_detail(&mut self) {
-        if self.state.selected_project.is_none() {
-            self.state.ai_session_detail = None;
-            return;
-        }
-        let Some(session_id) = self.selected_ai_session_id.as_deref() else {
-            self.state.ai_session_detail = None;
-            return;
-        };
-        let Some(project_path) = self.selected_worktree_path() else {
-            self.state.ai_session_detail = None;
-            return;
-        };
-        self.state.ai_session_detail = Some(
-            self.runtime_service
-                .reload_project_ai_session_detail(&project_path, session_id),
-        );
-    }
-
-    fn remove_ai_session_confirmed(&mut self, session_id: String, cx: &mut Context<Self>) {
-        let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project for AI session removal".to_string();
-            self.invalidate_memory_panel(cx);
-            return;
-        };
-        let worktree = super::ai_runtime_status::selected_worktree_info(&self.state);
-        let project_request = ai_history_worktree_request(project, worktree.as_ref());
-        if !self
-            .state
-            .ai_history
-            .sessions
-            .iter()
-            .any(|session| session.id == session_id)
-        {
-            self.status_message = "no AI session to remove".to_string();
-            self.invalidate_memory_panel(cx);
-            return;
-        }
-        match self
-            .runtime_service
-            .remove_indexed_ai_session(project_request, session_id.clone())
-        {
-            Ok(state) => {
-                if let Some(summary) = ai_history_summary_from_project_state(&state) {
-                    self.state.ai_history = summary;
-                    self.state.refresh_ai_history_stats();
-                }
-                self.refresh_ai_global_history_summary(cx);
-                self.selected_ai_session_id = None;
-                self.ai_session_delete_confirm_id = None;
-                self.normalize_selected_ai_session();
-                self.reload_selected_ai_session_detail();
-                self.status_message = "selected AI session removed from index".to_string();
-                // Tell connected controllers (pad/phone) to refresh their own AI
-                // session list so the deleted row disappears live instead of
-                // lingering until reconnect or pull-to-refresh.
-                self.runtime_service.broadcast_remote_ai_session_changed();
-            }
-            Err(error) => {
-                self.ai_session_delete_confirm_id = None;
-                self.status_message = format!("failed to remove AI session: {error}");
-            }
-        }
-        self.invalidate_memory_panel(cx);
-    }
-
-    pub(super) fn request_remove_ai_session(
-        &mut self,
-        session_id: String,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some((session_id, session_title)) = self
-            .state
-            .ai_history
-            .sessions
-            .iter()
-            .find(|session| session.id == session_id)
-            .map(|session| (session.id.clone(), session.title.clone()))
-        else {
-            self.status_message = "AI session is no longer available".to_string();
-            self.normalize_selected_ai_session();
-            self.invalidate_memory_panel(cx);
-            return;
-        };
-        self.selected_ai_session_id = Some(session_id.clone());
-        self.ai_session_delete_confirm_id = Some(session_id.clone());
-        self.reload_selected_ai_session_detail();
-        self.status_message = "waiting for AI session removal confirmation".to_string();
-        self.invalidate_memory_panel(cx);
-        let title = self.text("ai.sessions.delete_title", "Delete Session");
-        let message = self
-            .text("ai.sessions.delete_confirm_format", "Delete %@?")
-            .replace("%@", &session_title);
-        let confirm_label = self.text("common.delete", "Delete");
-        let cancel_label = self.text("common.cancel", "Cancel");
-        let service = self.runtime_service.clone();
-        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
-            let remove_session_id = session_id.clone();
-            let result = codux_runtime::async_runtime::spawn_blocking(move || {
-                service.localized_confirm_dialog(LocalizedConfirmDialogRequest {
-                    title,
-                    message,
-                    confirm_label,
-                    cancel_label,
-                })
-            })
-            .await
-            .map_err(|error| error.to_string())
-            .and_then(|result| result);
-
-            let _ = this.update(cx, |app, cx| match result {
-                Ok(true) => app.remove_ai_session_confirmed(remove_session_id, cx),
-                Ok(false) => app.cancel_remove_ai_session(cx),
-                Err(error) => {
-                    app.ai_session_delete_confirm_id = None;
-                    app.status_message =
-                        format!("failed to show AI session removal confirmation: {error}");
-                    app.invalidate_memory_panel(cx);
-                }
-            });
-        })
-        .detach();
-    }
-
-    pub(super) fn cancel_remove_ai_session(&mut self, cx: &mut Context<Self>) {
-        self.ai_session_delete_confirm_id = None;
-        self.status_message = "AI session removal cancelled".to_string();
-        self.invalidate_memory_panel(cx);
     }
 
     pub(super) fn refresh_ai_global_history_summary(&mut self, cx: &mut Context<Self>) {
@@ -460,27 +319,6 @@ impl CoduxApp {
             });
         })
         .detach();
-    }
-
-    pub(super) fn restore_selected_ai_session(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.state.selected_project.is_none() {
-            self.status_message = "no selected project for AI session restore".to_string();
-            self.invalidate_memory_panel(cx);
-            return;
-        }
-        let Some(session) = self.selected_ai_session().cloned() else {
-            self.status_message = "no AI session to restore".to_string();
-            self.invalidate_memory_panel(cx);
-            return;
-        };
-        prepare_memory_launch_artifacts(&self.runtime_service, &self.state);
-        self.state.tool_permissions = self.runtime_service.sync_tool_permissions();
-        let command = ai_session_restore_command(&session);
-        self.restore_ai_session_in_main_split(session.title.clone(), command, window, cx);
     }
 
     pub(super) fn reload_memory(&mut self, _window: &mut Window, cx: &mut Context<Self>) {

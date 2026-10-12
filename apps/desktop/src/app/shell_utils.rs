@@ -9,18 +9,6 @@ pub(in crate::app) fn shell_quote(value: &str) -> String {
     }
 }
 
-pub(in crate::app) fn shell_read_file_arg(path: &str) -> String {
-    if cfg!(windows) {
-        format!("(Get-Content -Raw -LiteralPath {})", powershell_quote(path))
-    } else {
-        format!("\"$(cat {})\"", shell_quote(path))
-    }
-}
-
-fn powershell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
-}
-
 pub(in crate::app) fn terminal_command_text(command: &str) -> String {
     if cfg!(windows) {
         format!("{command}\r")
