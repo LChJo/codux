@@ -56,8 +56,9 @@ pub fn create_worktree(
     Ok(destination)
 }
 
-/// Remove the worktree at `worktree_path`, optionally deleting its branch (only
-/// when that branch differs from the main worktree's checked-out branch).
+/// Remove the worktree at `worktree_path`, optionally deleting its local branch
+/// and matching remote branch (only when it differs from the main worktree's
+/// checked-out branch).
 pub fn remove_worktree(
     repo_path: &str,
     worktree_path: &str,
@@ -69,6 +70,15 @@ pub fn remove_worktree(
     } else {
         None
     };
+    let remote_branch_to_delete = branch_to_delete
+        .as_deref()
+        .and_then(|branch| matching_remote_branch(&root, branch));
+    // Delete the remote first so an authentication/network failure leaves the
+    // local worktree intact and the user can retry the same action safely.
+    if let Some(remote_branch) = remote_branch_to_delete.as_deref() {
+        crate::GitService::delete_remote_branch(&root, remote_branch)
+            .map_err(|error| format!("Failed to delete remote branch {remote_branch}: {error}"))?;
+    }
     remove_worktree_with_git2(&root, worktree_path)?;
     if let Some(branch) = branch_to_delete.as_deref() {
         delete_local_branch(&root, branch)?;
@@ -551,6 +561,35 @@ fn removable_worktree_branch(root_path: &str, worktree_path: &str) -> Option<Str
     Some(branch)
 }
 
+fn matching_remote_branch(root_path: &str, branch: &str) -> Option<String> {
+    let repo = crate::discover_repository(root_path).ok()?;
+    let local = repo.find_branch(branch, git2::BranchType::Local).ok()?;
+    if let Some(upstream) = local
+        .upstream()
+        .ok()
+        .and_then(|upstream| upstream.name().ok().flatten().map(str::to_string))
+        .filter(|name| name.split_once('/').is_some())
+    {
+        return Some(upstream);
+    }
+
+    let mut matches = repo
+        .branches(Some(git2::BranchType::Remote))
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|(remote, _)| remote.name().ok().flatten().map(str::to_string))
+        .filter(|name| {
+            name.split_once('/')
+                .is_some_and(|(_, remote_branch)| remote_branch == branch)
+        })
+        .collect::<Vec<_>>();
+    let origin = format!("origin/{branch}");
+    if matches.iter().any(|name| name == &origin) {
+        return Some(origin);
+    }
+    (matches.len() == 1).then(|| matches.remove(0))
+}
+
 fn delete_local_branch(root_path: &str, branch: &str) -> Result<(), String> {
     let branch = branch.trim();
     if branch.is_empty() {
@@ -695,6 +734,62 @@ mod tests {
         );
 
         fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn removing_worktree_branch_also_deletes_matching_remote_branch() {
+        let root = temp_dir("remove-tracked-remote");
+        let remote = temp_dir("remove-tracked-remote-bare");
+        init_repo(&root);
+        GitRepository::init_bare(&remote).expect("init bare remote");
+        GitRepository::open(&root)
+            .expect("open repository")
+            .remote("origin", remote.to_string_lossy().as_ref())
+            .expect("add origin");
+        let child = create_worktree(root.to_string_lossy().as_ref(), "feature/remote", None)
+            .expect("create feature worktree");
+        fs::write(child.join("feature.txt"), "feature\n").expect("write feature file");
+        commit_all(&child, "feature commit");
+        crate::GitService::push_remote_branch(
+            child.to_string_lossy().as_ref(),
+            "origin/feature/remote",
+            None,
+        )
+        .expect("push feature branch without configuring upstream");
+        let child_repo = GitRepository::open(&child).expect("open child worktree");
+        assert!(
+            child_repo
+                .find_branch("feature/remote", git2::BranchType::Local)
+                .expect("find feature branch")
+                .upstream()
+                .is_err(),
+            "test setup should not configure an upstream"
+        );
+
+        remove_worktree(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            true,
+        )
+        .expect("remove worktree and tracked branch");
+
+        let root_repo = GitRepository::open(&root).expect("reopen repository");
+        assert!(
+            root_repo
+                .find_branch("feature/remote", git2::BranchType::Local)
+                .is_err(),
+            "local branch should be deleted"
+        );
+        let remote_repo = GitRepository::open_bare(&remote).expect("open bare remote");
+        assert!(
+            remote_repo
+                .find_branch("feature/remote", git2::BranchType::Local)
+                .is_err(),
+            "matching remote branch should be deleted"
+        );
+
+        fs::remove_dir_all(root).ok();
+        fs::remove_dir_all(remote).ok();
     }
 
     #[test]

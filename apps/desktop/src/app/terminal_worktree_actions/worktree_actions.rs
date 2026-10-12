@@ -629,12 +629,23 @@ impl CoduxApp {
             return;
         }
 
-        let title = self.text("worktree.remove.title", "Remove Worktree");
+        let title = if remove_branch {
+            self.text("worktree.menu.delete_branch", "Delete Branch")
+        } else {
+            self.text("worktree.remove.title", "Remove Worktree")
+        };
+        let message_key = if remove_branch {
+            "worktree.remove_with_branch.message_format"
+        } else {
+            "worktree.remove.message_format"
+        };
+        let message_fallback = if remove_branch {
+            "Remove %@ and delete its local and matching remote branches? This cannot be undone."
+        } else {
+            "Remove %@ from Codux and the Git worktree list? The branch will not be deleted."
+        };
         let message = self
-            .text(
-                "worktree.remove.message_format",
-                "Remove %@ from Codux and the Git worktree list? The branch will not be deleted.",
-            )
+            .text(message_key, message_fallback)
             .replace("%@", &worktree_confirm_display_name(&worktree));
         let confirm_label = if remove_branch {
             self.text(

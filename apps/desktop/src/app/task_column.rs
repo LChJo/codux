@@ -139,6 +139,7 @@ struct TaskColumnLabels {
     new_session: String,
     open_folder: String,
     merge: String,
+    delete_branch: String,
     delete: String,
 }
 
@@ -160,6 +161,7 @@ fn task_column_labels(language: &str) -> TaskColumnLabels {
         new_session: tr("ai.sessions.new_session", "New Session"),
         open_folder: tr("worktree.menu.open_folder", "Open Folder"),
         merge: tr("worktree.menu.merge", "Merge to Mainline"),
+        delete_branch: tr("worktree.menu.delete_branch", "Delete Branch"),
         delete: tr("common.delete", "Delete"),
     }
 }
@@ -1265,6 +1267,8 @@ fn worktree_compact_row(
             let open_path = menu_worktree_path.clone();
             let merge_entity = app_entity.clone();
             let merge_worktree_id = menu_worktree_id.clone();
+            let delete_branch_entity = app_entity.clone();
+            let delete_branch_worktree_id = menu_worktree_id.clone();
             let remove_entity = app_entity.clone();
             let remove_worktree_id = menu_worktree_id.clone();
 
@@ -1293,6 +1297,19 @@ fn worktree_compact_row(
                         }),
                 )
                 .separator()
+                .item(
+                    PopupMenuItem::new(labels.delete_branch.clone())
+                        .icon(HeroIconName::Trash)
+                        .on_click(move |_, _window, cx| {
+                            cx.update_entity(&delete_branch_entity, |app, cx| {
+                                app.request_remove_worktree_by_id(
+                                    delete_branch_worktree_id.clone(),
+                                    true,
+                                    cx,
+                                );
+                            });
+                        }),
+                )
                 .item(
                     PopupMenuItem::new(labels.delete.clone())
                         .icon(HeroIconName::Trash)
@@ -1536,5 +1553,10 @@ mod tests {
         let body = task_column_surface(color(theme::BG_COLUMN));
 
         assert_eq!(header.a, body.a);
+    }
+
+    #[test]
+    fn task_column_has_localized_delete_branch_action() {
+        assert_eq!(task_column_labels("zh-Hans").delete_branch, "删除分支");
     }
 }
