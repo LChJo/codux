@@ -4,7 +4,7 @@ use crate::terminal::TerminalPane;
 use codux_runtime::ai_runtime::{
     AIRuntimeStateSnapshot, TerminalStatusEvent, TerminalStatusState, canonical_tool_name,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub(in crate::app) struct PaneAgentLifecycle {
     pub state: AgentLifecycleState,
@@ -13,6 +13,7 @@ pub(in crate::app) struct PaneAgentLifecycle {
     terminal_instance_id: Option<String>,
     updated_at: f64,
     remote_device_id: Option<String>,
+    claude_runtime_managed: bool,
 }
 
 impl PaneAgentLifecycle {
@@ -24,6 +25,7 @@ impl PaneAgentLifecycle {
             terminal_instance_id: None,
             updated_at: 0.0,
             remote_device_id: None,
+            claude_runtime_managed: false,
         }
     }
 
@@ -98,10 +100,10 @@ pub(in crate::app) fn aggregate_agent_lifecycle(
     }
     if has_error {
         Some(AgentLifecycleState::Error)
-    } else if has_working {
-        Some(AgentLifecycleState::Working)
     } else if has_waiting {
         Some(AgentLifecycleState::Waiting)
+    } else if has_working {
+        Some(AgentLifecycleState::Working)
     } else if has_completed {
         Some(AgentLifecycleState::Completed)
     } else {
@@ -114,8 +116,15 @@ fn reconcile_runtime_agent_lifecycle_entries<'a>(
     sessions: impl Iterator<Item = (&'a str, Option<&'a str>, &'a str, &'a str, &'a str, f64)>,
 ) -> bool {
     let mut changed = false;
+    let mut observed_claude_terminals = HashSet::new();
     for (terminal_id, terminal_instance_id, project_id, tool, state, updated_at) in sessions {
         if canonical_tool_name(tool).as_deref() != Some("claude") {
+            continue;
+        }
+        observed_claude_terminals.insert(terminal_id.to_string());
+        if entries.get(terminal_id).is_some_and(|existing| {
+            !existing.accepts_status_event(terminal_instance_id, updated_at)
+        }) {
             continue;
         }
         let next = match state {
@@ -152,7 +161,20 @@ fn reconcile_runtime_agent_lifecycle_entries<'a>(
             updated_at,
             remote_device_id,
         );
+        entry.claude_runtime_managed = true;
         changed |= pane_lifecycle_entry_changed(existed_before, previous, entry.state);
+    }
+    let orphaned_terminal_ids = entries
+        .iter()
+        .filter(|(terminal_id, entry)| {
+            entry.claude_runtime_managed && !observed_claude_terminals.contains(*terminal_id)
+        })
+        .map(|(terminal_id, _entry)| terminal_id.clone())
+        .collect::<Vec<_>>();
+    for terminal_id in orphaned_terminal_ids {
+        if let Some(entry) = entries.remove(&terminal_id) {
+            changed |= pane_lifecycle_removal_changed(entry.state);
+        }
     }
     changed
 }
@@ -238,9 +260,20 @@ impl CoduxApp {
         &mut self,
         snapshot: &AIRuntimeStateSnapshot,
     ) -> bool {
-        reconcile_runtime_agent_lifecycle_entries(
-            &mut self.pane_agent_lifecycle,
-            snapshot.sessions.iter().map(|session| {
+        let sessions = snapshot
+            .sessions
+            .iter()
+            .filter(|session| {
+                let current_instance_id = self
+                    .terminal_pane_registry
+                    .get(&session.terminal_id)
+                    .and_then(TerminalPane::terminal_instance_id);
+                status_matches_terminal_instance(
+                    session.terminal_instance_id.as_deref(),
+                    current_instance_id.as_deref(),
+                )
+            })
+            .map(|session| {
                 (
                     session.terminal_id.as_str(),
                     session.terminal_instance_id.as_deref(),
@@ -249,7 +282,11 @@ impl CoduxApp {
                     session.state.as_str(),
                     session.updated_at,
                 )
-            }),
+            })
+            .collect::<Vec<_>>();
+        reconcile_runtime_agent_lifecycle_entries(
+            &mut self.pane_agent_lifecycle,
+            sessions.into_iter(),
         )
     }
 
@@ -313,6 +350,7 @@ impl CoduxApp {
             status.updated_at,
             remote_device_id.map(str::to_string),
         );
+        entry.claude_runtime_managed = false;
         let changed = pane_lifecycle_entry_changed(existed_before, previous, entry.state);
         if changed {
             codux_runtime::runtime_trace::runtime_trace(
@@ -608,6 +646,68 @@ mod tests {
     }
 
     #[test]
+    fn missing_claude_runtime_session_clears_managed_lifecycle() {
+        let terminal_id = "terminal-claude".to_string();
+        let mut entries = HashMap::new();
+
+        assert!(reconcile_runtime_agent_lifecycle_entries(
+            &mut entries,
+            [(
+                terminal_id.as_str(),
+                Some("instance-a"),
+                "project-a",
+                "claude",
+                "responding",
+                21.0,
+            )]
+            .into_iter(),
+        ));
+        assert!(entries.contains_key(&terminal_id));
+
+        let changed = reconcile_runtime_agent_lifecycle_entries(
+            &mut entries,
+            std::iter::empty::<(&str, Option<&str>, &str, &str, &str, f64)>(),
+        );
+
+        assert!(changed);
+        assert!(!entries.contains_key(&terminal_id));
+    }
+
+    #[test]
+    fn stale_claude_runtime_snapshot_cannot_replace_newer_terminal_instance() {
+        let terminal_id = "terminal-claude".to_string();
+        let mut lifecycle = lifecycle(
+            AgentLifecycleState::Completed,
+            Some("project-a"),
+            Some("worktree-a"),
+        );
+        lifecycle.terminal_instance_id = Some("instance-new".to_string());
+        lifecycle.updated_at = 30.0;
+        let mut entries = HashMap::from([(terminal_id.clone(), lifecycle)]);
+
+        let changed = reconcile_runtime_agent_lifecycle_entries(
+            &mut entries,
+            [(
+                terminal_id.as_str(),
+                Some("instance-old"),
+                "project-a",
+                "claude",
+                "responding",
+                20.0,
+            )]
+            .into_iter(),
+        );
+
+        assert!(!changed);
+        let lifecycle = entries.get(&terminal_id).expect("lifecycle");
+        assert_eq!(lifecycle.state, AgentLifecycleState::Completed);
+        assert_eq!(
+            lifecycle.terminal_instance_id.as_deref(),
+            Some("instance-new")
+        );
+    }
+
+    #[test]
     fn idle_non_claude_runtime_keeps_title_lifecycle() {
         let terminal_id = "terminal-codex".to_string();
         let mut entries = std::collections::HashMap::from([(
@@ -703,7 +803,7 @@ mod tests {
     }
 
     #[test]
-    fn aggregate_agent_lifecycle_prefers_working() {
+    fn aggregate_agent_lifecycle_prefers_waiting_over_working() {
         let states = [
             AgentLifecycleState::Completed,
             AgentLifecycleState::Waiting,
@@ -711,7 +811,7 @@ mod tests {
         ];
         assert_eq!(
             aggregate_agent_lifecycle(states.into_iter()),
-            Some(AgentLifecycleState::Working)
+            Some(AgentLifecycleState::Waiting)
         );
     }
 

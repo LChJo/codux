@@ -469,9 +469,7 @@ impl ClaudeAggregate {
     /// The session is mid-turn with a tool call that has been written but left
     /// unanswered past the idle gap, in a mode that can still prompt -- i.e. the
     /// CLI is blocked waiting on the user. Idle is measured from the tool-use
-    /// row's own timestamp, not `updated_at`, because timestamp-less metadata
-    /// rows (permission-mode/mode/ai-title) pin `updated_at` to `now` on every
-    /// read.
+    /// row's own timestamp so metadata changes cannot affect the wait window.
     fn needs_user_input(&self, now: f64) -> bool {
         is_awaiting_user_decision(
             self.response_state().as_deref() == Some("responding"),
@@ -689,24 +687,23 @@ fn parse_claude_log_line(
     if is_claude_control_command_row(&row) {
         return Some(true);
     }
-    let timestamp = row
+    let event_timestamp = row
         .get("timestamp")
         .and_then(|value| value.as_str())
-        .and_then(parse_iso8601_seconds)
-        .unwrap_or_else(now_seconds);
-    if let Some(event_timestamp) = row
-        .get("timestamp")
-        .and_then(|value| value.as_str())
-        .and_then(parse_iso8601_seconds)
-    {
+        .and_then(parse_iso8601_seconds);
+    if let Some(event_timestamp) = event_timestamp {
         aggregate.last_event_at = Some(
             aggregate
                 .last_event_at
                 .unwrap_or(event_timestamp)
                 .max(event_timestamp),
         );
+        aggregate.updated_at = aggregate.updated_at.max(event_timestamp);
     }
-    aggregate.updated_at = aggregate.updated_at.max(timestamp);
+    // Metadata rows such as permission-mode do not carry an event timestamp.
+    // Reuse the latest real event time for derived fields instead of treating
+    // every transcript read as fresh runtime activity.
+    let timestamp = event_timestamp.unwrap_or(aggregate.updated_at);
     // The current permission mode rides its own row (no message/role, and --
     // unlike message rows -- no timestamp). Capture it for the prompt-wait
     // gate; last one in file order wins.
@@ -1507,6 +1504,27 @@ mod tests {
             aggregate.needs_user_input(aggregate.last_tool_use_at + NEEDS_INPUT_IDLE_SECONDS + 1.0)
         );
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn timestamp_less_claude_metadata_does_not_refresh_runtime_activity() {
+        let mut aggregate = ClaudeAggregate::default();
+        let event = r#"{"sessionId":"s1","cwd":"/tmp/p","timestamp":"2026-01-01T00:00:00Z","type":"user","message":{"role":"user","content":"run"}}"#;
+        let metadata = r#"{"type":"permission-mode","permissionMode":"default","sessionId":"s1"}"#;
+
+        assert_eq!(
+            parse_claude_log_line(event, "/tmp/p", "s1", &mut aggregate),
+            Some(true)
+        );
+        let event_updated_at = aggregate.updated_at;
+        assert!(event_updated_at > 0.0);
+
+        assert_eq!(
+            parse_claude_log_line(metadata, "/tmp/p", "s1", &mut aggregate),
+            Some(true)
+        );
+        assert_eq!(aggregate.permission_mode.as_deref(), Some("default"));
+        assert_eq!(aggregate.updated_at, event_updated_at);
     }
 
     #[test]
