@@ -22,6 +22,7 @@ mod tests {
             .set_str("user.email", "codux@example.test")
             .expect("email");
         config.set_str("user.name", "Codux").expect("name");
+        config.set_str("core.autocrlf", "false").expect("autocrlf");
         fs::write(repo.join("tracked.txt"), "old\n").expect("tracked file");
         GitService::stage_file(repo.to_str().expect("repo"), "tracked.txt").expect("stage file");
         GitService::commit_staged(repo.to_str().expect("repo"), "initial").expect("commit");
@@ -61,6 +62,7 @@ mod tests {
             .set_str("user.email", "codux@example.test")
             .expect("email");
         config.set_str("user.name", "Codux").expect("name");
+        config.set_str("core.autocrlf", "false").expect("autocrlf");
         fs::write(repo.join("tracked.txt"), "first\n").expect("initial file");
         GitService::stage_file(repo.to_str().expect("repo"), "tracked.txt")
             .expect("stage initial file");
@@ -114,6 +116,7 @@ mod tests {
             .set_str("user.email", "codux@example.test")
             .expect("email");
         config.set_str("user.name", "Codux").expect("name");
+        config.set_str("core.autocrlf", "false").expect("autocrlf");
         fs::write(repo.join("tracked.txt"), "base\n").expect("initial file");
         GitService::stage_file(repo.to_str().expect("repo"), "tracked.txt")
             .expect("stage initial file");
@@ -197,6 +200,7 @@ mod tests {
             .set_str("user.email", "codux@example.test")
             .expect("email");
         config.set_str("user.name", "Codux").expect("name");
+        config.set_str("core.autocrlf", "false").expect("autocrlf");
         fs::create_dir_all(repo.join("src/nested")).expect("nested dir");
         fs::write(repo.join("src/nested/lib.rs"), "old\n").expect("tracked file");
         GitService::stage_file(repo.to_str().expect("repo"), "src/nested/lib.rs")
@@ -243,6 +247,7 @@ mod tests {
             .set_str("user.email", "codux@example.test")
             .expect("email");
         config.set_str("user.name", "Codux").expect("name");
+        config.set_str("core.autocrlf", "false").expect("autocrlf");
         fs::create_dir_all(repo.join("src/nested")).expect("nested dir");
         fs::write(repo.join("src/nested/lib.rs"), "old\n").expect("tracked file");
         GitService::stage_file(&p, "src/nested/lib.rs").expect("stage nested");
@@ -296,6 +301,7 @@ mod tests {
             .set_str("user.email", "codux@example.test")
             .expect("email");
         config.set_str("user.name", "Codux").expect("name");
+        config.set_str("core.autocrlf", "false").expect("autocrlf");
         // Need a commit so HEAD exists; the untracked dir is separate from it.
         fs::write(repo.join("seed.txt"), "seed\n").expect("seed");
         GitService::stage_file(&p, "seed.txt").expect("stage seed");
@@ -546,6 +552,7 @@ mod tests {
         let mut config = repository.config().expect("config");
         config.set_str("user.email", "codux@example.test").expect("email");
         config.set_str("user.name", "Codux").expect("name");
+        config.set_str("core.autocrlf", "false").expect("autocrlf");
         fs::write(repo.join("a.txt"), "one\n").expect("file");
         GitService::stage_file(path, "a.txt").expect("stage");
         GitService::commit_staged(path, "initial").expect("commit");
@@ -588,6 +595,7 @@ mod tests {
             .set_str("user.email", "codux@example.test")
             .expect("email");
         config.set_str("user.name", "Codux").expect("name");
+        config.set_str("core.autocrlf", "false").expect("autocrlf");
         fs::write(repo.join("a.txt"), "one\n").expect("file");
         GitService::stage_file(path, "a.txt").expect("stage");
         GitService::commit_staged(path, "initial").expect("commit");
@@ -621,6 +629,7 @@ mod tests {
         let mut config = repository.config().expect("config");
         config.set_str("user.email", "codux@example.test").expect("email");
         config.set_str("user.name", "Codux").expect("name");
+        config.set_str("core.autocrlf", "false").expect("autocrlf");
         fs::write(repo.join("base.txt"), "base\n").expect("file");
         GitService::stage_file(path, "base.txt").expect("stage");
         GitService::commit_staged(path, "base").expect("commit");
@@ -662,6 +671,7 @@ mod tests {
         let mut config = repository.config().expect("config");
         config.set_str("user.email", "codux@example.test").expect("email");
         config.set_str("user.name", "Codux").expect("name");
+        config.set_str("core.autocrlf", "false").expect("autocrlf");
         fs::write(repo.join("a.txt"), "one\n").expect("file");
         GitService::stage_file(path, "a.txt").expect("stage");
         GitService::commit_staged(path, "initial").expect("commit");

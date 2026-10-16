@@ -903,6 +903,9 @@ mod tests {
         assert_eq!(history.total_chars(), 5);
     }
 
+    // Drives the default shell with a POSIX `printf` command line, which only
+    // resolves under the Unix default shell.
+    #[cfg(unix)]
     #[test]
     fn local_driver_captures_command_output() {
         let driver = LocalPtyDriver::new();

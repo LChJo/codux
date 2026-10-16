@@ -279,7 +279,10 @@ fn resolve_existing_paths_for_system_actions_stay_inside_root() {
     let root = temp_dir("files-system-actions");
     fs::create_dir_all(root.join("src")).expect("src dir");
     fs::write(root.join("src").join("note.txt"), "hello\n").expect("note");
-    let canonical = root.canonicalize().expect("canonical root");
+    // Must match the production root canonicalization: `std::fs::canonicalize`
+    // returns `\\?\`-prefixed paths on Windows while `canonical_root` (dunce)
+    // does not, so mixing them made every resolved child look like an escape.
+    let canonical = canonical_root(root.to_str().expect("root")).expect("canonical root");
 
     let resolved = resolve_existing_path(&canonical, "src/note.txt").expect("resolve file");
     assert_eq!(resolved, canonical.join("src").join("note.txt"));

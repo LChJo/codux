@@ -1,3 +1,10 @@
+//! Remote-host tests.
+//!
+//! Tests marked `#[cfg(unix)]` drive a real PTY through the POSIX `sh` shell
+//! (`shell: Some("sh")` plus `printf`/`sleep` command strings). Windows has no
+//! `sh`, so those cases only run on Unix hosts; everything else here is
+//! cross-platform.
+
 use super::*;
 use crate::remote::transport::RemoteTransport;
 use crate::remote::types::RemoteOutgoingEnvelope;

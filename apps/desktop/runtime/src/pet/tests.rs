@@ -496,14 +496,20 @@ fn legacy_project_ids_migrate_to_path_membership_intervals_once() {
         )
         .unwrap();
 
+    // Memberships store the path through the production normalizer, which
+    // canonicalizes against the local filesystem: the POSIX fixture paths below
+    // come back with native separators on Windows, so compare against the
+    // normalized form rather than a hardcoded `/tmp/...` suffix.
+    let active = normalize_workspace_path("/tmp/active");
+    let removed = normalize_workspace_path("/tmp/removed");
     assert!(migrated.pending_project_token_watermarks.is_empty());
     assert!(migrated.memberships.iter().any(|membership| {
-        membership.project_path.ends_with("/tmp/active")
+        membership.project_path.ends_with(&active)
             && membership.included_at == 10
             && membership.excluded_at.is_none()
     }));
     assert!(migrated.memberships.iter().any(|membership| {
-        membership.project_path.ends_with("/tmp/removed")
+        membership.project_path.ends_with(&removed)
             && membership.included_at == 10
             && membership.excluded_at == Some(100)
     }));
@@ -562,11 +568,13 @@ fn intermediate_v11_project_id_memberships_are_rebuilt_from_paths() {
             .iter()
             .all(|membership| !membership.project_path.contains("legacy-project-id"))
     );
+    let active = normalize_workspace_path("/tmp/active");
+    let removed = normalize_workspace_path("/tmp/removed");
     assert!(migrated.memberships.iter().any(|membership| {
-        membership.project_path.ends_with("/tmp/active") && membership.excluded_at.is_none()
+        membership.project_path.ends_with(&active) && membership.excluded_at.is_none()
     }));
     assert!(migrated.memberships.iter().any(|membership| {
-        membership.project_path.ends_with("/tmp/removed") && membership.excluded_at == Some(100)
+        membership.project_path.ends_with(&removed) && membership.excluded_at == Some(100)
     }));
     fs::remove_dir_all(support_dir).unwrap();
 }

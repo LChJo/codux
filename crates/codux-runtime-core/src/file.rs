@@ -180,6 +180,12 @@ pub fn file_read_blob_bytes(path: &str) -> Result<Vec<u8>, String> {
     if path.is_empty() {
         return Err("File path is required.".to_string());
     }
+    // Windows refuses to open a directory at all (access-denied OS error),
+    // while Unix opens it and fails later, so check the kind up front to keep a
+    // single message on every platform.
+    if Path::new(path).is_dir() {
+        return Err("Cannot open a directory as a file.".to_string());
+    }
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let metadata = file.metadata().map_err(|error| error.to_string())?;
     if !metadata.is_file() {

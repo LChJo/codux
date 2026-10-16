@@ -237,6 +237,7 @@ fn remote_worktree_select_is_device_scoped_and_does_not_mutate_desktop_selection
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn remote_worktree_select_replaces_saved_terminal_with_wrong_cwd() {
     let support_dir = temp_support_dir("codux-remote-worktree-wrong-cwd");
@@ -358,6 +359,7 @@ fn project_list_broadcast_preserves_per_device_project_scope() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn terminal_project_subscribe_returns_list_without_buffer_baseline() {
     let support_dir = temp_support_dir("codux-remote-terminal-subscribe-baseline");

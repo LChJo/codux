@@ -306,6 +306,7 @@ fn web_tunnel_requires_paired_device_token() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn viewport_resize_reply_keeps_request_id() {
     let support_dir = temp_support_dir("codux-remote-viewport-request-id");
@@ -393,6 +394,7 @@ fn transport_ping_runtime_fallback_replies_plain_pong() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn viewport_events_do_not_broadcast_terminal_list() {
     let support_dir = temp_support_dir("codux-remote-viewport-no-terminal-list");

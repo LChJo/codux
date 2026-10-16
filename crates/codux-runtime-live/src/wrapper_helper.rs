@@ -1862,6 +1862,8 @@ mod tests {
         );
     }
 
+    // `ssh_control_path` is a no-op stub on Windows (no Unix sockets).
+    #[cfg(not(windows))]
     #[test]
     fn ssh_control_path_is_stable_and_safe() {
         let path = ssh_control_path("profile with spaces").expect("control path");
@@ -1870,6 +1872,7 @@ mod tests {
         assert!(!path.contains("%r"));
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn ssh_control_path_stays_below_macos_socket_limit_for_uuid_profiles() {
         let path = ssh_control_path("123e4567-e89b-12d3-a456-426614174000").expect("control path");

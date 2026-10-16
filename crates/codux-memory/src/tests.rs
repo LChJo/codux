@@ -278,7 +278,7 @@ fn queue_schema_migrates_legacy_entries_before_building_fts() {
         1
     );
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 fn insert_test_memory(
@@ -339,7 +339,7 @@ fn summary_includes_active_and_archived_recent_entries() {
             .any(|entry| entry.id == "other-project")
     );
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -371,7 +371,7 @@ fn archive_and_restore_memory_entry() {
             .any(|entry| entry.id == "project-active" && entry.status == "active")
     );
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -398,7 +398,7 @@ fn prepare_launch_artifacts_writes_memory_context_files() {
     assert_eq!(index, prompt);
     assert!(recent.contains("user active entry"));
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -425,7 +425,7 @@ fn launch_request_respects_cross_project_user_memory_setting() {
     assert!(index.contains("project active entry"));
     assert!(!index.contains("user active entry"));
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -457,7 +457,7 @@ fn launch_request_includes_global_prompt_even_when_memory_injection_is_disabled(
     assert!(!index.contains("project active entry"));
     assert!(!index.contains("user active entry"));
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -502,7 +502,7 @@ fn launch_request_separates_root_memory_scope_from_worktree_artifacts() {
     assert!(second_index.contains("project active entry"));
     assert!(!second_index.contains("other project entry"));
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -529,7 +529,7 @@ fn extraction_prompt_context_respects_cross_project_user_memory_setting() {
             .any(|entry| entry.content == "project active entry")
     );
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -586,7 +586,7 @@ fn fts_recall_finds_old_relevant_memory_outside_legacy_candidate_pool() {
         .unwrap();
     assert!(bumped > 0);
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -622,7 +622,7 @@ fn fts_rrf_uses_bm25_result_order_not_score_magnitude() {
 
     assert_eq!(entries.first().map(|entry| entry.id.as_str()), Some("exact-memory"));
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -667,7 +667,7 @@ fn fts_recall_backfills_with_legacy_entries_when_matches_are_sparse() {
     assert!(entries.iter().any(|entry| entry.id == "popular-a"));
     assert!(entries.iter().any(|entry| entry.id == "popular-b"));
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -695,7 +695,7 @@ fn fts_recall_matches_chinese_memory_with_trigram_tokenizer() {
     .unwrap();
     assert!(entries.iter().any(|entry| entry.id == "chinese-memory"));
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -741,7 +741,7 @@ fn fts_index_tracks_memory_updates_and_deletes() {
     .unwrap();
     assert!(!deleted.iter().any(|entry| entry.id == "mutable-memory"));
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -755,7 +755,7 @@ fn project_scope_prevents_archiving_other_project_entries() {
         .unwrap_err();
 
     assert_eq!(error, "Memory entry not found.");
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -799,7 +799,7 @@ fn manager_snapshot_includes_targets_profile_entries_and_summaries() {
             .any(|summary| summary.id == "summary-a")
     );
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -829,7 +829,7 @@ fn delete_entry_summary_and_project_profile_are_scoped() {
     let summary = service.delete_project_profile("project-a").unwrap();
     assert!(!summary.project_profile_present);
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -866,7 +866,7 @@ fn update_summary_preserves_sources_and_versions_content() {
         .unwrap();
     assert_eq!(version_count, 1);
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -918,7 +918,7 @@ fn migrate_project_memory_requires_overwrite_for_existing_target() {
     assert_eq!(target_entries, 2);
     assert_eq!(target_profiles, 1);
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -990,8 +990,8 @@ fn enqueue_completed_session_creates_pending_memory_task() {
         .unwrap();
     assert!(!duplicate.enqueued);
 
-    fs::remove_dir_all(support_dir).unwrap();
-    fs::remove_dir_all(transcript_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
+    fs::remove_dir_all(transcript_dir).ok();
 }
 
 #[test]
@@ -1058,7 +1058,7 @@ fn enqueue_completed_session_respects_cooldown() {
     assert!(!result.enqueued);
     assert_eq!(result.reason, "cooldown");
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -1120,7 +1120,7 @@ fn enqueue_completed_session_skips_low_signal_but_allows_auto_trigger_marker() {
         .unwrap();
     assert!(result.enqueued);
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -1184,7 +1184,7 @@ fn enqueue_completed_session_skips_insufficient_growth() {
     assert!(!second.enqueued);
     assert_eq!(second.reason, "insufficient-growth");
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -1244,7 +1244,7 @@ fn insufficient_growth_accumulates_until_threshold() {
         .unwrap();
     assert!(enqueued.enqueued);
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -1294,7 +1294,7 @@ fn long_transcript_growth_uses_full_file_line_count_not_tail_window() {
 
     assert!(enqueued.enqueued);
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -1353,7 +1353,7 @@ fn extraction_queue_status_and_task_lifecycle() {
     service.mark_extraction_task_done(&task.id).unwrap();
     assert!(!service.has_pending_extraction_task().unwrap());
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -1409,7 +1409,7 @@ fn manager_snapshot_lists_failed_extractions_and_retry_requeues_task() {
     let failed = service.manager_snapshot(&projects, "project", Some("project-a"), "failed", 50);
     assert!(failed.failed_extractions.is_empty());
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -1461,7 +1461,7 @@ fn manager_snapshot_lists_active_extraction_queue() {
     );
     assert!(queue.failed_extractions.is_empty());
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -1529,7 +1529,7 @@ fn clears_individual_extraction_tasks_by_allowed_status() {
     assert_eq!(running_status, "running");
     assert_eq!(failed_status, "cleared");
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -1571,8 +1571,8 @@ fn resolves_extraction_task_transcript_from_file() {
         .unwrap();
     assert!(text.contains("user asked for runtime migration"));
 
-    fs::remove_dir_all(support_dir).unwrap();
-    fs::remove_dir_all(transcript_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
+    fs::remove_dir_all(transcript_dir).ok();
 }
 
 #[test]
@@ -1631,8 +1631,8 @@ fn resolves_extraction_transcript_for_memory_uses_settings_boundary() {
     assert!(!text.contains("old durable fact should be outside boundary"));
     assert!(text.contains("omitted"));
 
-    fs::remove_dir_all(support_dir).unwrap();
-    fs::remove_dir_all(transcript_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
+    fs::remove_dir_all(transcript_dir).ok();
 }
 
 #[test]
@@ -1708,7 +1708,7 @@ fn apply_extraction_response_writes_memory_and_summary() {
     assert_eq!(decision_count, 1);
     assert_eq!(summary_count, 1);
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -1789,7 +1789,7 @@ fn apply_extraction_response_redacts_secrets_before_storage() {
     assert!(!combined.contains("sk-user-summary-secret"));
     assert!(!combined.contains("OPENSSH PRIVATE KEY"));
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -1855,7 +1855,7 @@ fn privacy_scrub_can_be_disabled() {
         .unwrap();
     assert!(content.contains("ghp_abcdefghijklmnopqrstuvwxyz"));
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -1920,8 +1920,8 @@ fn extraction_response_recommendation_refreshes_project_profile() {
         .unwrap();
     assert!(content.contains("Native/runtime: Rust"));
 
-    fs::remove_dir_all(support_dir).unwrap();
-    fs::remove_dir_all(project_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
+    fs::remove_dir_all(project_dir).ok();
 }
 
 #[test]
@@ -1949,5 +1949,5 @@ fn process_next_memory_extraction_task_returns_idle_without_pending_work() {
         .unwrap();
     assert_eq!(status.status, MemoryExtractionStatus::Idle);
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }

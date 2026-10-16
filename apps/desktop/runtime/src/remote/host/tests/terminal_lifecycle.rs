@@ -483,6 +483,7 @@ fn remote_terminal_close_removes_layout_entry_and_kills_last_terminal() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn remote_terminal_list_excludes_exited_sessions() {
     let support_dir = temp_support_dir("codux-remote-terminal-exited-list");
@@ -528,6 +529,7 @@ fn remote_terminal_list_excludes_exited_sessions() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn device_disconnect_releases_owned_terminal_viewport() {
     let support_dir = temp_support_dir("codux-remote-terminal-viewport-disconnect");
@@ -595,6 +597,7 @@ fn device_disconnect_releases_owned_terminal_viewport() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn device_transport_disconnect_keeps_viewport_until_lease_expires() {
     let support_dir = temp_support_dir("codux-remote-terminal-viewport-transport-disconnect");
@@ -642,6 +645,7 @@ fn device_transport_disconnect_keeps_viewport_until_lease_expires() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn host_transport_disconnect_releases_remote_terminal_viewports() {
     let support_dir = temp_support_dir("codux-remote-terminal-viewport-host-disconnect");

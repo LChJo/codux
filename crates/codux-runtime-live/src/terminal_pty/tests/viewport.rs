@@ -183,6 +183,8 @@ fn remote_visible_viewport_expires_back_to_desktop() {
     fs::remove_dir_all(temp).ok();
 }
 
+// Drives a real PTY through the POSIX `sh` shell.
+#[cfg(unix)]
 #[test]
 fn expired_remote_viewport_hands_off_to_another_active_viewer() {
     let manager = TerminalManager::new();

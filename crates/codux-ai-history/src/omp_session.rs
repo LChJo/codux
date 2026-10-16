@@ -470,12 +470,16 @@ mod tests {
 
     #[test]
     fn config_root_matches_home_relative_omp_semantics() {
-        let home = Path::new("/home/tester");
+        // A synthetic POSIX home joins into mixed separators on Windows (the
+        // joined path keeps a `/` root while the joined-in name uses `\`), and
+        // `normalize_path_syntax` then classifies the result by its leading `/`
+        // and leaves the `\..\` un-collapsed. Use a host-shaped home instead.
+        let home = std::env::temp_dir();
 
-        assert_eq!(omp_config_root(home, "/custom/../omp"), home.join("omp"));
+        assert_eq!(omp_config_root(&home, "/custom/../omp"), home.join("omp"));
         assert_eq!(
-            omp_config_root(home, ".config/omp"),
-            home.join(".config/omp")
+            omp_config_root(&home, ".config/omp"),
+            home.join(".config").join("omp")
         );
     }
 

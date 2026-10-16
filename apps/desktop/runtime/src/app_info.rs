@@ -1010,9 +1010,15 @@ mod tests {
 
     #[test]
     fn file_urls_parse_to_local_paths() {
-        let parsed = Url::parse("file:///tmp/codux-log.txt").unwrap();
+        // `Url::to_file_path` rejects a drive-less path on Windows, so the
+        // fixture has to carry a platform-shaped path.
+        #[cfg(unix)]
+        let (url, expected) = ("file:///tmp/codux-log.txt", "/tmp/codux-log.txt");
+        #[cfg(windows)]
+        let (url, expected) = ("file:///C:/tmp/codux-log.txt", r"C:\tmp\codux-log.txt");
+        let parsed = Url::parse(url).unwrap();
         let path = parsed.to_file_path().unwrap();
-        assert_eq!(path, PathBuf::from("/tmp/codux-log.txt"));
+        assert_eq!(path, PathBuf::from(expected));
     }
 
     #[test]

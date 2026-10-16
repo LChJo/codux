@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(unix)]
 #[test]
 fn terminal_baseline_viewport_does_not_steal_from_other_owner() {
     let support_dir = temp_support_dir("codux-remote-terminal-baseline-no-steal");
@@ -75,6 +76,7 @@ fn terminal_baseline_viewport_does_not_steal_from_other_owner() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn session_terminal_baseline_auto_claims_and_targets_only_subscribed_split() {
     let support_dir = temp_support_dir("codux-remote-project-baseline-active-viewport");
@@ -210,6 +212,7 @@ fn session_terminal_baseline_auto_claims_and_targets_only_subscribed_split() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn viewport_state_marks_stale_output_per_viewer() {
     let support_dir = temp_support_dir("codux-remote-viewport-state-per-viewer-stale");
@@ -275,6 +278,7 @@ fn viewport_state_marks_stale_output_per_viewer() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn terminal_viewport_auto_claim_respects_explicit_desktop_owner() {
     let support_dir = temp_support_dir("codux-remote-terminal-viewport-owner");
@@ -399,6 +403,7 @@ fn terminal_viewport_auto_claim_respects_explicit_desktop_owner() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn terminal_viewport_resize_pushes_state_without_screen_keyframe() {
     let support_dir = temp_support_dir("codux-remote-terminal-viewport-keyframe");
@@ -498,6 +503,7 @@ fn terminal_viewport_resize_pushes_state_without_screen_keyframe() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn terminal_input_reclaims_viewport_after_lease_expired_to_host() {
     let support_dir = temp_support_dir("codux-remote-terminal-input-reclaim");
@@ -564,6 +570,7 @@ fn terminal_input_reclaims_viewport_after_lease_expired_to_host() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn terminal_resize_without_owner_claims_remote_viewport_for_compatibility() {
     let support_dir = temp_support_dir("codux-remote-terminal-resize-without-owner");
@@ -609,6 +616,7 @@ fn terminal_resize_without_owner_claims_remote_viewport_for_compatibility() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn terminal_resize_without_dimensions_is_rejected() {
     let support_dir = temp_support_dir("codux-remote-terminal-resize-reject");

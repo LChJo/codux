@@ -543,6 +543,9 @@ mod tests {
         let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
         let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
         let conn = store.connect().unwrap();
+        // Ingestion stores the canonical project path and interval queries
+        // canonicalize before matching, so seed the fixture the same way.
+        let project_path = canonical_project_path("/old/path");
         conn.execute(
             r#"
             INSERT INTO ai_history_file_usage_event (
@@ -550,11 +553,11 @@ mod tests {
                 session_key, occurred_at, total_tokens, request_count,
                 active_duration_seconds
             ) VALUES
-                ('codex', 'session.jsonl', '/old/path', 'project-a', 0, 'session', 90, 100, 1, 30),
-                ('codex', 'session.jsonl', '/old/path', 'project-a', 1, 'session', 110, 20, 1, 0),
-                ('codex', 'session.jsonl', '/old/path', 'project-a', 2, 'session', 130, 300, 1, 0)
+                ('codex', 'session.jsonl', ?1, 'project-a', 0, 'session', 90, 100, 1, 30),
+                ('codex', 'session.jsonl', ?1, 'project-a', 1, 'session', 110, 20, 1, 0),
+                ('codex', 'session.jsonl', ?1, 'project-a', 2, 'session', 130, 300, 1, 0)
             "#,
-            [],
+            params![project_path],
         )
         .unwrap();
 
@@ -562,7 +565,7 @@ mod tests {
             .interval_sessions(
                 &conn,
                 &[AIUsageInterval {
-                    project_path: "/old/path".to_string(),
+                    project_path,
                     included_at: 100,
                     excluded_at: Some(120),
                 }],
@@ -1581,6 +1584,10 @@ mod tests {
         bucket_start: f64,
         total_tokens: i64,
     ) {
+        // Ingestion stores the canonical project path and interval queries
+        // canonicalize before matching, so the fixture has to do the same or
+        // the two sides disagree on Windows path syntax.
+        let project_path = canonical_project_path(project_path);
         let file_path = format!("{source}-{session_key}.jsonl");
         conn.execute(
             r#"
@@ -1667,6 +1674,8 @@ mod tests {
         occurred_at: i64,
         total_tokens: i64,
     ) {
+        // See `insert_source_usage_bucket`: mirror ingestion's canonical path.
+        let project_path = canonical_project_path(project_path);
         let file_path = format!("{source}-{session_key}.jsonl");
         conn.execute(
             r#"

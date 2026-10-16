@@ -1079,6 +1079,11 @@ mod tests {
             .set_str("user.email", "codux@example.test")
             .expect("set email");
         config.set_str("user.name", "Codux").expect("set name");
+        // Keep checkout byte-stable: with the host's global `core.autocrlf`
+        // enabled, Windows rewrites the LF fixtures below to CRLF on checkout.
+        config
+            .set_str("core.autocrlf", "false")
+            .expect("set autocrlf");
         fs::write(path.join("README.md"), "test\n").expect("write repository file");
         commit_all(path, "initial");
     }

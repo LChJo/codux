@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(unix)]
 #[test]
 fn terminal_project_subscriptions_do_not_create_session_viewers() {
     let support_dir = temp_support_dir("codux-remote-terminal-subscriptions");
@@ -85,6 +86,7 @@ fn terminal_project_subscriptions_do_not_create_session_viewers() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn project_select_does_not_change_session_viewers() {
     let support_dir = temp_support_dir("codux-project-select-terminal-viewers");
@@ -380,6 +382,7 @@ fn resource_worktree_subscription_uses_registered_project_path() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn terminal_project_resource_subscription_sends_list_without_baseline() {
     let support_dir = temp_support_dir("codux-remote-resource-terminal-tail-baseline");

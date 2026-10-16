@@ -19,6 +19,7 @@ fn remote_terminal_output_sequence_is_session_scoped() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn remote_terminal_buffer_window_returns_retained_history_window() {
     let support_dir = temp_support_dir("codux-remote-terminal-buffer-window");
@@ -70,6 +71,7 @@ fn remote_terminal_buffer_window_returns_retained_history_window() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn remote_terminal_buffer_window_freezes_pages_for_request_id() {
     let support_dir = temp_support_dir("codux-remote-terminal-buffer-frozen-pages");
@@ -145,6 +147,7 @@ fn remote_terminal_buffer_window_freezes_pages_for_request_id() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn remote_terminal_buffer_window_tail_returns_history_tail() {
     let support_dir = temp_support_dir("codux-remote-terminal-buffer-tail-window");
@@ -190,6 +193,7 @@ fn remote_terminal_buffer_window_tail_returns_history_tail() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn remote_terminal_buffer_window_tail_ships_keyframe_for_normal_screen() {
     // Raw history replay cannot reconstruct a primary-screen TUI that redraws
@@ -244,6 +248,7 @@ fn remote_terminal_buffer_window_tail_ships_keyframe_for_normal_screen() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn remote_terminal_buffer_window_tail_includes_target_viewport_keyframe() {
     let support_dir = temp_support_dir("codux-remote-terminal-buffer-viewport-keyframe");
@@ -328,6 +333,7 @@ fn remote_terminal_buffer_window_tail_includes_target_viewport_keyframe() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn terminal_resource_subscribe_baseline_keyframe_for_alt_screen() {
     // The alternate buffer has no scrollback, so a re-attaching viewer cannot
@@ -425,6 +431,7 @@ fn terminal_resource_subscribe_baseline_keyframe_for_alt_screen() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn remote_terminal_live_output_is_data_only_without_screen_keyframe() {
     let support_dir = temp_support_dir("codux-remote-terminal-live-screen-keyframe");
@@ -504,6 +511,7 @@ fn remote_terminal_live_output_is_data_only_without_screen_keyframe() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn terminal_buffer_request_does_not_resize_remote_pty() {
     let support_dir = temp_support_dir("codux-remote-terminal-buffer-readonly");
@@ -551,6 +559,7 @@ fn terminal_buffer_request_does_not_resize_remote_pty() {
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[cfg(unix)]
 #[test]
 fn terminal_subscribe_does_not_push_screen_keyframe() {
     let support_dir = temp_support_dir("codux-remote-terminal-subscribe-keyframe");

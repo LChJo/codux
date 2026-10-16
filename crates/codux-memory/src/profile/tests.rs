@@ -37,7 +37,7 @@ fn project_profile_is_generated_from_repository_files() {
             .contains("tauri command async fn memory_refresh_project_profile")
     );
 
-    fs::remove_dir_all(root).unwrap();
+    fs::remove_dir_all(root).ok();
 }
 
 #[test]
@@ -57,7 +57,7 @@ fn project_profile_infers_php_composer_without_readme() {
     assert!(profile.content.contains("Language: PHP"));
     assert!(profile.content.contains("composer install"));
 
-    fs::remove_dir_all(root).unwrap();
+    fs::remove_dir_all(root).ok();
 }
 
 #[test]
@@ -104,6 +104,6 @@ fn project_profile_for_launch_stores_profile() {
     assert_eq!(stored.source_fingerprint, profile.source_fingerprint);
     assert!(stored.content.contains("Native/runtime: Rust"));
 
-    fs::remove_dir_all(root).unwrap();
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(root).ok();
+    fs::remove_dir_all(support_dir).ok();
 }

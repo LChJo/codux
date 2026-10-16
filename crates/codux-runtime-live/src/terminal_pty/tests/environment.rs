@@ -159,13 +159,16 @@ fn terminal_environment_injects_codux_runtime_context() {
         "# test\n",
     )
     .unwrap();
+    // Files under the support dir are joined with the host separator, so the
+    // expectations below are built from this same path value.
+    let support_dir = PathBuf::from("/support/Codux");
     let context = TerminalLaunchContext {
         root_project_id: "project-1".to_string(),
         root_project_path: PathBuf::from("/workspace/codux"),
         project_id: "project-1".to_string(),
         project_name: "Codux".to_string(),
         project_path: PathBuf::from("/workspace/codux"),
-        support_dir: PathBuf::from("/support/Codux"),
+        support_dir: support_dir.clone(),
         runtime_root: runtime_root.clone(),
         terminal_id: Some("gpui-term-1".to_string()),
         slot_id: Some("gpui-pane-1-1".to_string()),
@@ -226,11 +229,11 @@ fn terminal_environment_injects_codux_runtime_context() {
     );
     assert_eq!(
         env.get("CODUX_SSH_PROFILES_FILE").map(String::as_str),
-        Some("/support/Codux/ssh_profiles.json")
+        Some(support_dir.join("ssh_profiles.json").to_str().unwrap())
     );
     assert_eq!(
         env.get("CODUX_DB_PROFILES_FILE").map(String::as_str),
-        Some("/support/Codux/db_profiles.json")
+        Some(support_dir.join("db_profiles.json").to_str().unwrap())
     );
     assert_eq!(
         env.get("CODUX_DB_PROJECT_ID").map(String::as_str),

@@ -380,12 +380,18 @@ mod tests {
         }
     }
 
+    /// Resource paths as `/`-separated strings. The suffix assertions below are
+    /// written POSIX-style, which native Windows separators would not match.
+    fn resource_path_strings(session: &AISessionSnapshot) -> Vec<String> {
+        runtime_resource_paths(session)
+            .into_iter()
+            .map(|path| path.display().to_string().replace('\\', "/"))
+            .collect()
+    }
+
     #[test]
     fn opencode_and_mimo_monitor_database_and_session_map_file() {
-        let opencode_paths = runtime_resource_paths(&session_for_tool("opencode"))
-            .into_iter()
-            .map(|path| path.display().to_string())
-            .collect::<Vec<_>>();
+        let opencode_paths = resource_path_strings(&session_for_tool("opencode"));
         assert!(
             opencode_paths
                 .iter()
@@ -417,10 +423,7 @@ mod tests {
             "opencode should not monitor broad session-map directories"
         );
 
-        let mimo_paths = runtime_resource_paths(&session_for_tool("mimo"))
-            .into_iter()
-            .map(|path| path.display().to_string())
-            .collect::<Vec<_>>();
+        let mimo_paths = resource_path_strings(&session_for_tool("mimo"));
         assert!(
             mimo_paths
                 .iter()
@@ -455,10 +458,7 @@ mod tests {
 
     #[test]
     fn kiro_monitors_current_session_files_after_session_id_resolves() {
-        let paths = runtime_resource_paths(&session_for_tool("kiro-cli"))
-            .into_iter()
-            .map(|path| path.display().to_string())
-            .collect::<Vec<_>>();
+        let paths = resource_path_strings(&session_for_tool("kiro-cli"));
         assert!(
             paths
                 .iter()
@@ -483,10 +483,7 @@ mod tests {
             ai_session_id: None,
             ..session_for_tool("kiro-cli")
         };
-        let paths = runtime_resource_paths(&session)
-            .into_iter()
-            .map(|path| path.display().to_string())
-            .collect::<Vec<_>>();
+        let paths = resource_path_strings(&session);
         assert!(
             paths
                 .iter()

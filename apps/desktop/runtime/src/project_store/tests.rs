@@ -422,11 +422,10 @@ fn update_project_preserves_unknown_fields_and_updates_default_worktree() {
         .unwrap();
 
     let state = state_value(&support_dir);
-    let normalized_path = project_dir
-        .canonicalize()
-        .unwrap()
-        .to_string_lossy()
-        .to_string();
+    // Production normalizes through `normalize_local_path` (which strips the
+    // `\\?\` prefix on Windows); `std::fs::canonicalize` keeps it, so the two
+    // disagree on Windows.
+    let normalized_path = codux_runtime_core::path::normalize_local_path(&project_dir);
     assert_eq!(state["unknownTopLevel"], true);
     assert_eq!(state["selectedProjectId"], "p1");
     assert_eq!(state["projects"][0]["name"], "Renamed");

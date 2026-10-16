@@ -137,7 +137,7 @@ fn manual_enqueue_limits_candidates_by_project() {
     let task = service.next_pending_extraction_task().unwrap().unwrap();
     assert_eq!(task.session_id, "session-new");
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -202,7 +202,7 @@ fn automatic_enqueue_respects_idle_delay_and_enabled_flag() {
     assert_eq!(result.enqueued_count, 0);
     assert_eq!(result.status.pending_count, 1);
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -249,7 +249,7 @@ fn automatic_enqueue_keeps_older_ready_runtime_candidates() {
     assert_eq!(result.enqueued_count, 2);
     assert_eq!(result.status.pending_count, 2);
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -300,7 +300,7 @@ fn automatic_enqueue_skips_session_with_active_pending_task() {
     assert_eq!(updated_result.enqueued_count, 0);
     assert_eq!(updated_result.status.pending_count, 1);
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -387,7 +387,7 @@ fn automatic_enqueue_uses_configured_candidate_limit_and_stores_only_task_metada
             .all(|path| !path.contains("large content"))
     );
 
-    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
@@ -417,7 +417,7 @@ fn manual_candidates_deduplicate_by_project_tool_and_session() {
         Some("same-session")
     );
 
-    fs::remove_dir_all(transcript_dir).unwrap();
+    fs::remove_dir_all(transcript_dir).ok();
 }
 
 #[test]

@@ -93,11 +93,20 @@ fn sanitize_relative_path(raw_path: &str) -> Result<PathBuf, String> {
     Ok(clean)
 }
 
+/// Relative path in the portable wire form: forward slashes on every platform,
+/// matching [`normalized_path_display`]. Consumers (clipboard parent lookups,
+/// git status trees, the remote protocol) split on `/`, so returning native
+/// separators here silently broke those paths on Windows.
 pub(super) fn relative_path(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .to_string()
+    let relative = path.strip_prefix(root).unwrap_or(path).to_string_lossy();
+    #[cfg(windows)]
+    {
+        relative.replace('\\', "/")
+    }
+    #[cfg(not(windows))]
+    {
+        relative.to_string()
+    }
 }
 
 pub(super) fn normalized_path_display(path: &Path) -> String {

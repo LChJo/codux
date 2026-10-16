@@ -165,13 +165,17 @@ fn codewhale_completion_merges_realtime_probe_snapshot() {
     fs::create_dir_all(&project).unwrap();
     fs::create_dir_all(&session_dir).unwrap();
     let session_file = session_dir.join("session-1.json");
+    // Serialize the path so Windows backslashes are escaped: interpolating the
+    // raw display form would emit invalid JSON escapes and the probe would fail
+    // to parse, leaving the model unset.
+    let workspace = serde_json::Value::String(project.display().to_string()).to_string();
     fs::write(
         &session_file,
         format!(
             r#"{{
                 "metadata": {{
                     "id": "session-1",
-                    "workspace": "{}",
+                    "workspace": {workspace},
                     "model": "deepseek-chat",
                     "total_tokens": 789,
                     "created_at": "2026-06-06T01:00:00Z",
@@ -180,8 +184,7 @@ fn codewhale_completion_merges_realtime_probe_snapshot() {
                 "messages": [
                     {{ "role": "assistant", "content": "done" }}
                 ]
-            }}"#,
-            project.display()
+            }}"#
         ),
     )
     .unwrap();
