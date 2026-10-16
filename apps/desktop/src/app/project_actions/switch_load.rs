@@ -400,10 +400,6 @@ impl CoduxApp {
             ),
         );
         self.normalize_selected_ai_session();
-        // Handoffs are per-project; a switch invalidates the whole section. The
-        // expanded set is keyed by handoff id, so stale ids simply stop matching.
-        self.expanded_handoff_ids.clear();
-        self.reload_project_handoffs(cx);
         self.invalidate_ui(
             cx,
             [

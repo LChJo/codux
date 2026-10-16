@@ -2,6 +2,7 @@ type TerminalFocusObserver = Arc<dyn Fn(&mut Window, &mut Context<TerminalView>)
 type TerminalTitleObserver = Arc<dyn Fn(Option<String>, &mut Context<TerminalView>)>;
 type TerminalSearchObserver = Arc<dyn Fn(bool, &mut Context<TerminalView>)>;
 type TerminalLinkOpener = Arc<dyn Fn(String, &mut Window, &mut Context<TerminalView>)>;
+type FavoriteCommandSaver = Arc<dyn Fn(String, &mut Window, &mut Context<TerminalView>)>;
 
 pub struct TerminalView {
     model: Entity<TerminalModel>,
@@ -33,6 +34,7 @@ pub struct TerminalView {
     search_match_index: usize,
     _search_input_subscription: Option<Subscription>,
     link_opener: Option<TerminalLinkOpener>,
+    favorite_command_saver: Option<FavoriteCommandSaver>,
     selection_autoscroll: Option<SelectionAutoScroll>,
     // Right-click went to the app as a mouse report; the context menu must stay closed.
     context_menu_suppressed: bool,
@@ -166,10 +168,7 @@ impl TerminalScrollInputState {
 }
 
 impl TerminalView {
-    fn new<W>(
-        input: TerminalViewInput<W>,
-        cx: &mut Context<Self>,
-    ) -> Self
+    fn new<W>(input: TerminalViewInput<W>, cx: &mut Context<Self>) -> Self
     where
         W: Write + Send + 'static,
     {
@@ -246,6 +245,7 @@ impl TerminalView {
             search_match_index: 0,
             _search_input_subscription: None,
             link_opener: None,
+            favorite_command_saver: None,
             selection_autoscroll: None,
             context_menu_suppressed: false,
             _observe_model: observe_model,
@@ -336,6 +336,32 @@ impl TerminalView {
         F: Fn(String, &mut Window, &mut Context<TerminalView>) + 'static,
     {
         self.link_opener = Some(Arc::new(opener));
+    }
+
+    pub fn set_favorite_command_saver(
+        &mut self,
+        saver: impl Fn(String, &mut Window, &mut Context<Self>) + 'static,
+    ) {
+        self.favorite_command_saver = Some(Arc::new(saver));
+    }
+
+    pub fn insert_favorite_command(
+        &mut self,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), FavoriteCommandPasteError> {
+        let writable = self.session.local_viewport_owns();
+        self.model.update(cx, |model, cx| {
+            model.paste_favorite_command(text, writable)?;
+            model.prepare_input_viewport(cx);
+            Ok(())
+        })?;
+        self.clear_pending_view_scroll();
+        self.blink_manager
+            .update(cx, TerminalBlinkManager::pause_blinking);
+        self.focus_handle.focus(window, cx);
+        Ok(())
     }
 
     pub fn set_title_observer<F>(&mut self, observer: F)
@@ -455,12 +481,11 @@ impl TerminalView {
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if is_copy_keystroke(&event.keystroke)
-            && self.copy_selected_text(cx) {
-                cx.stop_propagation();
-                cx.notify();
-                return;
-            }
+        if is_copy_keystroke(&event.keystroke) && self.copy_selected_text(cx) {
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
 
         if is_paste_keystroke(&event.keystroke) {
             if let Some(text) = self.terminal_clipboard_paste_text(cx) {
@@ -522,10 +547,9 @@ impl TerminalView {
     pub fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let was_open = self.search_open;
         self.search_open = true;
-        if !was_open
-            && let Some(observer) = self.search_observer.clone() {
-                observer(true, cx);
-            }
+        if !was_open && let Some(observer) = self.search_observer.clone() {
+            observer(true, cx);
+        }
         let input = match self.search_input.clone() {
             Some(input) => input,
             None => {
@@ -720,7 +744,7 @@ impl TerminalView {
                 let selection_point = self.selection_point_from_cell(point, cx);
                 self.selection.lock().extend(selection_point);
                 self.model
-                    .update(cx, |model, _| model.update_selection(selection_point));
+                    .update(cx, |model, _| model.extend_selection(selection_point));
             }
             self.selection_autoscroll = None;
             cx.stop_propagation();
@@ -729,9 +753,25 @@ impl TerminalView {
         }
 
         if event.button == MouseButton::Right {
-            // The context menu element opens on this same event; keep it closed
-            // when the click is forwarded to a mouse-reporting app instead.
-            self.context_menu_suppressed = self.should_report_mouse(event.modifiers.shift, cx);
+            // Cache the route for the entire press/release, even if Shift changes.
+            self.context_menu_suppressed = terminal_right_click_reports(
+                event.modifiers.shift,
+                self.model.read(cx).mode().mouse_tracking,
+            );
+            if self.context_menu_suppressed {
+                if let Some(point) = point {
+                    self.send_mouse_report(
+                        Some(event.button),
+                        point,
+                        TerminalMouseUiEvent::Press,
+                        event.modifiers,
+                        cx,
+                    );
+                }
+                cx.stop_propagation();
+            }
+            cx.notify();
+            return;
         }
 
         if self.should_report_mouse(event.modifiers.shift, cx) {
@@ -773,8 +813,9 @@ impl TerminalView {
                                 Some(range) => self.selection.lock().set_range(range),
                                 None => {
                                     self.selection.lock().start(selection_point);
-                                    self.model
-                                        .update(cx, |model, _| model.start_selection(selection_point));
+                                    self.model.update(cx, |model, _| {
+                                        model.start_selection(selection_point)
+                                    });
                                 }
                             }
                         }
@@ -805,6 +846,22 @@ impl TerminalView {
     }
 
     fn on_mouse_up(&mut self, event: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        if event.button == MouseButton::Right {
+            if self.context_menu_suppressed {
+                let point = self.layout.lock().cell_at(event.position);
+                if let Some(point) = point {
+                    self.send_mouse_report(
+                        Some(MouseButton::Right),
+                        point,
+                        TerminalMouseUiEvent::Release,
+                        event.modifiers,
+                        cx,
+                    );
+                }
+            }
+            cx.stop_propagation();
+            return;
+        }
         let selection_dragging = self.selection.lock().dragging;
         let drag_cell = self.layout.lock().drag_cell_at(event.position);
         if let Some((point, _)) = drag_cell {
@@ -851,7 +908,12 @@ impl TerminalView {
             cx.notify();
         }
 
-        if self.should_report_mouse(event.modifiers.shift, cx) {
+        let report_mouse = if event.pressed_button == Some(MouseButton::Right) {
+            self.context_menu_suppressed
+        } else {
+            self.should_report_mouse(event.modifiers.shift, cx)
+        };
+        if report_mouse {
             let Some(point) = self.layout.lock().cell_at(event.position) else {
                 return;
             };
@@ -1050,10 +1112,12 @@ impl TerminalView {
             let model = self.model.read(cx);
             (model.remote_viewer(), model.viewport_generation())
         };
-        if !is_remote && generation != previous_generation
-            && let Err(error) = self.session.refresh_local_viewport_if_current_owner() {
-                eprintln!("failed to restore desktop terminal viewport: {error}");
-            }
+        if !is_remote
+            && generation != previous_generation
+            && let Err(error) = self.session.refresh_local_viewport_if_current_owner()
+        {
+            eprintln!("failed to restore desktop terminal viewport: {error}");
+        }
     }
 
     fn write_bytes(&mut self, bytes: &[u8], cx: &mut Context<Self>) {

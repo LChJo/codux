@@ -47,13 +47,21 @@ impl RuntimeService {
 
     pub fn drain_ai_runtime_events_and_enqueue_memory(&self) -> AIRuntimeDrainResult {
         let events = self.ai_runtime.drain_supervisor_events();
+        self.process_ai_runtime_events(events)
+    }
+
+    fn process_ai_runtime_events(
+        &self,
+        events: Vec<AIRuntimeSupervisorEvent>,
+    ) -> AIRuntimeDrainResult {
         // Mirror terminal status to connected controllers so a viewer of this
         // host renders the same loading/waiting/completed dots.
         for event in &events {
             if let AIRuntimeSupervisorEvent::TerminalStatus { status } = event
-                && let Ok(payload) = serde_json::to_value(status) {
-                    self.remote_host.broadcast_terminal_status(payload);
-                }
+                && let Ok(payload) = serde_json::to_value(status)
+            {
+                self.remote_host.broadcast_terminal_status(payload);
+            }
         }
         let memory = events
             .iter()
@@ -63,25 +71,6 @@ impl RuntimeService {
             })
             .filter_map(|session| self.enqueue_completed_session_memory(session).ok())
             .collect::<Vec<_>>();
-        // A completed turn is also the moment the handoff record should advance.
-        // Runs on this same drain so the two views of "the conversation ended"
-        // cannot drift apart. Failures are traced, not surfaced: a handoff that
-        // could not be built must never block the event loop or the memory queue.
-        for event in &events {
-            if let AIRuntimeSupervisorEvent::Completion { completion } = event
-                && let Some(session) = completion.session.as_ref()
-            {
-                if let Err(error) = self.build_session_handoff(session, None, None) {
-                    crate::runtime_trace::runtime_trace(
-                        "handoff",
-                        &format!(
-                            "build failed terminal={} project={} error={error}",
-                            session.terminal_id, session.project_id
-                        ),
-                    );
-                }
-            }
-        }
         AIRuntimeDrainResult { events, memory }
     }
 }

@@ -115,7 +115,13 @@ include!("service_ai_runtime.rs");
 include!("service_core_tests.rs");
 include!("service_git_files.rs");
 include!("service_ai_memory.rs");
-include!("service_handoff.rs");
+impl RuntimeService {
+    pub fn favorite_command_store(
+        &self,
+    ) -> Result<crate::favorite_commands::FavoriteCommandStore, String> {
+        crate::favorite_commands::FavoriteCommandStore::open(self.support_dir.clone())
+    }
+}
 include!("service_ssh_worktree.rs");
 include!("service_system.rs");
 include!("service_remote_controller.rs");

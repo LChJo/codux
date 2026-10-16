@@ -344,11 +344,20 @@ impl CoduxApp {
         let app_for_link = app.clone();
         let app_for_title = app.clone();
         let app_for_search = app.clone();
+        let app_for_favorites = app.clone();
         let terminal_id = terminal_id.to_string();
         let observer_terminal_id = terminal_id.clone();
         let title_terminal_id = terminal_id.clone();
         let search_terminal_id = terminal_id.clone();
         pane.view.update(cx, |terminal, _| {
+            terminal.set_favorite_command_saver(move |text, window, cx| {
+                let app = app_for_favorites.clone();
+                window.defer(cx, move |window, cx| {
+                    let _ = app.update(cx, |app, cx| {
+                        app.edit_favorite_command(None, text, window, cx)
+                    });
+                });
+            });
             terminal.set_focus_observer(move |_window, cx| {
                 let terminal_id = observer_terminal_id.clone();
                 let _ = app.update(cx, |app, cx| {

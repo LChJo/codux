@@ -299,13 +299,6 @@ pub struct CoduxApp {
     pub(in crate::app) ai_index_progress_generation: u64,
     pub(in crate::app) ai_history_active_index_count: usize,
     pub(in crate::app) ai_history_refreshing: bool,
-    /// True while a handoff list load is in flight, so the section can show a
-    /// spinner instead of a stale empty state.
-    pub(in crate::app) handoffs_refreshing: bool,
-    /// Handoff rows whose artifact chips are expanded in the task column.
-    pub(in crate::app) expanded_handoff_ids: std::collections::HashSet<String>,
-    /// Handoff awaiting a delete confirmation, so its row can show pending state.
-    pub(in crate::app) handoff_delete_confirm_id: Option<String>,
     pub(in crate::app) ai_global_history_refreshing: bool,
     pub(in crate::app) ai_global_history_refresh_pending: bool,
     pub(in crate::app) project_switch_generation: u64,
@@ -386,7 +379,7 @@ pub struct CoduxApp {
     pub(in crate::app) project_column_collapsed: bool,
     pub(in crate::app) task_column_collapsed: bool,
     pub(in crate::app) task_section_terminals_collapsed: bool,
-    pub(in crate::app) task_section_handoffs_collapsed: bool,
+    pub(in crate::app) task_section_favorites_collapsed: bool,
     pub(in crate::app) project_list_state: Option<gpui::Entity<ProjectListState>>,
     /// Last polled client→host link state per host device id. Drives the project
     /// connection badge and triggers terminal re-attach when a host reconnects.
@@ -401,7 +394,8 @@ pub struct CoduxApp {
     pub(in crate::app) task_column_view: Option<gpui::Entity<TaskColumnView>>,
     pub(in crate::app) task_column_header_view: Option<gpui::Entity<TaskColumnHeaderView>>,
     pub(in crate::app) task_worktree_list_view: Option<gpui::Entity<TaskWorktreeListView>>,
-    pub(in crate::app) task_handoff_list_view: Option<gpui::Entity<TaskHandoffListView>>,
+    pub(in crate::app) task_favorite_command_list_view:
+        Option<gpui::Entity<FavoriteCommandListView>>,
     pub(in crate::app) task_terminal_list_view: Option<gpui::Entity<TaskTerminalListView>>,
     pub(in crate::app) workspace_column_view: Option<gpui::Entity<WorkspaceColumnView>>,
     pub(in crate::app) workspace_toolbar_view:

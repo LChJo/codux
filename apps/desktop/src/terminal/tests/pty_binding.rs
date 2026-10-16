@@ -4,6 +4,7 @@ use super::super::*;
 struct HostedTestController {
     actions: std::sync::Mutex<Vec<String>>,
     terminals: Vec<String>,
+    reject_input: bool,
 }
 
 impl HostedTestController {
@@ -11,6 +12,7 @@ impl HostedTestController {
         Self {
             actions: std::sync::Mutex::new(Vec::new()),
             terminals: terminals.iter().map(|value| value.to_string()).collect(),
+            reject_input: false,
         }
     }
 
@@ -41,7 +43,7 @@ impl RuntimeTerminalController for HostedTestController {
     }
 
     fn terminal_input(&self, _session_id: &str, _bytes: &[u8]) -> bool {
-        true
+        !self.reject_input
     }
 
     fn terminal_resize(&self, _session_id: &str, _cols: u16, _rows: u16) -> bool {
@@ -73,6 +75,24 @@ impl RuntimeTerminalController for HostedTestController {
     ) {
         self.record(format!("events:{session_id}"));
     }
+}
+
+#[test]
+fn favorite_commands_hosted_writer_failure_is_reported() {
+    let config = TerminalPtyConfig::default();
+    let (binding, _) = TerminalSessionBinding::pending(config.clone());
+    binding.attach_hosted(
+        Arc::new(HostedTestController {
+            reject_input: true,
+            ..Default::default()
+        }),
+        "closed-target".into(),
+        flume::unbounded().0,
+        flume::unbounded().0,
+        flume::unbounded().0,
+        config,
+    );
+    assert!(binding.write(b"command").is_err());
 }
 
 #[test]

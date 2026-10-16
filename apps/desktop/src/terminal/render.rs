@@ -107,11 +107,7 @@ impl Render for TerminalView {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .child(
-                                Icon::new(device_icon)
-                                    .size_8()
-                                    .text_color(fg.opacity(0.5)),
-                            ),
+                            .child(Icon::new(device_icon).size_8().text_color(fg.opacity(0.5))),
                     )
                     .child(div().h(px(18.0)))
                     .child(
@@ -197,8 +193,8 @@ impl Render for TerminalView {
     }
 }
 
-// Zed-style right-click menu; stays closed while a mouse-reporting app consumes
-// right-click or a remote device owns the viewport.
+// Plain right-click opens the desktop menu; Shift+right-click is passed to
+// mouse-reporting applications. A remote-owned viewport remains read-only.
 fn terminal_context_menu(
     menu: PopupMenu,
     view: &Entity<TerminalView>,
@@ -218,6 +214,8 @@ fn terminal_context_menu(
     let paste_view = view.clone();
     let select_all_view = view.clone();
     let clear_view = view.clone();
+    let save_view = view.clone();
+    let can_save = has_selection && view.read(cx).favorite_command_saver.is_some();
     menu.item(
         PopupMenuItem::new(translate("terminal.menu.copy", "Copy"))
             .icon(HeroIconName::DocumentDuplicate)
@@ -251,6 +249,28 @@ fn terminal_context_menu(
                     window.focus(&view.focus_handle, cx);
                 });
             }),
+    )
+    .separator()
+    .item(
+        PopupMenuItem::new(if has_selection {
+            translate("favorite.action.add", "Add to Favorite Commands")
+        } else {
+            translate(
+                "favorite.action.select_first",
+                "Add to Favorite Commands (select text first)",
+            )
+        })
+        .icon(HeroIconName::Bookmark)
+        .disabled(!can_save)
+        .on_click(move |_, window, cx| {
+            cx.update_entity(&save_view, |view, cx| {
+                if let Some(text) = view.selected_text(cx)
+                    && let Some(saver) = view.favorite_command_saver.clone()
+                {
+                    saver(text, window, cx);
+                }
+            });
+        }),
     )
     .separator()
     .item(

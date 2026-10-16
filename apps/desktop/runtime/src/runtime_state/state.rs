@@ -25,10 +25,6 @@ impl RuntimeState {
         let ai_session_detail = ai_history.sessions.first().and_then(|session| {
             selected_path.map(|path| load_ai_session_detail(&support_dir, path, &session.id))
         });
-        let handoffs = load_handoffs(
-            &support_dir,
-            selected_project.as_ref().map(|project| project.id.as_str()),
-        );
         let memory = load_memory(
             &support_dir,
             selected_project.as_ref().map(|project| project.id.as_str()),
@@ -93,7 +89,6 @@ impl RuntimeState {
             ai_history_stats,
             ai_history_stats_fingerprint: 0,
             ai_session_detail,
-            handoffs,
             memory,
             memory_manager,
             notifications,
@@ -136,8 +131,8 @@ impl RuntimeState {
             self.ai_history.sessions.first().map(|session| {
                 load_ai_session_detail(&self.support_dir, &project.path, &session.id)
             });
-        self.handoffs = load_handoffs(&self.support_dir, Some(&project.id));
-        self.memory = load_memory(&self.support_dir, Some(&project.id));        self.memory_manager = load_memory_manager(
+        self.memory = load_memory(&self.support_dir, Some(&project.id));
+        self.memory_manager = load_memory_manager(
             &self.support_dir,
             &self.projects,
             "project",

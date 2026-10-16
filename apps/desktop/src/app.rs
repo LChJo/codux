@@ -109,12 +109,12 @@ mod app_state;
 mod db_actions;
 mod db_profile_editor;
 mod desktop_pet;
+mod favorite_command_actions;
+mod favorite_command_column;
 mod file_actions;
 mod file_editor;
 mod formatting;
 mod git_actions;
-mod handoff_actions;
-mod handoff_column;
 pub(crate) mod macos_window;
 pub(crate) mod native_menu;
 mod pet;
@@ -207,8 +207,8 @@ use self::{
     },
     db_profile_editor::db_profile_editor_workspace,
     desktop_pet::*,
+    favorite_command_column::{FavoriteCommandListView, FavoriteCommandSnapshot},
     formatting::compact_number,
-    handoff_column::{TaskHandoffListView, TaskHandoffListSnapshot, TaskHandoffRow, handoff_labels},
     project_column::{ProjectColumnView, ProjectListState},
     scroll_compat::{ScrollableElement, codux_uniform_list},
     settings::SettingsPane,

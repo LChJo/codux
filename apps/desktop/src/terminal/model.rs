@@ -1,3 +1,9 @@
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FavoriteCommandPasteError {
+    Unavailable,
+    MultilineUnsupported,
+}
+
 struct TerminalModel {
     handle: TerminalStateHandle,
     stdin_writer: Arc<Mutex<Box<dyn Write + Send>>>,
@@ -76,11 +82,11 @@ impl TerminalModel {
         // thread to the UI thread, where clipboard and bell live.
         let (engine_event_tx, engine_event_rx) =
             flume::unbounded::<codux_terminal_core::TerminalScreenEvent>();
-        screen
-            .lock()
-            .set_event_sink(Arc::new(move |event: codux_terminal_core::TerminalScreenEvent| {
+        screen.lock().set_event_sink(Arc::new(
+            move |event: codux_terminal_core::TerminalScreenEvent| {
                 let _ = engine_event_tx.send(event);
-            }));
+            },
+        ));
         cx.spawn(async move |this: WeakEntity<Self>, cx| {
             while let Ok(event) = engine_event_rx.recv_async().await {
                 if this
@@ -98,7 +104,9 @@ impl TerminalModel {
         if let Some(restored_output) = restored_output.as_ref()
             && !restored_output.tail.is_empty()
         {
-            screen.lock().process_replay(restored_output.tail.as_bytes());
+            screen
+                .lock()
+                .process_replay(restored_output.tail.as_bytes());
             codux_runtime::runtime_trace::runtime_trace(
                 "terminal-restore",
                 &format!(
@@ -369,7 +377,8 @@ impl TerminalModel {
                 rows,
             } => {
                 let scheme_changed = self.remote_viewer != remote_owner
-                    && self.effective_scheme_is_dark() != scheme_is_dark(remote_owner, &self.colors);
+                    && self.effective_scheme_is_dark()
+                        != scheme_is_dark(remote_owner, &self.colors);
                 self.remote_viewer = remote_owner;
                 self.viewport_generation = generation;
                 // While a remote client owns the viewport, the PTY is sized to
@@ -897,6 +906,10 @@ impl TerminalModel {
         }
     }
 
+    fn extend_selection(&mut self, point: TerminalSelectionPoint) {
+        self.selection.extend(point);
+    }
+
     fn clear_selection(&mut self) {
         self.selection.clear();
     }
@@ -1030,6 +1043,27 @@ impl TerminalModel {
             text,
             self.handle.live_input_mode().bracketed_paste,
         ));
+    }
+
+    fn paste_favorite_command(
+        &self,
+        text: &str,
+        writable: bool,
+    ) -> Result<(), FavoriteCommandPasteError> {
+        if !writable || self.exited {
+            return Err(FavoriteCommandPasteError::Unavailable);
+        }
+        let mode = self.handle.live_input_mode();
+        if (text.contains('\n') || text.contains('\r')) && !mode.bracketed_paste {
+            return Err(FavoriteCommandPasteError::MultilineUnsupported);
+        }
+        let bytes = codux_terminal_core::terminal_paste_input_bytes(text, mode.bracketed_paste);
+        let mut writer = self.stdin_writer.lock();
+        writer
+            .write_all(&bytes)
+            .and_then(|_| writer.flush())
+            .map_err(|_| FavoriteCommandPasteError::Unavailable)?;
+        Ok(())
     }
 
     fn report_focus_change(&self, focused: bool) {
@@ -1171,7 +1205,10 @@ impl TerminalStateHandle {
     // Returns (cols, rows, cell count, content changed). Skipping the
     // repaint when the content is unchanged keeps idle-but-noisy terminals
     // from re-shaping the whole viewport every output batch.
-    fn publish_screen_snapshot(&self, snapshot: TerminalScreenSnapshot) -> (usize, usize, usize, bool) {
+    fn publish_screen_snapshot(
+        &self,
+        snapshot: TerminalScreenSnapshot,
+    ) -> (usize, usize, usize, bool) {
         let content = TerminalContent::from_screen_snapshot(snapshot);
         let stats = (content.columns, content.screen_lines, content.cells.len());
         let mut published = self.snapshot.lock();
@@ -1297,11 +1334,7 @@ fn selected_text_from_screen_range(
     let mut content = fallback_content.clone();
     while line <= range.end.line {
         if !content.line_in_snapshot(line) {
-            let offset = display_offset_for_line(
-                line,
-                content.total_lines,
-                content.screen_lines,
-            );
+            let offset = display_offset_for_line(line, content.total_lines, content.screen_lines);
             let request = { screen.lock().snapshot_at_offset_request(offset) };
             content = TerminalContent::from_screen_snapshot(request.snapshot());
         }
@@ -1427,9 +1460,7 @@ fn chars_eq_fold(a: char, b: char) -> bool {
 
 fn display_offset_for_line(line: i32, total_lines: usize, rows: usize) -> usize {
     let line = usize::try_from(line).unwrap_or(0);
-    total_lines
-        .saturating_sub(rows)
-        .saturating_sub(line)
+    total_lines.saturating_sub(rows).saturating_sub(line)
 }
 
 fn selection_point_from_cell(
@@ -1461,7 +1492,10 @@ fn selected_line_text(
         .collect()
 }
 
-fn find_selection_text_range(content: &TerminalContent, selected_text: &str) -> Option<SelectionRange> {
+fn find_selection_text_range(
+    content: &TerminalContent,
+    selected_text: &str,
+) -> Option<SelectionRange> {
     let mut lines = selected_text.split('\n');
     let first_line = lines.next()?;
     if lines.next().is_some() || first_line.is_empty() {

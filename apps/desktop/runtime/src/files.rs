@@ -28,7 +28,7 @@ pub fn file_list_children(request: FileChildrenRequest) -> Result<Vec<FileEntry>
 /// Open an absolute path with the platform's default handler.
 ///
 /// Unlike `open_project_file_entry`, this takes no project root: it exists for
-/// files that live outside any checkout, such as a rendered handoff document
+/// files that live outside any checkout, such as an exported report
 /// under the support directory.
 pub fn open_absolute_path(path: &str) -> Result<(), String> {
     open_path(Path::new(path))

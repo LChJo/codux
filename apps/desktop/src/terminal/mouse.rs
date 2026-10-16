@@ -6,6 +6,10 @@ enum TerminalMouseUiEvent {
     Wheel,
 }
 
+fn terminal_right_click_reports(shift_pressed: bool, mouse_tracking: bool) -> bool {
+    shift_pressed && mouse_tracking
+}
+
 fn terminal_mouse_ui_event_bytes(
     button: Option<MouseButton>,
     point: TerminalCellPoint,
@@ -28,7 +32,9 @@ fn terminal_mouse_ui_event_bytes(
     })
 }
 
-fn terminal_mouse_core_action(kind: TerminalMouseUiEvent) -> codux_terminal_core::TerminalMouseAction {
+fn terminal_mouse_core_action(
+    kind: TerminalMouseUiEvent,
+) -> codux_terminal_core::TerminalMouseAction {
     match kind {
         TerminalMouseUiEvent::Press | TerminalMouseUiEvent::Wheel => {
             codux_terminal_core::TerminalMouseAction::Press
@@ -53,7 +59,9 @@ fn terminal_mouse_core_button(
         MouseButton::Navigate(NavigationDirection::Back) if kind == TerminalMouseUiEvent::Wheel => {
             codux_terminal_core::TerminalMouseButton::WheelUp
         }
-        MouseButton::Navigate(NavigationDirection::Forward) if kind == TerminalMouseUiEvent::Wheel => {
+        MouseButton::Navigate(NavigationDirection::Forward)
+            if kind == TerminalMouseUiEvent::Wheel =>
+        {
             codux_terminal_core::TerminalMouseButton::WheelDown
         }
         MouseButton::Navigate(_) => return None,

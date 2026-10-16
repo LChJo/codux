@@ -358,10 +358,7 @@ impl TerminalPane {
         self.session.matches_pty_config(config)
     }
 
-    pub fn rebind_hosted_controller(
-        &self,
-        controller: Arc<dyn RuntimeTerminalController>,
-    ) -> bool {
+    pub fn rebind_hosted_controller(&self, controller: Arc<dyn RuntimeTerminalController>) -> bool {
         self.session.rebind_hosted(controller)
     }
 
@@ -655,8 +652,7 @@ impl TerminalSessionBinding {
         let (pending_writes, last_resize) = {
             let mut inner = self.inner.lock();
             if let Some(hosted) = &inner.hosted {
-                if !Arc::ptr_eq(&hosted.controller, &controller)
-                    || hosted.session_id != session_id
+                if !Arc::ptr_eq(&hosted.controller, &controller) || hosted.session_id != session_id
                 {
                     unregister_hosted_terminal(hosted.controller.as_ref(), &hosted.session_id);
                     register_hosted_terminal(
@@ -733,15 +729,14 @@ impl TerminalSessionBinding {
 
         let binding = self.clone();
         codux_runtime::async_runtime::spawn_blocking(move || {
-            let next_session_id =
-                restore_hosted_session(
-                    controller.as_ref(),
-                    &old_session_id,
-                    &config,
-                    &output_tx,
-                    &session_event_tx,
-                    &session_event_wake_tx,
-                );
+            let next_session_id = restore_hosted_session(
+                controller.as_ref(),
+                &old_session_id,
+                &config,
+                &output_tx,
+                &session_event_tx,
+                &session_event_wake_tx,
+            );
             let Ok(session_id) = next_session_id else {
                 binding.finish_hosted_rebind(&old_session_id, None, None, None, None, None);
                 return;
@@ -795,8 +790,7 @@ impl TerminalSessionBinding {
             output_tx,
             session_event_tx,
             session_event_wake_tx,
-        )
-        {
+        ) {
             register_hosted_terminal(
                 controller.as_ref(),
                 &session_id,
@@ -857,9 +851,9 @@ impl TerminalSessionBinding {
             inner.hosted.clone()
         };
         if let Some(hosted) = hosted {
-            hosted
-                .controller
-                .terminal_input(&hosted.session_id, bytes);
+            if !hosted.controller.terminal_input(&hosted.session_id, bytes) {
+                anyhow::bail!("Hosted terminal is unavailable");
+            }
             return Ok(());
         }
         if let Some(session) = self.inner.lock().session.clone() {

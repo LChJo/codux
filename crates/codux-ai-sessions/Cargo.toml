@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 codux-ai-history = { path = "../codux-ai-history" }
-codux-handoff = { path = "../codux-handoff" }
 codux-protocol = { path = "../codux-protocol" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }

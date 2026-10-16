@@ -3,9 +3,6 @@
 //! through this single table so neither host serves a partial set or drifts on
 //! shape.
 //!
-//! `fork` was removed with the session-record refactor: handing work to another
-//! session now goes through `codux-handoff`, which delivers a persisted,
-//! individually addressable artifact instead of a throwaway prompt file.
 //! The host resolves `project_path` (its own projectId fallback) and supplies
 //! the service; this returns the inner `result` value for `{op, result}`.
 

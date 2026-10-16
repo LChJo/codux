@@ -1,4 +1,5 @@
 mod colors;
+mod favorite_commands;
 mod fixtures;
 mod ime;
 mod keys;

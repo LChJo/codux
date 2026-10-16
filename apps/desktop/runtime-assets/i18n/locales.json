@@ -22,7 +22,7 @@
     "locales/diagnostics.json",
     "locales/files.json",
     "locales/git.json",
-    "locales/handoff.json",
+    "locales/favorite_commands.json",
     "locales/memory.json",
     "locales/menu.json",
     "locales/open.json",

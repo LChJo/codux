@@ -1295,7 +1295,7 @@ dependencies = [
 
 [[package]]
 name = "codux"
-version = "2.0.0-beta.9"
+version = "2.0.0-beta.12"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1326,7 +1326,7 @@ dependencies = [
 
 [[package]]
 name = "codux-agent"
-version = "2.0.0-beta.9"
+version = "2.0.0-beta.12"
 dependencies = [
  "base64",
  "chrono",
@@ -1373,7 +1373,6 @@ name = "codux-ai-sessions"
 version = "0.1.0"
 dependencies = [
  "codux-ai-history",
- "codux-handoff",
  "codux-protocol",
  "rusqlite",
  "serde",
@@ -1391,19 +1390,6 @@ dependencies = [
  "notify 8.2.0",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "codux-handoff"
-version = "0.1.0"
-dependencies = [
- "codux-ai-history",
- "regex",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "uuid",
 ]
 
 [[package]]
@@ -1477,7 +1463,7 @@ dependencies = [
 
 [[package]]
 name = "codux-runtime"
-version = "2.0.0-beta.9"
+version = "2.0.0-beta.12"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -1488,7 +1474,6 @@ dependencies = [
  "codux-ai-history",
  "codux-ai-sessions",
  "codux-git",
- "codux-handoff",
  "codux-llm",
  "codux-memory",
  "codux-protocol",
@@ -1599,7 +1584,7 @@ dependencies = [
 
 [[package]]
 name = "codux-wrapper-helper"
-version = "2.0.0-beta.9"
+version = "2.0.0-beta.12"
 dependencies = [
  "codux-runtime-live",
 ]

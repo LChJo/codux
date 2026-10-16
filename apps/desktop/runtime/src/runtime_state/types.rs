@@ -17,9 +17,6 @@ pub struct RuntimeState {
     /// the indexed history (and the local day / cache mode) are unchanged.
     pub ai_history_stats_fingerprint: u64,
     pub ai_session_detail: Option<AISessionDetail>,
-    /// Durable handoff records for the selected project, newest first. Replaces
-    /// the session-history list as the answer to "where did this work stop?".
-    pub handoffs: Vec<crate::handoff::HandoffListRow>,
     pub memory: MemorySummary,
     pub memory_manager: MemoryManagerSnapshot,
     pub notifications: NotificationSummary,

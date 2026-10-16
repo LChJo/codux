@@ -9,15 +9,14 @@ use super::*;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::app) enum TaskSectionKind {
     Terminals,
-    Handoffs,
 }
 
 pub(in crate::app) struct TaskColumnView {
     header_view: gpui::Entity<TaskColumnHeaderView>,
     worktree_list_view: gpui::Entity<TaskWorktreeListView>,
     terminal_list_view: gpui::Entity<TaskTerminalListView>,
-    handoff_list_view: gpui::Entity<TaskHandoffListView>,
-    handoffs_collapsed: bool,
+    favorite_command_list_view: gpui::Entity<FavoriteCommandListView>,
+    favorites_collapsed: bool,
 }
 
 #[derive(Clone, PartialEq)]
@@ -40,8 +39,8 @@ impl Render for TaskColumnView {
             self.header_view.clone(),
             self.worktree_list_view.clone(),
             self.terminal_list_view.clone(),
-            self.handoff_list_view.clone(),
-            self.handoffs_collapsed,
+            self.favorite_command_list_view.clone(),
+            self.favorites_collapsed,
         )
         .into_any_element()
     }
@@ -52,12 +51,12 @@ impl CoduxApp {
         &mut self,
         cx: &mut Context<Self>,
     ) -> gpui::Entity<TaskColumnView> {
-        let handoffs_collapsed = self.task_section_handoffs_collapsed;
+        let favorites_collapsed = self.task_section_favorites_collapsed;
         if let Some(view) = self.task_column_view.clone() {
             self.update_task_column_child_views(cx);
             view.update(cx, |view, cx| {
-                if view.handoffs_collapsed != handoffs_collapsed {
-                    view.handoffs_collapsed = handoffs_collapsed;
+                if view.favorites_collapsed != favorites_collapsed {
+                    view.favorites_collapsed = favorites_collapsed;
                     cx.notify();
                 }
             });
@@ -66,13 +65,13 @@ impl CoduxApp {
         let header_view = self.task_column_header_view(cx);
         let worktree_list_view = self.task_worktree_list_view(cx);
         let terminal_list_view = self.task_terminal_list_view(cx);
-        let handoff_list_view = self.task_handoff_list_view(cx);
+        let favorite_command_list_view = self.task_favorite_command_list_view(cx);
         let view = cx.new(|_| TaskColumnView {
             header_view,
             worktree_list_view,
             terminal_list_view,
-            handoff_list_view,
-            handoffs_collapsed,
+            favorite_command_list_view,
+            favorites_collapsed,
         });
         self.task_column_view = Some(view.clone());
         view
@@ -82,7 +81,7 @@ impl CoduxApp {
         let _ = self.task_column_header_view(cx);
         let _ = self.task_worktree_list_view(cx);
         let _ = self.task_terminal_list_view(cx);
-        let _ = self.task_handoff_list_view(cx);
+        let _ = self.task_favorite_command_list_view(cx);
     }
 }
 
@@ -248,7 +247,6 @@ impl Render for TaskTerminalListView {
     }
 }
 
-
 impl CoduxApp {
     fn task_column_header_view(
         &mut self,
@@ -307,22 +305,27 @@ impl CoduxApp {
         view
     }
 
-    fn task_handoff_list_view(
+    fn task_favorite_command_list_view(
         &mut self,
         cx: &mut Context<Self>,
-    ) -> gpui::Entity<TaskHandoffListView> {
-        let snapshot = self.task_handoff_list_snapshot(cx);
-        if let Some(view) = self.task_handoff_list_view.clone() {
+    ) -> gpui::Entity<FavoriteCommandListView> {
+        let snapshot = FavoriteCommandSnapshot {
+            language: self.state.settings.language.clone(),
+            project_id: self
+                .state
+                .selected_project
+                .as_ref()
+                .map(|project| project.id.clone()),
+            collapsed: self.task_section_favorites_collapsed,
+        };
+        if let Some(view) = self.task_favorite_command_list_view.clone() {
             view.update(cx, |view, cx| view.set_snapshot(snapshot, cx));
             return view;
         }
         let app_entity = cx.entity();
-        let view = cx.new(|_| TaskHandoffListView {
-            app_entity,
-            snapshot,
-            scroll_handle: UniformListScrollHandle::new(),
-        });
-        self.task_handoff_list_view = Some(view.clone());
+        let store = self.runtime_service.favorite_command_store();
+        let view = cx.new(|cx| FavoriteCommandListView::new(app_entity, snapshot, store, cx));
+        self.task_favorite_command_list_view = Some(view.clone());
         view
     }
 
@@ -447,65 +450,53 @@ impl CoduxApp {
             collapsed: self.task_section_terminals_collapsed,
         }
     }
-
-    /// Build the handoff section snapshot.
-    ///
-    /// Artifacts are only loaded for rows the user has expanded, so a long list
-    /// does not deserialize every record payload on every refresh.
-    fn task_handoff_list_snapshot(
-        &mut self,
-        cx: &mut Context<Self>,
-    ) -> TaskHandoffListSnapshot {
-        let labels = handoff_labels(&self.state.settings.language);
-        let expanded = self.expanded_handoff_ids.clone();
-        let pending_delete = self.handoff_delete_confirm_id.clone();
-        let service = self.runtime_service.clone();
-
-        let mut handoffs = Vec::with_capacity(self.state.handoffs.len());
-        let mut needs_artifacts = Vec::new();
-        for row in self.state.handoffs.clone() {
-            let is_expanded = expanded.contains(&row.id);
-            if is_expanded {
-                needs_artifacts.push(row.id.clone());
-            }
-            handoffs.push(TaskHandoffRow {
-                pending_delete: pending_delete.as_deref() == Some(row.id.as_str()),
-                expanded: is_expanded,
-                artifacts: Vec::new(),
-                row,
-            });
-        }
-
-        // Fill expanded rows synchronously: the artifact index is a single small
-        // query per row, and only expanded rows are loaded.
-        for id in needs_artifacts {
-            let artifacts = service.handoff_artifacts(&id).unwrap_or_default();
-            if let Some(entry) = handoffs.iter_mut().find(|entry| entry.row.id == id) {
-                entry.artifacts = artifacts;
-            }
-        }
-
-        let snapshot = TaskHandoffListSnapshot {
-            labels,
-            handoffs,
-            collapsed: self.task_section_handoffs_collapsed,
-            refreshing: self.handoffs_refreshing,
-        };
-
-        // Kick a background refresh so the next frame reflects any handoff built
-        // since the last load. Guarded inside against concurrent loads.
-        self.reload_project_handoffs(cx);
-        snapshot
-    }
 }
 
 fn task_column_content(
     header_view: gpui::Entity<TaskColumnHeaderView>,
     worktree_list_view: gpui::Entity<TaskWorktreeListView>,
     terminal_list_view: gpui::Entity<TaskTerminalListView>,
-    handoff_list_view: gpui::Entity<TaskHandoffListView>,
-    handoffs_collapsed: bool,
+    favorite_command_list_view: gpui::Entity<FavoriteCommandListView>,
+    favorites_collapsed: bool,
 ) -> impl IntoElement {
+    let upper = div()
+        .size_full()
+        .min_h_0()
+        .flex()
+        .flex_col()
+        .overflow_hidden()
+        .child(
+            div()
+                .flex_1()
+                .min_h_0()
+                .overflow_hidden()
+                .child(worktree_list_view),
+        )
+        .child(div().flex_none().child(terminal_list_view));
+    let body = if favorites_collapsed {
+        div()
+            .size_full()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .child(div().flex_1().min_h_0().child(upper))
+            .child(div().flex_none().child(favorite_command_list_view))
+            .into_any_element()
+    } else {
+        v_resizable("task-column-command-split")
+            .child(
+                resizable_panel()
+                    .size_range(px(280.0)..Pixels::MAX)
+                    .child(upper),
+            )
+            .child(
+                resizable_panel()
+                    .size(px(260.0))
+                    .size_range(px(180.0)..Pixels::MAX)
+                    .child(favorite_command_list_view),
+            )
+            .into_any_element()
+    };
     div()
         .flex()
         .flex_col()
@@ -513,37 +504,14 @@ fn task_column_content(
         .min_w_0()
         .h_full()
         .min_h_0()
-        .child(gpui::AnyView::from(header_view))
+        .child(header_view)
         .child(
             div()
                 .flex_1()
                 .min_h_0()
                 .overflow_hidden()
                 .bg(task_column_surface(color(theme::BG_COLUMN)))
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .flex_1()
-                        .min_h_0()
-                        .overflow_hidden()
-                        .child(gpui::AnyView::from(worktree_list_view)),
-                )
-                .child(
-                    div()
-                        .flex_none()
-                        .overflow_hidden()
-                        .child(gpui::AnyView::from(terminal_list_view)),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .min_h_0()
-                        .when(handoffs_collapsed, |this| this.flex_none())
-                        .when(!handoffs_collapsed, |this| this.flex_1())
-                        .child(gpui::AnyView::from(handoff_list_view)),
-                ),
+                .child(body),
         )
 }
 
@@ -990,10 +958,6 @@ pub(in crate::app) fn task_section_heading(
                     TaskSectionKind::Terminals => {
                         app.task_section_terminals_collapsed =
                             !app.task_section_terminals_collapsed;
-                    }
-                    TaskSectionKind::Handoffs => {
-                        app.task_section_handoffs_collapsed =
-                            !app.task_section_handoffs_collapsed;
                     }
                 }
                 // Getter (not just child refresh) syncs the collapsed flag into the view and notifies it, so the docked flex re-renders now.

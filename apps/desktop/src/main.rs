@@ -6,7 +6,7 @@
 
 mod app;
 mod assets;
-mod handoff;
+mod favorite_commands;
 mod heroicons;
 mod terminal;
 mod theme;

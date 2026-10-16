@@ -1293,7 +1293,6 @@ impl CoduxApp {
         }
         self.dispatch_ai_completion_notifications(&drained.events);
         self.refresh_dock_badge_for_ai_runtime_events(&drained.events, cx);
-        self.refresh_handoffs_for_drained_events(&drained.events, cx);
         self.ai_runtime_state_save_tick = self.ai_runtime_state_save_tick.wrapping_add(1);
         // Drained events are the authoritative "something changed" signal (the
         // supervisor only emits State on a real mutation, and a brand-new
@@ -1526,7 +1525,6 @@ impl CoduxApp {
 
         self.dispatch_ai_completion_notifications(&drained.events);
         self.refresh_dock_badge_for_ai_runtime_events(&drained.events, cx);
-        self.refresh_handoffs_for_drained_events(&drained.events, cx);
         let previous_project_states = self.state.ai_runtime_state.project_states.clone();
         self.state.ai_runtime_state = self
             .runtime_service
