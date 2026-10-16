@@ -249,7 +249,6 @@ impl CoduxApp {
                 );
                 app.refresh_ai_global_history_summary(cx);
                 app.refresh_window_runtime_data(cx);
-                app.maybe_prompt_github_star(cx);
             });
         })
         .detach();

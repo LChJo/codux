@@ -9,8 +9,6 @@
       "menu.file.open_folder": "Ordner öffnen…",
       "menu.help.developer_tools": "Entwicklerwerkzeuge",
       "menu.help.export_diagnostics": "Export Diagnostics…",
-      "menu.help.github": "GitHub",
-      "menu.help.github_issue": "GitHub-Problem",
       "menu.help.open_live_log": "Live-Protokoll offnen",
       "menu.help.open_runtime_log": "Laufzeitprotokoll offnen",
       "menu.help.website": "Offizielle Website",
@@ -39,8 +37,7 @@
       "menu.window.bring_all_to_front": "Alle nach vorne bringen",
       "menu.window.minimize": "Minimieren",
       "menu.window.zoom": "Zoomen",
-      "menu.workspace": "Arbeitsbereich",
-      "menu.app.star_github": "Gib mir einen Stern"
+      "menu.workspace": "Arbeitsbereich"
     },
     "en": {
       "menu.app.about_format": "About %@",
@@ -51,8 +48,6 @@
       "menu.file.open_folder": "Open Folder…",
       "menu.help.developer_tools": "Developer Tools",
       "menu.help.export_diagnostics": "Export Diagnostics…",
-      "menu.help.github": "GitHub",
-      "menu.help.github_issue": "GitHub Issue",
       "menu.help.open_live_log": "Open Live Log",
       "menu.help.open_runtime_log": "Open Runtime Log",
       "menu.help.website": "Official Website",
@@ -81,8 +76,7 @@
       "menu.window.bring_all_to_front": "Bring All to Front",
       "menu.window.minimize": "Minimize",
       "menu.window.zoom": "Zoom",
-      "menu.workspace": "Workspace",
-      "menu.app.star_github": "Give Me a Star"
+      "menu.workspace": "Workspace"
     },
     "es": {
       "menu.app.about_format": "Acerca de %@",
@@ -93,8 +87,6 @@
       "menu.file.open_folder": "Abrir carpeta…",
       "menu.help.developer_tools": "Herramientas de desarrollo",
       "menu.help.export_diagnostics": "Export Diagnostics…",
-      "menu.help.github": "GitHub",
-      "menu.help.github_issue": "Issue de GitHub",
       "menu.help.open_live_log": "Abrir registro en vivo",
       "menu.help.open_runtime_log": "Abrir registro de ejecucion",
       "menu.help.website": "Sitio web oficial",
@@ -123,8 +115,7 @@
       "menu.window.bring_all_to_front": "Traer todo al frente",
       "menu.window.minimize": "Minimizar",
       "menu.window.zoom": "Zoom",
-      "menu.workspace": "Espacio de trabajo",
-      "menu.app.star_github": "Dame una estrella"
+      "menu.workspace": "Espacio de trabajo"
     },
     "fr": {
       "menu.app.about_format": "À propos de %@",
@@ -135,8 +126,6 @@
       "menu.file.open_folder": "Ouvrir le dossier…",
       "menu.help.developer_tools": "Outils de développement",
       "menu.help.export_diagnostics": "Export Diagnostics…",
-      "menu.help.github": "GitHub",
-      "menu.help.github_issue": "Issue GitHub",
       "menu.help.open_live_log": "Ouvrir le journal live",
       "menu.help.open_runtime_log": "Ouvrir le journal d'execution",
       "menu.help.website": "Site officiel",
@@ -165,8 +154,7 @@
       "menu.window.bring_all_to_front": "Tout ramener au premier plan",
       "menu.window.minimize": "Réduire",
       "menu.window.zoom": "Zoom",
-      "menu.workspace": "Espace de travail",
-      "menu.app.star_github": "Donnez-moi une étoile"
+      "menu.workspace": "Espace de travail"
     },
     "ja": {
       "menu.app.about_format": "%@について",
@@ -177,8 +165,6 @@
       "menu.file.open_folder": "フォルダーを開く…",
       "menu.help.developer_tools": "開発者ツール",
       "menu.help.export_diagnostics": "Export Diagnostics…",
-      "menu.help.github": "GitHub",
-      "menu.help.github_issue": "GitHub の問題",
       "menu.help.open_live_log": "ライブログを開く",
       "menu.help.open_runtime_log": "実行ログを開く",
       "menu.help.website": "公式ウェブサイト",
@@ -207,8 +193,7 @@
       "menu.window.bring_all_to_front": "すべてを手前に移動",
       "menu.window.minimize": "しまう",
       "menu.window.zoom": "ズーム",
-      "menu.workspace": "ワークスペース",
-      "menu.app.star_github": "スターをください"
+      "menu.workspace": "ワークスペース"
     },
     "ko": {
       "menu.app.about_format": "%@ 소개",
@@ -219,8 +204,6 @@
       "menu.file.open_folder": "폴더 열기…",
       "menu.help.developer_tools": "개발자 도구",
       "menu.help.export_diagnostics": "Export Diagnostics…",
-      "menu.help.github": "GitHub",
-      "menu.help.github_issue": "GitHub 문제",
       "menu.help.open_live_log": "라이브 로그 열기",
       "menu.help.open_runtime_log": "런타임 로그 열기",
       "menu.help.website": "공식 홈페이지",
@@ -249,8 +232,7 @@
       "menu.window.bring_all_to_front": "모두 앞으로 가져오기",
       "menu.window.minimize": "최소화",
       "menu.window.zoom": "확대/축소",
-      "menu.workspace": "작업 공간",
-      "menu.app.star_github": "별을 주세요"
+      "menu.workspace": "작업 공간"
     },
     "pt-BR": {
       "menu.app.about_format": "Sobre %@",
@@ -261,8 +243,6 @@
       "menu.file.open_folder": "Abrir pasta…",
       "menu.help.developer_tools": "Ferramentas de desenvolvedor",
       "menu.help.export_diagnostics": "Export Diagnostics…",
-      "menu.help.github": "GitHub",
-      "menu.help.github_issue": "Issue do GitHub",
       "menu.help.open_live_log": "Abrir log ao vivo",
       "menu.help.open_runtime_log": "Abrir log de execucao",
       "menu.help.website": "Site oficial",
@@ -291,8 +271,7 @@
       "menu.window.bring_all_to_front": "Trazer tudo para frente",
       "menu.window.minimize": "Minimizar",
       "menu.window.zoom": "Zoom",
-      "menu.workspace": "Espaço de trabalho",
-      "menu.app.star_github": "Dê-me uma estrela"
+      "menu.workspace": "Espaço de trabalho"
     },
     "ru": {
       "menu.app.about_format": "О %@",
@@ -303,8 +282,6 @@
       "menu.file.open_folder": "Открыть папку…",
       "menu.help.developer_tools": "Инструменты разработчика",
       "menu.help.export_diagnostics": "Export Diagnostics…",
-      "menu.help.github": "GitHub",
-      "menu.help.github_issue": "GitHub Проблема",
       "menu.help.open_live_log": "Открыть live-журнал",
       "menu.help.open_runtime_log": "Открыть журнал выполнения",
       "menu.help.website": "Официальный сайт",
@@ -333,8 +310,7 @@
       "menu.window.bring_all_to_front": "Все окна вперед",
       "menu.window.minimize": "Свернуть",
       "menu.window.zoom": "Масштаб",
-      "menu.workspace": "Рабочая область",
-      "menu.app.star_github": "Поставьте мне звезду"
+      "menu.workspace": "Рабочая область"
     },
     "zh-Hans": {
       "menu.app.about_format": "关于 %@",
@@ -345,8 +321,6 @@
       "menu.file.open_folder": "打开文件夹…",
       "menu.help.developer_tools": "开发者工具",
       "menu.help.export_diagnostics": "导出诊断包…",
-      "menu.help.github": "GitHub",
-      "menu.help.github_issue": "GitHub Issue",
       "menu.help.open_live_log": "打开监听日志",
       "menu.help.open_runtime_log": "打开运行日志",
       "menu.help.website": "官方网站",
@@ -375,8 +349,7 @@
       "menu.window.bring_all_to_front": "全部移到前面",
       "menu.window.minimize": "最小化",
       "menu.window.zoom": "缩放",
-      "menu.workspace": "工作区",
-      "menu.app.star_github": "为我点赞"
+      "menu.workspace": "工作区"
     },
     "zh-Hant": {
       "menu.app.about_format": "關於 %@",
@@ -387,8 +360,6 @@
       "menu.file.open_folder": "開啟資料夾...",
       "menu.help.developer_tools": "開發者工具",
       "menu.help.export_diagnostics": "Export Diagnostics…",
-      "menu.help.github": "GitHub",
-      "menu.help.github_issue": "GitHub 問題",
       "menu.help.open_live_log": "打開監聽日誌",
       "menu.help.open_runtime_log": "打開運行日誌",
       "menu.help.website": "官方網站",
@@ -417,8 +388,7 @@
       "menu.window.bring_all_to_front": "全部移到最前",
       "menu.window.minimize": "最小化",
       "menu.window.zoom": "縮放",
-      "menu.workspace": "工作區",
-      "menu.app.star_github": "為我點讚"
+      "menu.workspace": "工作區"
     }
   }
 }

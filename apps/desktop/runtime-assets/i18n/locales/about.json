@@ -19,11 +19,7 @@
       "about.update.latest": "You are up to date",
       "about.install_update": "Install Update",
       "about.diagnostics.export": "Export Diagnostics",
-      "about.diagnostics.export.message": "Choose where to save the diagnostics report.",
-      "star.title": "Gefällt dir Codux?",
-      "star.body": "Wenn Codux dir hilft, unterstützt ein Stern auf GitHub das Projekt sehr. Repository zum Markieren öffnen?",
-      "star.confirm": "Mit Stern markieren",
-      "star.later": "Vielleicht später"
+      "about.diagnostics.export.message": "Choose where to save the diagnostics report."
     },
     "en": {
       "about.agreement": "Agreement",
@@ -44,11 +40,7 @@
       "about.update.latest": "You are up to date",
       "about.install_update": "Install Update",
       "about.diagnostics.export": "Export Diagnostics",
-      "about.diagnostics.export.message": "Choose where to save the diagnostics report.",
-      "star.title": "Enjoying Codux?",
-      "star.body": "If Codux is useful to you, a GitHub star really helps the project grow. Open the repository to star it?",
-      "star.confirm": "Star on GitHub",
-      "star.later": "Maybe later"
+      "about.diagnostics.export.message": "Choose where to save the diagnostics report."
     },
     "es": {
       "about.agreement": "Acuerdo",
@@ -69,11 +61,7 @@
       "about.update.latest": "You are up to date",
       "about.install_update": "Install Update",
       "about.diagnostics.export": "Export Diagnostics",
-      "about.diagnostics.export.message": "Choose where to save the diagnostics report.",
-      "star.title": "¿Te gusta Codux?",
-      "star.body": "Si Codux te resulta útil, una estrella en GitHub ayuda mucho al proyecto. ¿Abrir el repositorio para darle una estrella?",
-      "star.confirm": "Dar estrella",
-      "star.later": "Quizás más tarde"
+      "about.diagnostics.export.message": "Choose where to save the diagnostics report."
     },
     "fr": {
       "about.agreement": "Accord",
@@ -94,11 +82,7 @@
       "about.update.latest": "You are up to date",
       "about.install_update": "Install Update",
       "about.diagnostics.export": "Export Diagnostics",
-      "about.diagnostics.export.message": "Choose where to save the diagnostics report.",
-      "star.title": "Vous aimez Codux ?",
-      "star.body": "Si Codux vous est utile, une étoile sur GitHub aide beaucoup le projet. Ouvrir le dépôt pour le mettre en favori ?",
-      "star.confirm": "Mettre une étoile",
-      "star.later": "Plus tard"
+      "about.diagnostics.export.message": "Choose where to save the diagnostics report."
     },
     "ja": {
       "about.agreement": "合意",
@@ -119,11 +103,7 @@
       "about.update.latest": "You are up to date",
       "about.install_update": "Install Update",
       "about.diagnostics.export": "Export Diagnostics",
-      "about.diagnostics.export.message": "Choose where to save the diagnostics report.",
-      "star.title": "Codux は役に立っていますか？",
-      "star.body": "Codux が役立っているなら、GitHub のスターがプロジェクトの成長に大きく役立ちます。リポジトリを開いてスターを付けますか？",
-      "star.confirm": "スターを付ける",
-      "star.later": "あとで"
+      "about.diagnostics.export.message": "Choose where to save the diagnostics report."
     },
     "ko": {
       "about.agreement": "합의",
@@ -144,11 +124,7 @@
       "about.update.latest": "You are up to date",
       "about.install_update": "Install Update",
       "about.diagnostics.export": "Export Diagnostics",
-      "about.diagnostics.export.message": "Choose where to save the diagnostics report.",
-      "star.title": "Codux가 마음에 드시나요?",
-      "star.body": "Codux가 유용하다면 GitHub 별점이 프로젝트 성장에 큰 도움이 됩니다. 저장소를 열어 별을 줄까요?",
-      "star.confirm": "별 주기",
-      "star.later": "나중에"
+      "about.diagnostics.export.message": "Choose where to save the diagnostics report."
     },
     "pt-BR": {
       "about.agreement": "Acordo",
@@ -169,11 +145,7 @@
       "about.update.latest": "You are up to date",
       "about.install_update": "Install Update",
       "about.diagnostics.export": "Export Diagnostics",
-      "about.diagnostics.export.message": "Choose where to save the diagnostics report.",
-      "star.title": "Curtindo o Codux?",
-      "star.body": "Se o Codux é útil para você, uma estrela no GitHub ajuda muito o projeto. Abrir o repositório para dar a estrela?",
-      "star.confirm": "Dar estrela",
-      "star.later": "Mais tarde"
+      "about.diagnostics.export.message": "Choose where to save the diagnostics report."
     },
     "ru": {
       "about.agreement": "Соглашение",
@@ -194,11 +166,7 @@
       "about.update.latest": "You are up to date",
       "about.install_update": "Install Update",
       "about.diagnostics.export": "Export Diagnostics",
-      "about.diagnostics.export.message": "Choose where to save the diagnostics report.",
-      "star.title": "Нравится Codux?",
-      "star.body": "Если Codux вам полезен, звезда на GitHub очень помогает проекту. Открыть репозиторий, чтобы поставить звезду?",
-      "star.confirm": "Поставить звезду",
-      "star.later": "Позже"
+      "about.diagnostics.export.message": "Choose where to save the diagnostics report."
     },
     "zh-Hans": {
       "about.agreement": "用户协议",
@@ -219,11 +187,7 @@
       "about.update.latest": "当前已是最新版本",
       "about.install_update": "安装更新",
       "about.diagnostics.export": "导出诊断",
-      "about.diagnostics.export.message": "选择诊断报告保存位置。",
-      "star.title": "喜欢 Codux 吗？",
-      "star.body": "如果 Codux 对你有帮助，在 GitHub 上点个 Star 会对项目成长很有帮助。现在打开仓库去点赞吗？",
-      "star.confirm": "去点赞",
-      "star.later": "以后再说"
+      "about.diagnostics.export.message": "选择诊断报告保存位置。"
     },
     "zh-Hant": {
       "about.agreement": "協定",
@@ -244,11 +208,7 @@
       "about.update.latest": "目前已是最新版本",
       "about.install_update": "安裝更新",
       "about.diagnostics.export": "匯出診斷",
-      "about.diagnostics.export.message": "選擇診斷報告儲存位置。",
-      "star.title": "喜歡 Codux 嗎？",
-      "star.body": "如果 Codux 對你有幫助，在 GitHub 上點個 Star 會對專案成長很有幫助。現在開啟儲存庫去點讚嗎？",
-      "star.confirm": "去點讚",
-      "star.later": "以後再說"
+      "about.diagnostics.export.message": "選擇診斷報告儲存位置。"
     }
   }
 }

@@ -119,13 +119,6 @@ impl RuntimeService {
         let ai_runtime_state = self.ai_runtime.runtime_state_snapshot();
         runtime_dock_badge_count(settings.shows_dock_badge, &ai_runtime_state)
     }
-    pub fn app_milestones(&self) -> crate::app_milestones::AppMilestones {
-        crate::app_milestones::load_or_seed(&self.support_dir)
-    }
-
-    pub fn mark_star_prompt_shown(&self) -> crate::app_milestones::AppMilestones {
-        crate::app_milestones::mark_star_prompt_shown(&self.support_dir)
-    }
 }
 
 fn runtime_attention_count(snapshot: &AIRuntimeStateSnapshot) -> usize {

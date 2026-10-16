@@ -14,7 +14,6 @@
   <a href="https://github.com/duxweb/codux/releases"><img src="https://img.shields.io/github/downloads/duxweb/codux/total?label=downloads&color=brightgreen" alt="总下载量"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-8250df" alt="支持平台">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/duxweb/codux?color=orange" alt="开源协议"></a>
-  <a href="https://github.com/duxweb/codux/stargazers"><img src="https://img.shields.io/github/stars/duxweb/codux?color=yellow" alt="GitHub stars"></a>
 </p>
 
 <p align="center">
@@ -273,18 +272,6 @@ Codux 认可并支持 [LINUX DO](https://linux.do) 社区。
     <img src="https://readme-contribs.as93.net/contributors/duxweb/codux" alt="Codux 贡献者">
   </a>
 </p>
-
-## GitHub Star 趋势
-
-如果 Codux 救回过你哪次跑了一半的 agent 任务，点个 ⭐ 能让更多人找到它。
-
-<a href="https://www.star-history.com/?repos=duxweb%2Fcodux&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=duxweb/codux&type=date&theme=dark&legend=top-left&sealed_token=hYXmcj_MIXkk4COkJV3llI2Vncn3-XEuwNNDVBZSDAnWmo3FHKZPS3sdLNsV5xv2SankP2QgPa7CX8vr6TvHzGolQTRk7sTLnTIM3sFHCIvUFOR_QPLWsA" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=duxweb/codux&type=date&legend=top-left&sealed_token=hYXmcj_MIXkk4COkJV3llI2Vncn3-XEuwNNDVBZSDAnWmo3FHKZPS3sdLNsV5xv2SankP2QgPa7CX8vr6TvHzGolQTRk7sTLnTIM3sFHCIvUFOR_QPLWsA" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=duxweb/codux&type=date&legend=top-left&sealed_token=hYXmcj_MIXkk4COkJV3llI2Vncn3-XEuwNNDVBZSDAnWmo3FHKZPS3sdLNsV5xv2SankP2QgPa7CX8vr6TvHzGolQTRk7sTLnTIM3sFHCIvUFOR_QPLWsA" />
- </picture>
-</a>
 
 <p align="center">
   本来想叫 dmux，可惜名字被占了，那就叫 Codux 吧——中文谐音刚好是「酷 Dux」。

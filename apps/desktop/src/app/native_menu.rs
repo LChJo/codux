@@ -13,7 +13,6 @@ actions!(
         OpenRuntimeLog,
         OpenLiveLog,
         OpenWebsite,
-        OpenGithub,
         HideCodux,
         HideOthers,
         ShowAll,
@@ -91,7 +90,6 @@ struct MenuLabels {
     runtime_log: String,
     live_log: String,
     website: String,
-    github: String,
 }
 
 impl MenuLabels {
@@ -147,7 +145,6 @@ impl MenuLabels {
             runtime_log: tr("menu.help.open_runtime_log", "Open Runtime Log"),
             live_log: tr("menu.help.open_live_log", "Open Live Log"),
             website: tr("menu.help.website", "Official Website"),
-            github: tr("menu.help.github", "GitHub"),
         }
     }
 }
@@ -252,7 +249,6 @@ pub(crate) fn codux_menus(language: &str) -> Vec<Menu> {
                 MenuItem::action(labels.live_log, OpenLiveLog),
                 MenuItem::separator(),
                 MenuItem::action(labels.website, OpenWebsite),
-                MenuItem::action(labels.github, OpenGithub),
             ],
         },
     ]

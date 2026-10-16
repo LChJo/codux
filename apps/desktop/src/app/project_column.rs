@@ -512,7 +512,6 @@ fn project_more_button(
             let live_log_entity = menu_entity.clone();
             let open_folder_entity = menu_entity.clone();
             let website_entity = menu_entity.clone();
-            let github_entity = menu_entity.clone();
             let entries = project_help_menu_entries(&language);
             entries.into_iter().fold(
                 menu.min_w(px(256.0)).max_w(px(360.0)),
@@ -531,7 +530,6 @@ fn project_more_button(
                             "help:live-log" => live_log_entity.clone(),
                             "help:open-folder" => open_folder_entity.clone(),
                             "help:website" => website_entity.clone(),
-                            "help:github" => github_entity.clone(),
                             _ => fallback_entity.clone(),
                         };
                         menu.item(PopupMenuItem::new(label).icon(icon).on_click(
@@ -589,11 +587,6 @@ fn project_help_menu_entries(language: &str) -> Vec<ProjectHelpMenuEntry> {
             icon: HeroIconName::ArrowPath,
             action_id: "help:check-updates",
         },
-        Item {
-            label: label("menu.app.star_github", "Star on GitHub"),
-            icon: HeroIconName::Star,
-            action_id: "help:star-github",
-        },
         Separator,
         Item {
             label: label("menu.help.export_diagnostics", "Export Diagnostics..."),
@@ -615,11 +608,6 @@ fn project_help_menu_entries(language: &str) -> Vec<ProjectHelpMenuEntry> {
             label: label("menu.help.website", "Official Website"),
             icon: HeroIconName::ArrowTopRightOnSquare,
             action_id: "help:website",
-        },
-        Item {
-            label: label("menu.help.github", "GitHub"),
-            icon: HeroIconName::ArrowPathRoundedSquare,
-            action_id: "help:github",
         },
     ]
 }

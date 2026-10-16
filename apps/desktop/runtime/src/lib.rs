@@ -19,7 +19,6 @@ pub use codux_runtime_core::project;
 pub mod app_commands;
 pub mod app_icon;
 pub mod app_info;
-pub mod app_milestones;
 pub mod async_runtime;
 pub mod background_queue;
 pub mod config;

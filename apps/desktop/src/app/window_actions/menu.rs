@@ -58,12 +58,6 @@ impl CoduxApp {
             }
         );
         register!(
-            native_menu::OpenGithub,
-            |app: &mut CoduxApp, _window: &mut Window, cx: &mut Context<CoduxApp>| {
-                app.open_codux_github(cx)
-            }
-        );
-        register!(
             native_menu::HideCodux,
             |_app: &mut CoduxApp, _window: &mut Window, cx: &mut Context<CoduxApp>| { cx.hide() }
         );

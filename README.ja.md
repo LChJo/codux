@@ -14,7 +14,6 @@
   <a href="https://github.com/duxweb/codux/releases"><img src="https://img.shields.io/github/downloads/duxweb/codux/total?label=downloads&color=brightgreen" alt="Total downloads"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-8250df" alt="Platform">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/duxweb/codux?color=orange" alt="License"></a>
-  <a href="https://github.com/duxweb/codux/stargazers"><img src="https://img.shields.io/github/stars/duxweb/codux?color=yellow" alt="GitHub stars"></a>
 </p>
 
 <p align="center">
@@ -273,18 +272,6 @@ Codux にコード、issue、テスト、フィードバックで貢献してく
     <img src="https://readme-contribs.as93.net/contributors/duxweb/codux" alt="Codux contributors">
   </a>
 </p>
-
-## GitHub Star Trend
-
-Codux が長時間 agent 実行を救ったことがあるなら、⭐ がより多くの人に見つけてもらう助けになります。
-
-<a href="https://www.star-history.com/?repos=duxweb%2Fcodux&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=duxweb/codux&type=date&theme=dark&legend=top-left&sealed_token=hYXmcj_MIXkk4COkJV3llI2Vncn3-XEuwNNDVBZSDAnWmo3FHKZPS3sdLNsV5xv2SankP2QgPa7CX8vr6TvHzGolQTRk7sTLnTIM3sFHCIvUFOR_QPLWsA" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=duxweb/codux&type=date&legend=top-left&sealed_token=hYXmcj_MIXkk4COkJV3llI2Vncn3-XEuwNNDVBZSDAnWmo3FHKZPS3sdLNsV5xv2SankP2QgPa7CX8vr6TvHzGolQTRk7sTLnTIM3sFHCIvUFOR_QPLWsA" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=duxweb/codux&type=date&legend=top-left&sealed_token=hYXmcj_MIXkk4COkJV3llI2Vncn3-XEuwNNDVBZSDAnWmo3FHKZPS3sdLNsV5xv2SankP2QgPa7CX8vr6TvHzGolQTRk7sTLnTIM3sFHCIvUFOR_QPLWsA" />
- </picture>
-</a>
 
 <p align="center">
   本当は dmux という名前にしたかったのですが、すでに使われていました。だから Codux になりました。中国語では「Cool Dux」のように聞こえます。

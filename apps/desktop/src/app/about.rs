@@ -3,18 +3,11 @@ use crate::app::app_state::UpdateDialogPhase;
 use crate::app::window_actions::{AuxiliaryWindowSlot, AuxiliaryWindowSpec};
 use codux_runtime::{
     app_info::{DiagnosticsExportRequest, UpdateInstallProgressEvent},
-    dialog::{
-        DialogFilter, LocalizedAlertDialogRequest, LocalizedConfirmDialogRequest,
-        LocalizedSaveDialogRequest,
-    },
+    dialog::{DialogFilter, LocalizedAlertDialogRequest, LocalizedSaveDialogRequest},
 };
 use gpui_component::{Size, progress::Progress};
 
-/// Days the app must have been installed before the GitHub-star nudge auto-pops.
-const STAR_PROMPT_AFTER_DAYS: i64 = 3;
-
 const CODUX_WEBSITE_URL: &str = "https://codux.dux.cn";
-const CODUX_GITHUB_URL: &str = "https://github.com/duxweb/codux";
 const CODUX_IDENTIFIER: &str = "com.duxweb.codux";
 const UPDATE_DIALOG_WIDTH: f32 = 440.0;
 const UPDATE_DIALOG_DEFAULT_HEIGHT: f32 = 210.0;
@@ -199,60 +192,6 @@ impl CoduxApp {
             Err(error) => self.status_message = format!("failed to open Codux website: {error}"),
         }
         self.invalidate_status_bar(cx);
-    }
-
-    pub(in crate::app) fn open_codux_github(&mut self, cx: &mut Context<Self>) {
-        match self.runtime_service.open_url(CODUX_GITHUB_URL) {
-            Ok(()) => self.status_message = "Codux GitHub opened".to_string(),
-            Err(error) => self.status_message = format!("failed to open Codux GitHub: {error}"),
-        }
-        self.invalidate_status_bar(cx);
-    }
-
-    /// Show the "star us on GitHub" nudge (native confirm). Always shows when
-    /// invoked directly (e.g. from the Help menu) and records that the nudge has
-    /// been seen so the automatic one-time popup won't fire again.
-    pub(in crate::app) fn prompt_github_star(&mut self, cx: &mut Context<Self>) {
-        let language = self.state.settings.language.clone();
-        let service = self.runtime_service.clone();
-        let _ = service.mark_star_prompt_shown();
-        self.status_message = "github star prompt opened".to_string();
-        cx.spawn(async move |_: gpui::WeakEntity<Self>, _cx| {
-            let confirmed = service
-                .localized_confirm_dialog(LocalizedConfirmDialogRequest {
-                    title: translate(&language, "star.title", "Enjoying Codux?"),
-                    message: translate(
-                        &language,
-                        "star.body",
-                        "If Codux is useful to you, a GitHub star really helps the project grow. Open the repository to star it?",
-                    ),
-                    confirm_label: translate(&language, "star.confirm", "Star on GitHub"),
-                    cancel_label: translate(&language, "star.later", "Maybe later"),
-                })
-                .unwrap_or(false);
-            if confirmed {
-                let _ = service.open_url(CODUX_GITHUB_URL);
-            }
-        })
-        .detach();
-        self.invalidate_status_bar(cx);
-    }
-
-    /// Auto-trigger for the star nudge: fires once, only after the app has been
-    /// installed for a few days and only if it hasn't been shown yet.
-    pub(in crate::app) fn maybe_prompt_github_star(&mut self, cx: &mut Context<Self>) {
-        let milestones = self.runtime_service.app_milestones();
-        if milestones.star_prompt_shown {
-            return;
-        }
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_secs() as i64)
-            .unwrap_or(0);
-        if (now - milestones.first_launch_at) / 86_400 < STAR_PROMPT_AFTER_DAYS {
-            return;
-        }
-        self.prompt_github_star(cx);
     }
 
     pub(in crate::app) fn open_user_agreement(&mut self, cx: &mut Context<Self>) {
