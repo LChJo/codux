@@ -31,6 +31,8 @@ impl TerminalWorkspaceSnapshot {
 
 #[derive(Clone)]
 pub(super) struct TerminalPaneViewSnapshot {
+    pub(super) title: String,
+    pub(super) active: bool,
     pub(super) terminal_id: Option<String>,
     pub(super) view: Option<gpui::Entity<TerminalView>>,
     pub(super) search_open: bool,
@@ -38,7 +40,11 @@ pub(super) struct TerminalPaneViewSnapshot {
 
 impl PartialEq for TerminalPaneViewSnapshot {
     fn eq(&self, other: &Self) -> bool {
-        if self.terminal_id != other.terminal_id || self.search_open != other.search_open {
+        if self.terminal_id != other.terminal_id
+            || self.search_open != other.search_open
+            || self.title != other.title
+            || self.active != other.active
+        {
             return false;
         }
         match (&self.view, &other.view) {
@@ -186,8 +192,8 @@ impl Render for TerminalWorkspaceView {
                 let view = cx.entity();
                 move |bounds, _, cx| {
                     view.update(cx, |view, cx| {
-                        let height = bounds.size.height;
-                        let width = bounds.size.width;
+                        let height = (bounds.size.height - px(24.0)).max(px(1.0));
+                        let width = (bounds.size.width - px(24.0)).max(px(1.0));
                         let changed = view
                             .container_height
                             .is_none_or(|recorded| (recorded - height).abs() > px(1.0))
@@ -211,6 +217,7 @@ impl Render for TerminalWorkspaceView {
                     .w_full()
                     .relative()
                     .overflow_hidden()
+                    .p_3()
                     .child(main),
             )
     }

@@ -11,7 +11,7 @@ fn summary_from_raw(raw: &Map<String, Value>) -> SettingsSummary {
 
     SettingsSummary {
         language: string_value(raw, "language", defaults.language),
-        theme: string_value(raw, "theme", defaults.theme),
+        theme: sanitize_terminal_theme(&string_value(raw, "theme", defaults.theme)),
         theme_color: raw
             .get("themeColor")
             .and_then(Value::as_str)

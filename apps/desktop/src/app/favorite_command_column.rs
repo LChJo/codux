@@ -165,6 +165,9 @@ impl Render for FavoriteCommandListView {
         if collapsed {
             return div().w_full().child(header).into_any_element();
         }
+        if count == 0 && self.store.is_ok() {
+            return div().w_full().child(header).into_any_element();
+        }
 
         if self.search.is_none() {
             let input = cx.new(|cx| {
@@ -219,22 +222,9 @@ impl Render for FavoriteCommandListView {
                     .px_2()
                     .pb_1()
                     .flex_none()
-                    .child(Input::new(search).small()),
+                    .child(Input::new(search).small().w_full()),
             )
             .child(div().flex_1().min_h_0().overflow_hidden().child(body))
-            .child(
-                div()
-                    .px_2()
-                    .py_1()
-                    .flex_none()
-                    .text_xs()
-                    .truncate()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(tr(
-                        "favorite.drag_hint",
-                        "Drag into a conversation · Double-click to insert",
-                    )),
-            )
             .into_any_element()
     }
 }

@@ -521,8 +521,8 @@ fn terminal_split_divider(child: AnyElement, divider: TerminalSplitDivider) -> A
         .child(child);
     match divider {
         TerminalSplitDivider::None => element,
-        TerminalSplitDivider::Left => element.border_l_1().border_color(color(theme::BORDER_SOFT)),
-        TerminalSplitDivider::Top => element.border_t_1().border_color(color(theme::BORDER_SOFT)),
+        TerminalSplitDivider::Left => element.pl(px(8.0)),
+        TerminalSplitDivider::Top => element.pt(px(8.0)),
     }
     .into_any_element()
 }
@@ -562,8 +562,7 @@ fn terminal_pane(
     // The search bar floats over the same top-right corner as the controls.
     let search_open = slot.search_open;
 
-    // Flat pane: hairline divider against the previous column, controls float
-    // over the terminal's top-right corner and appear on hover.
+    // A dedicated chrome row keeps terminal output and controls from overlapping.
     div()
         .id(SharedString::from(format!("terminal-pane-{index}")))
         .relative()
@@ -576,7 +575,40 @@ fn terminal_pane(
         .min_w_0()
         .min_h_0()
         .overflow_hidden()
+        .rounded(px(8.0))
+        .border_1()
+        .border_color(if slot.active {
+            cx.theme().primary.opacity(0.38)
+        } else {
+            cx.theme().border
+        })
         .bg(theme::terminal_fill(color(theme::BG_TERMINAL)))
+        .child(
+            div()
+                .h(px(34.0))
+                .flex_shrink_0()
+                .flex()
+                .items_center()
+                .gap_2()
+                .pl_3()
+                .pr(px(158.0))
+                .bg(theme::vibrancy(color(theme::BG_HEADER)))
+                .border_b_1()
+                .border_color(cx.theme().border)
+                .child(
+                    Icon::new(HeroIconName::CommandLine)
+                        .size_3p5()
+                        .text_color(cx.theme().muted_foreground),
+                )
+                .child(
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .text_size(px(12.0))
+                        .text_color(cx.theme().foreground)
+                        .child(slot.title),
+                ),
+        )
         .child(
             div()
                 .flex_1()
@@ -605,15 +637,14 @@ fn terminal_pane(
             pane.child(
                 div()
                     .absolute()
-                    .top(px(6.0))
-                    .right(px(8.0))
+                    .top(px(2.0))
+                    .right(px(5.0))
                     .flex()
                     .items_center()
                     .gap_1()
                     .rounded(px(6.0))
                     .p(px(2.0))
-                    .bg(theme::elevate(color(theme::BG_TERMINAL), 0.08).opacity(0.92))
-                    .opacity(0.0)
+                    .opacity(0.65)
                     .group_hover("terminal-pane", |style| style.opacity(1.0))
                     // The popover overlay lives outside the group, so hovering the
                     // menu would fade the controls out — pin them while it's open.

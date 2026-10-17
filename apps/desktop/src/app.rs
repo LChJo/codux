@@ -170,8 +170,8 @@ pub(crate) const MAIN_WINDOW_DEFAULT_HEIGHT: f32 = 820.0;
 pub(crate) const MAIN_WINDOW_MIN_WIDTH: f32 = 1240.0;
 pub(crate) const MAIN_WINDOW_MIN_HEIGHT: f32 = 640.0;
 pub(crate) const PROJECT_COLUMN_COLLAPSED_WIDTH: f32 = 80.0;
-pub(crate) const PROJECT_COLUMN_EXPANDED_WIDTH: f32 = 232.0;
-pub(crate) const TASK_COLUMN_FIXED_WIDTH: f32 = 240.0;
+pub(crate) const PROJECT_COLUMN_EXPANDED_WIDTH: f32 = 200.0;
+pub(crate) const TASK_COLUMN_FIXED_WIDTH: f32 = 208.0;
 pub(crate) const ASSISTANT_PANEL_WIDTH: f32 = 320.0;
 
 use self::{

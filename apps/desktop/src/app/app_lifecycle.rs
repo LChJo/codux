@@ -432,7 +432,7 @@ impl CoduxApp {
             stats_time_range: StatsTimeRange::ThirtyDays,
             workspace_split: None,
             assistant_panel: None,
-            project_column_collapsed: true,
+            project_column_collapsed: false,
             task_column_collapsed: false,
             task_section_terminals_collapsed: false,
             task_section_favorites_collapsed: false,

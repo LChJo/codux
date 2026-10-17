@@ -1,4 +1,8 @@
 pub mod app_settings;
+mod theme_catalog;
+pub use theme_catalog::{
+    TERMINAL_THEMES, TerminalThemeGroup, TerminalThemeOption, canonical_terminal_theme,
+};
 
 use crate::config::ConfigStore;
 use crate::llm::{self, LLMProviderTestResult};

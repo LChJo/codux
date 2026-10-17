@@ -17,35 +17,11 @@ fn sanitize_file_open_default(value: &str) -> String {
 }
 
 fn sanitize_terminal_theme(value: &str) -> String {
-    let normalized = normalize_appearance_name(value);
-    terminal_theme_options()
-        .iter()
-        .copied()
-        .find(|theme| normalize_appearance_name(theme) == normalized)
-        .unwrap_or("Auto")
-        .to_string()
+    canonical_terminal_theme(value).to_string()
 }
 
-fn terminal_theme_options() -> &'static [&'static str] {
-    &[
-        "Auto",
-        "Codux Dark",
-        "Deep Ocean",
-        "Arctic Night",
-        "Forest Night",
-        "Ember",
-        "Amethyst Dusk",
-        "Rose Noir",
-        "Carbon",
-        "Codux Light",
-        "Glacier",
-        "Morning Mist",
-        "Matcha",
-        "Ivory",
-        "Lavender",
-        "Rosewater",
-        "Sandstone",
-    ]
+fn terminal_theme_options() -> Vec<&'static str> {
+    TERMINAL_THEMES.iter().map(|theme| theme.name).collect()
 }
 
 pub(super) fn sanitize_terminal_font_family(value: &str) -> String {

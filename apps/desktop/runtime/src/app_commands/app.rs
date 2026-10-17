@@ -171,11 +171,12 @@ mod tests {
         let store = AppSettingsStore::from_support_dir(support_dir.clone());
         let mut settings = app_settings_get(&store);
         settings.language = "en".to_string();
-        settings.theme = "dark".to_string();
+        settings.theme = "Glacier".to_string();
 
         let saved = app_settings_set(&store, settings).expect("save settings");
         assert_eq!(saved.language, "en");
-        assert_eq!(store.reload_snapshot().theme, "dark");
+        assert_eq!(saved.theme, "Paper Ink");
+        assert_eq!(store.reload_snapshot().theme, "Paper Ink");
 
         let bundle = i18n_bundle_get();
         assert_eq!(bundle.source_language, "en");

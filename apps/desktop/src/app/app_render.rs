@@ -327,6 +327,7 @@ impl Render for CoduxApp {
         let root = div()
             .relative()
             .size_full()
+            .text_size(px(13.0))
             .flex()
             .flex_col()
             .text_color(color(theme::TEXT))

@@ -31,7 +31,7 @@ pub(super) fn theme_preview_grid(
                     theme_preview_button(value, label, selected == value, language, cx)
                 })
                 .collect(),
-            5,
+            4,
             px(10.0),
         ))
         .into_any_element()
@@ -44,7 +44,7 @@ pub(super) fn theme_preview_button(
     language: &str,
     cx: &mut Context<CoduxApp>,
 ) -> AnyElement {
-    let preview = terminal_theme_preview(value);
+    let preview = theme::terminal_theme_palette_for_appearance(value, cx.window_appearance());
     let label = if value == "Auto" {
         settings_text(language, "settings.theme.system", label)
     } else {
@@ -58,7 +58,7 @@ pub(super) fn theme_preview_button(
             .relative()
             .w_full()
             .min_w(px(112.0))
-            .h(px(50.0))
+            .h(px(106.0))
             .rounded(px(8.0))
             .border_1()
             .border_color(color(if selected {
@@ -70,30 +70,71 @@ pub(super) fn theme_preview_button(
             .hover(|style| style.border_color(color(theme::BORDER)))
             .child(
                 div()
-                    .p(px(9.0))
+                    .p(px(10.0))
                     .flex()
                     .flex_col()
-                    .gap(px(5.0))
+                    .gap(px(3.0))
+                    .font_family(cx.theme().mono_font_family.clone())
+                    .text_size(px(11.0))
+                    .line_height(px(14.0))
+                    .text_color(theme::fixed_color(preview.foreground))
                     .child(
                         div()
-                            .h(px(3.0))
-                            .w(px(20.0))
-                            .rounded_full()
-                            .bg(theme::fixed_color(preview.muted_foreground)),
+                            .flex()
+                            .gap(px(5.0))
+                            .child(
+                                div()
+                                    .text_color(theme::fixed_color(preview.blue))
+                                    .child("~/codux"),
+                            )
+                            .child("$"),
                     )
                     .child(
                         div()
-                            .h(px(3.0))
-                            .w(px(46.0))
-                            .rounded(px(1.0))
-                            .bg(theme::fixed_color(preview.foreground)),
+                            .text_color(theme::fixed_color(preview.green))
+                            .child("+ added"),
                     )
                     .child(
                         div()
-                            .h(px(8.0))
-                            .w(px(58.0))
-                            .rounded(px(2.0))
-                            .bg(theme::fixed_color(preview.selection)),
+                            .text_color(theme::fixed_color(preview.red))
+                            .child("- removed"),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .child(
+                                div()
+                                    .px(px(3.0))
+                                    .rounded(px(2.0))
+                                    .bg(theme::fixed_color(preview.selection))
+                                    .child("main"),
+                            )
+                            .child(
+                                div()
+                                    .ml(px(5.0))
+                                    .text_color(theme::fixed_color(preview.muted_foreground))
+                                    .child("# ok"),
+                            ),
+                    )
+                    .child(
+                        div().flex().gap(px(3.0)).mt(px(2.0)).children(
+                            [
+                                preview.red,
+                                preview.green,
+                                preview.yellow,
+                                preview.blue,
+                                preview.magenta,
+                                preview.cyan,
+                            ]
+                            .into_iter()
+                            .map(|hex| {
+                                div()
+                                    .w(px(10.0))
+                                    .h(px(4.0))
+                                    .rounded(px(1.0))
+                                    .bg(theme::fixed_color(hex))
+                            }),
+                        ),
                     ),
             )
             .when(selected, |this| this.child(settings_checkmark(true)))

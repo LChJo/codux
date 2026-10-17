@@ -29,9 +29,7 @@ pub(super) fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
     }
     settings.statistics_mode = sanitize_statistics_mode(&settings.statistics_mode);
     settings.file_open_default = sanitize_file_open_default(&settings.file_open_default);
-    if settings.theme.trim().is_empty() {
-        settings.theme = default_theme();
-    }
+    settings.theme = crate::settings::canonical_terminal_theme(&settings.theme).to_string();
     if settings.theme_color.trim().is_empty() {
         settings.theme_color = default_theme_color();
     }

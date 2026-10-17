@@ -212,7 +212,7 @@ fn status_bar_content(
     cx: &mut Context<StatusBarView>,
 ) -> impl IntoElement {
     div()
-        .h(px(28.0))
+        .h(px(25.0))
         .w_full()
         .min_w_0()
         .px_2()
@@ -258,33 +258,54 @@ fn status_bar_content(
                 .flex_shrink_0()
                 .items_center()
                 .gap_1()
-                .child(status_ai_segment(
-                    app_entity.clone(),
-                    snapshot.ai_index_count,
-                    snapshot.ai_error.as_deref(),
-                    &snapshot.language,
-                    cx,
-                ))
-                .child(status_separator())
-                .child(status_memory_segment(
-                    app_entity.clone(),
-                    snapshot.memory_queued,
-                    snapshot.memory_running,
-                    snapshot.memory_failed,
-                    snapshot.memory_error.as_deref(),
-                    &snapshot.language,
-                    cx,
-                ))
-                .child(status_separator())
-                .child(status_remote_segment(
-                    app_entity.clone(),
-                    &snapshot.remote_status,
-                    snapshot.remote_devices,
-                    snapshot.remote_online_devices,
-                    &snapshot.language,
-                    cx,
-                ))
-                .child(status_separator())
+                .when(
+                    snapshot.developer_hud
+                        || snapshot.ai_index_count > 0
+                        || snapshot.ai_error.is_some(),
+                    |this| {
+                        this.child(status_ai_segment(
+                            app_entity.clone(),
+                            snapshot.ai_index_count,
+                            snapshot.ai_error.as_deref(),
+                            &snapshot.language,
+                            cx,
+                        ))
+                        .child(status_separator())
+                    },
+                )
+                .when(
+                    snapshot.developer_hud
+                        || snapshot.memory_queued > 0
+                        || snapshot.memory_running > 0
+                        || snapshot.memory_failed > 0
+                        || snapshot.memory_error.is_some(),
+                    |this| {
+                        this.child(status_memory_segment(
+                            app_entity.clone(),
+                            snapshot.memory_queued,
+                            snapshot.memory_running,
+                            snapshot.memory_failed,
+                            snapshot.memory_error.as_deref(),
+                            &snapshot.language,
+                            cx,
+                        ))
+                        .child(status_separator())
+                    },
+                )
+                .when(
+                    snapshot.developer_hud || snapshot.remote_devices > 0,
+                    |this| {
+                        this.child(status_remote_segment(
+                            app_entity.clone(),
+                            &snapshot.remote_status,
+                            snapshot.remote_devices,
+                            snapshot.remote_online_devices,
+                            &snapshot.language,
+                            cx,
+                        ))
+                        .child(status_separator())
+                    },
+                )
                 .when(snapshot.git.is_repository, |this| {
                     let git_running_label = snapshot.git_running_label.as_deref();
                     let git_operation_running = git_running_label.is_some();

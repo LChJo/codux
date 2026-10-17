@@ -418,7 +418,8 @@ impl TerminalThemePalette {
             bright_magenta,
             bright_cyan,
             bright_white,
-            muted_foreground: mix_hex(foreground, background, if is_light { 0.42 } else { 0.36 }),
+            // ANSI bright black doubles as the readable comment / subdued tone.
+            muted_foreground: bright_black,
             is_light,
         }
     }
@@ -445,90 +446,12 @@ pub fn terminal_theme_palette(theme_name: &str) -> TerminalThemePalette {
             0x141821,
             0xD8DCE6,
             0x7AB8FF,
-            0x2C4A75,
+            0x21344F,
             [
-                0x1E232E, 0xF27878, 0x82D896, 0xE8C66A, 0x74AEF6, 0xC793E8, 0x6CD3E0, 0xD8DCE6,
+                0x1E232E, 0xF27979, 0x82D896, 0xE8C66A, 0x74AEF6, 0xC793E8, 0x6CD3E0, 0xD8DCE6,
             ],
             [
-                0x59647A, 0xFF9E9E, 0xA9EDB8, 0xF4D98C, 0x9FC9FF, 0xDDB3F5, 0x9EEAF2, 0xF5F7FA,
-            ],
-        ),
-        "deep ocean" => TerminalThemePalette::from_colors(
-            false,
-            0x0C1626,
-            0xCCDCF2,
-            0x53C0F0,
-            0x1D3D66,
-            [
-                0x16233A, 0xF07886, 0x5FD4A2, 0xE8C170, 0x5AA7F0, 0xB48EF2, 0x54CBE0, 0xCCDCF2,
-            ],
-            [
-                0x4A6284, 0xFF9DA8, 0x8CEBC2, 0xF5D694, 0x8CC5FF, 0xCFB0FF, 0x86E5F2, 0xF0F6FF,
-            ],
-        ),
-        "arctic night" => TerminalThemePalette::from_colors(
-            false,
-            0x262B36,
-            0xD8DEE9,
-            0x88C0D0,
-            0x434C5E,
-            [
-                0x3B4252, 0xBF616A, 0xA3BE8C, 0xEBCB8B, 0x81A1C1, 0xB48EAD, 0x88C0D0, 0xE5E9F0,
-            ],
-            [
-                0x4C566A, 0xD87B84, 0xB5D19A, 0xF2DCA2, 0x94B4D4, 0xC79EC4, 0x9BD3E0, 0xECEFF4,
-            ],
-        ),
-        "forest night" => TerminalThemePalette::from_colors(
-            false,
-            0x101915,
-            0xD3E2D6,
-            0x7FD8A0,
-            0x27503A,
-            [
-                0x1B2921, 0xEF7B7B, 0x7CD98F, 0xD9C36A, 0x6FB3E8, 0xC08FE0, 0x63D6C2, 0xD3E2D6,
-            ],
-            [
-                0x50685A, 0xFFA2A2, 0xA5EDB4, 0xEDD98F, 0x9BCDF5, 0xD8B2F0, 0x92EBDC, 0xF0F7F1,
-            ],
-        ),
-        "ember" => TerminalThemePalette::from_colors(
-            false,
-            0x1A1512,
-            0xE8DDD0,
-            0xF0A860,
-            0x54402C,
-            [
-                0x2A221B, 0xF2766B, 0x9CCE6E, 0xF0B860, 0x6FAEE0, 0xD892C0, 0x72CCB8, 0xE8DDD0,
-            ],
-            [
-                0x6E5D4C, 0xFF9C8F, 0xBEE393, 0xFFD088, 0x9CC9F0, 0xEDB4D8, 0x9CE3D2, 0xFAF4EC,
-            ],
-        ),
-        "amethyst dusk" => TerminalThemePalette::from_colors(
-            false,
-            0x161326,
-            0xDCD8EE,
-            0xA88BF0,
-            0x3A2F66,
-            [
-                0x232040, 0xF27A93, 0x7FD8A8, 0xE5C578, 0x7FA6F5, 0xB78CF2, 0x76CBE8, 0xDCD8EE,
-            ],
-            [
-                0x5A5482, 0xFFA0B4, 0xA6EDC7, 0xF3DA9E, 0xA8C4FF, 0xD1AFFF, 0xA0E3F5, 0xF4F2FC,
-            ],
-        ),
-        "rose noir" => TerminalThemePalette::from_colors(
-            false,
-            0x1C141B,
-            0xEADDE5,
-            0xEB8FB0,
-            0x523248,
-            [
-                0x2E2130, 0xEB6F92, 0x86CFA4, 0xF6C177, 0x7A9BE8, 0xC4A7E7, 0x9CCFD8, 0xEADDE5,
-            ],
-            [
-                0x6E5A6A, 0xFF94B2, 0xA9E5C4, 0xFFD69C, 0xA4BEFF, 0xDCC5F7, 0xBCE3EB, 0xFBF5F9,
+                0x77839B, 0xFF9E9E, 0xA9EDB8, 0xF4D98C, 0x9FC9FF, 0xDDB3F5, 0x9EEAF2, 0xF5F7FA,
             ],
         ),
         "carbon" => TerminalThemePalette::from_colors(
@@ -536,12 +459,64 @@ pub fn terminal_theme_palette(theme_name: &str) -> TerminalThemePalette {
             0x131313,
             0xE6E6E6,
             0xFFFFFF,
-            0x3A3A3A,
+            0x282828,
             [
                 0x222222, 0xF07070, 0x7BD88F, 0xE6C568, 0x6EB2F0, 0xC490E4, 0x66D4DE, 0xE6E6E6,
             ],
             [
-                0x666666, 0xFF9B9B, 0xA6EDB4, 0xF4DA90, 0x9CCCFF, 0xDCB4F5, 0x96EAF0, 0xFFFFFF,
+                0x808080, 0xFF9B9B, 0xA6EDB4, 0xF4DA90, 0x9CCCFF, 0xDCB4F5, 0x96EAF0, 0xFFFFFF,
+            ],
+        ),
+        "slate" => TerminalThemePalette::from_colors(
+            false,
+            0x252B33,
+            0xE0E6ED,
+            0x9CC6EE,
+            0x303C4A,
+            [
+                0x1D232A, 0xEF8A92, 0xA3CD92, 0xE2C27F, 0x8FB5E7, 0xC3A1DC, 0x80C8CD, 0xCCD5DF,
+            ],
+            [
+                0x97A4B2, 0xFFA4AC, 0xBDE3AC, 0xF2DA9D, 0xAFD0FA, 0xDABEEB, 0xA3E0E2, 0xF4F7FA,
+            ],
+        ),
+        "deep ocean" => TerminalThemePalette::from_colors(
+            false,
+            0x0C1626,
+            0xCCDCF2,
+            0x53C0F0,
+            0x152B49,
+            [
+                0x16233A, 0xF07886, 0x5FD4A2, 0xE8C170, 0x5AA7F0, 0xB48EF2, 0x54CBE0, 0xCCDCF2,
+            ],
+            [
+                0x6783AA, 0xFF9DA8, 0x8CEBC2, 0xF5D694, 0x8CC5FF, 0xCFB0FF, 0x86E5F2, 0xF0F6FF,
+            ],
+        ),
+        "forest night" => TerminalThemePalette::from_colors(
+            false,
+            0x101915,
+            0xD3E2D6,
+            0x7FD8A0,
+            0x1D3729,
+            [
+                0x1B2921, 0xEF7B7B, 0x7CD98F, 0xD9C36A, 0x6FB3E8, 0xC08FE0, 0x63D6C2, 0xD3E2D6,
+            ],
+            [
+                0x6A8977, 0xFFA2A2, 0xA5EDB4, 0xEDD98F, 0x9BCDF5, 0xD8B2F0, 0x92EBDC, 0xF0F7F1,
+            ],
+        ),
+        "ember" => TerminalThemePalette::from_colors(
+            false,
+            0x1A1512,
+            0xE8DDD0,
+            0xF0A860,
+            0x3A2D20,
+            [
+                0x2A221B, 0xF2766B, 0x9CCE6E, 0xF0B860, 0x6FAEE0, 0xD892C0, 0x72CCB8, 0xE8DDD0,
+            ],
+            [
+                0x957E67, 0xFF9C8F, 0xBEE393, 0xFFD088, 0x9CC9F0, 0xEDB4D8, 0x9CE3D2, 0xFAF4EC,
             ],
         ),
         "codux light" => TerminalThemePalette::from_colors(
@@ -551,36 +526,36 @@ pub fn terminal_theme_palette(theme_name: &str) -> TerminalThemePalette {
             0x2F6FE4,
             0xCCE0FA,
             [
-                0x323A48, 0xC93A46, 0x1E9E50, 0xB07D10, 0x2264D0, 0x9440C4, 0x0E8CA6, 0x99A2B2,
+                0x323A48, 0xB1303B, 0x156E38, 0x7E5A0B, 0x1F5CC0, 0x8939B8, 0x0B697D, 0x99A2B2,
             ],
             [
-                0x5C6678, 0xE45560, 0x2CBA66, 0xCC9718, 0x3E82EA, 0xAC62DA, 0x1AA8C4, 0xB8C0CC,
-            ],
-        ),
-        "glacier" => TerminalThemePalette::from_colors(
-            true,
-            0xF7FAFD,
-            0x243648,
-            0x0E8CD0,
-            0xC4E0F5,
-            [
-                0x2C3E52, 0xC94257, 0x148A62, 0xA67C14, 0x1272C8, 0x8A4CC8, 0x0A8FB0, 0x94A6B8,
-            ],
-            [
-                0x5A7086, 0xE0596E, 0x1FA878, 0xC2951C, 0x2E8AE0, 0xA468DE, 0x16A9CC, 0xB9C8D6,
+                0x576072, 0xBB1E2A, 0x1A6E3D, 0x7B5B0F, 0x165BC6, 0x8C2FC7, 0x10697B, 0xB8C0CC,
             ],
         ),
-        "morning mist" => TerminalThemePalette::from_colors(
+        "paper ink" => TerminalThemePalette::from_colors(
             true,
-            0xFAFAFB,
-            0x33373E,
-            0x5B6472,
-            0xD5DAE2,
+            0xEFF1F4,
+            0x253248,
+            0x315D9A,
+            0xD4E0F0,
             [
-                0x3A3F47, 0xC44540, 0x2E8B57, 0xA97B18, 0x3B6EC8, 0x8F52B8, 0x2090A0, 0x9CA1A9,
+                0x253248, 0xAC354B, 0x266D45, 0x7B5C00, 0x285CAC, 0x7D4D95, 0x166A79, 0x59677B,
             ],
             [
-                0x62676F, 0xDE5F5A, 0x3EA76D, 0xC49422, 0x5586DC, 0xA96ED0, 0x30AABC, 0xC0C4CB,
+                0x5D687A, 0xA9384C, 0x276D46, 0x7A5C06, 0x2D60AC, 0x7F4C95, 0x1D6A77, 0x46546A,
+            ],
+        ),
+        "ivory" => TerminalThemePalette::from_colors(
+            true,
+            0xFCF9F2,
+            0x3A3226,
+            0xBF8218,
+            0xF0E0BC,
+            [
+                0x423A2C, 0xAC3C32, 0x3E6E20, 0x805C0F, 0x2F62AA, 0x8D459A, 0x176E62, 0xA89B84,
+            ],
+            [
+                0x6C614D, 0xB63125, 0x436D26, 0x7D5D13, 0x3062A8, 0x9140A0, 0x1C6E63, 0xCCC0A8,
             ],
         ),
         "matcha" => TerminalThemePalette::from_colors(
@@ -590,62 +565,23 @@ pub fn terminal_theme_palette(theme_name: &str) -> TerminalThemePalette {
             0x3E9450,
             0xCFE8CC,
             [
-                0x33422F, 0xBE4A42, 0x2E8B3C, 0x9C801A, 0x2E6EB8, 0x8A54B0, 0x188E86, 0x97A692,
+                0x33422F, 0xA74039, 0x257031, 0x756014, 0x2A63A6, 0x7F4BA3, 0x136E67, 0x97A692,
             ],
             [
-                0x5E7059, 0xD8645C, 0x3FA850, 0xB59A24, 0x4886D0, 0xA670CC, 0x24A89E, 0xBCC9B7,
-            ],
-        ),
-        "ivory" => TerminalThemePalette::from_colors(
-            true,
-            0xFCF9F2,
-            0x3A3226,
-            0xC28418,
-            0xF0E0BC,
-            [
-                0x423A2C, 0xC24438, 0x4E8A28, 0xA87814, 0x3268B4, 0x9A4CA8, 0x1E8E7E, 0xA89B84,
-            ],
-            [
-                0x6E624E, 0xDC5E52, 0x66A63A, 0xC4931E, 0x4C82CC, 0xB468C2, 0x2AA896, 0xCCC0A8,
+                0x566651, 0xB3342B, 0x2A6F35, 0x736117, 0x2B63A7, 0x8641B7, 0x176D67, 0xBCC9B7,
             ],
         ),
-        "lavender" => TerminalThemePalette::from_colors(
+        "rose dawn" => TerminalThemePalette::from_colors(
             true,
-            0xFAF9FD,
-            0x322B44,
-            0x7C5CD6,
-            0xDCD2F5,
+            0xFBF5F2,
+            0x473747,
+            0x944C67,
+            0xE8D7DE,
             [
-                0x3A3350, 0xC24468, 0x2E8B5E, 0xA6791C, 0x4A62D8, 0x8C48C8, 0x2288A8, 0x9E97B2,
+                0x473747, 0xA23A52, 0x366848, 0x79591C, 0x40608C, 0x7D4D84, 0x23686A, 0x6F596A,
             ],
             [
-                0x645C7E, 0xDC6084, 0x3FA674, 0xC29426, 0x667EE8, 0xA666DC, 0x30A2C2, 0xC4BED4,
-            ],
-        ),
-        "rosewater" => TerminalThemePalette::from_colors(
-            true,
-            0xFCF8F9,
-            0x3C2B33,
-            0xC2426E,
-            0xF4D6DF,
-            [
-                0x443039, 0xC23A55, 0x2E8B57, 0xA87818, 0x3766C4, 0xA4479E, 0x1E8C96, 0xAA96A0,
-            ],
-            [
-                0x705C66, 0xDC5674, 0x3FA76D, 0xC49322, 0x5380DC, 0xC062BA, 0x2AA6B2, 0xD0BEC6,
-            ],
-        ),
-        "sandstone" => TerminalThemePalette::from_colors(
-            true,
-            0xFBF7EA,
-            0x413F30,
-            0x1E8E8E,
-            0xEBE0BC,
-            [
-                0x45422F, 0xBE4632, 0x5D8A16, 0xA88410, 0x2E74B8, 0xA0489C, 0x1A9090, 0xA49E86,
-            ],
-            [
-                0x6E6852, 0xD8604C, 0x76A626, 0xC49E1A, 0x488CCE, 0xBA64B4, 0x28AAAA, 0xC9C2A8,
+                0x756272, 0xA13B52, 0x396848, 0x785920, 0x405F8C, 0x7B4E83, 0x266869, 0x604B5D,
             ],
         ),
         _ => TerminalThemePalette::auto(false),
@@ -671,15 +607,15 @@ pub fn app_theme_palette_for_appearance(
     } else {
         name
     };
-    // Unknown / legacy persisted names fall back with the terminal palette.
+    // Shared normalization resolves retired names and the Auto fallback.
     app_theme_palette(&name)
         .or_else(|| app_theme_palette("codux dark"))
         .expect("flagship app palette")
 }
 
 /// Designed chrome palettes for the Codux theme collection.
-pub fn app_theme_palette(normalized_name: &str) -> Option<AppThemePalette> {
-    let palette = match normalized_name {
+pub fn app_theme_palette(theme_name: &str) -> Option<AppThemePalette> {
+    let palette = match normalize_theme_name(theme_name).as_str() {
         "codux dark" => AppThemePalette {
             ground: 0x12151C,
             column: 0x151922,
@@ -692,9 +628,41 @@ pub fn app_theme_palette(normalized_name: &str) -> Option<AppThemePalette> {
             muted: 0x1F2530,
             text: 0xE8EBF2,
             text_muted: 0xA3ACBE,
-            text_dim: 0x707A8E,
+            text_dim: 0x9DA3B1,
             status_bar: 0x161A22,
             row_hover: 0x232A38,
+        },
+        "carbon" => AppThemePalette {
+            ground: 0x111111,
+            column: 0x141414,
+            panel: 0x191919,
+            header: 0x1C1C1C,
+            card: 0x2B2B2B,
+            elevated: 0x323232,
+            border: 0x393939,
+            border_soft: 0x2E2E2E,
+            muted: 0x202020,
+            text: 0xF2F2F2,
+            text_muted: 0xABABAB,
+            text_dim: 0x9C9C9C,
+            status_bar: 0x151515,
+            row_hover: 0x252525,
+        },
+        "slate" => AppThemePalette {
+            ground: 0x1E242B,
+            column: 0x232A32,
+            panel: 0x2B333D,
+            header: 0x2E3742,
+            card: 0x35404D,
+            elevated: 0x3D4957,
+            border: 0x4C5C6D,
+            border_soft: 0x3E4A59,
+            muted: 0x303945,
+            text: 0xE4EAF0,
+            text_muted: 0xC0CBD6,
+            text_dim: 0xB2C0CE,
+            status_bar: 0x232A32,
+            row_hover: 0x354150,
         },
         "deep ocean" => AppThemePalette {
             ground: 0x0A1220,
@@ -707,26 +675,10 @@ pub fn app_theme_palette(normalized_name: &str) -> Option<AppThemePalette> {
             border_soft: 0x1E3352,
             muted: 0x142138,
             text: 0xD9E4F5,
-            text_muted: 0x8FA5C6,
-            text_dim: 0x5F7699,
+            text_muted: 0x91A6C7,
+            text_dim: 0x96A6BE,
             status_bar: 0x0C1523,
             row_hover: 0x182A45,
-        },
-        "arctic night" => AppThemePalette {
-            ground: 0x232833,
-            column: 0x262B37,
-            panel: 0x2B313E,
-            header: 0x2D3341,
-            card: 0x3D4557,
-            elevated: 0x434C60,
-            border: 0x465064,
-            border_soft: 0x3C4556,
-            muted: 0x313847,
-            text: 0xE5E9F0,
-            text_muted: 0xAAB4C5,
-            text_dim: 0x7B879B,
-            status_bar: 0x262B36,
-            row_hover: 0x333A4A,
         },
         "forest night" => AppThemePalette {
             ground: 0x0E1512,
@@ -740,7 +692,7 @@ pub fn app_theme_palette(normalized_name: &str) -> Option<AppThemePalette> {
             muted: 0x1A2820,
             text: 0xE2EBE4,
             text_muted: 0x9DB3A4,
-            text_dim: 0x6B8172,
+            text_dim: 0x9AACA0,
             status_bar: 0x101813,
             row_hover: 0x1E2E24,
         },
@@ -756,57 +708,9 @@ pub fn app_theme_palette(normalized_name: &str) -> Option<AppThemePalette> {
             muted: 0x282019,
             text: 0xF0E8E0,
             text_muted: 0xBCA997,
-            text_dim: 0x8A7A6A,
+            text_dim: 0xA99C8E,
             status_bar: 0x1A1512,
             row_hover: 0x2E251D,
-        },
-        "amethyst dusk" => AppThemePalette {
-            ground: 0x141220,
-            column: 0x171527,
-            panel: 0x1C1930,
-            header: 0x1F1B35,
-            card: 0x2F2950,
-            elevated: 0x363058,
-            border: 0x3D3563,
-            border_soft: 0x332C52,
-            muted: 0x231F3B,
-            text: 0xE9E6F5,
-            text_muted: 0xAAA3C8,
-            text_dim: 0x776F9B,
-            status_bar: 0x161428,
-            row_hover: 0x292345,
-        },
-        "rose noir" => AppThemePalette {
-            ground: 0x1A1219,
-            column: 0x1E151D,
-            panel: 0x241A23,
-            header: 0x271C26,
-            card: 0x392B37,
-            elevated: 0x413240,
-            border: 0x4A3746,
-            border_soft: 0x3D2E3A,
-            muted: 0x2B1F29,
-            text: 0xF2E7EE,
-            text_muted: 0xC0A6B8,
-            text_dim: 0x8D7386,
-            status_bar: 0x1C141B,
-            row_hover: 0x322430,
-        },
-        "carbon" => AppThemePalette {
-            ground: 0x111111,
-            column: 0x141414,
-            panel: 0x191919,
-            header: 0x1C1C1C,
-            card: 0x2B2B2B,
-            elevated: 0x323232,
-            border: 0x393939,
-            border_soft: 0x2E2E2E,
-            muted: 0x202020,
-            text: 0xF2F2F2,
-            text_muted: 0xABABAB,
-            text_dim: 0x777777,
-            status_bar: 0x151515,
-            row_hover: 0x252525,
         },
         "codux light" => AppThemePalette {
             ground: 0xEEF0F4,
@@ -820,57 +724,25 @@ pub fn app_theme_palette(normalized_name: &str) -> Option<AppThemePalette> {
             muted: 0xE7EAF0,
             text: 0x1D2430,
             text_muted: 0x4E5A6E,
-            text_dim: 0x7A8496,
+            text_dim: 0x5F6878,
             status_bar: 0xF2F4F7,
             row_hover: 0xE6EAF1,
         },
-        "glacier" => AppThemePalette {
-            ground: 0xE9F0F6,
-            column: 0xEDF3F8,
-            panel: 0xF5F9FC,
-            header: 0xF0F5FA,
-            card: 0xFFFFFF,
+        "paper ink" => AppThemePalette {
+            ground: 0xDFE4EB,
+            column: 0xE5E9F0,
+            panel: 0xEFF1F4,
+            header: 0xE9EDF2,
+            card: 0xFAFBFD,
             elevated: 0xFFFFFF,
-            border: 0xCBD9E6,
-            border_soft: 0xDAE5EE,
-            muted: 0xE2EBF2,
-            text: 0x16283A,
-            text_muted: 0x47607A,
-            text_dim: 0x7288A0,
-            status_bar: 0xEDF3F8,
-            row_hover: 0xDFEAF3,
-        },
-        "morning mist" => AppThemePalette {
-            ground: 0xEDEEF1,
-            column: 0xF1F2F4,
-            panel: 0xF7F8F9,
-            header: 0xF3F4F6,
-            card: 0xFDFDFE,
-            elevated: 0xFFFFFF,
-            border: 0xD6D8DE,
-            border_soft: 0xE2E4E9,
-            muted: 0xE8E9ED,
-            text: 0x26292F,
-            text_muted: 0x555A64,
-            text_dim: 0x82878F,
-            status_bar: 0xF1F2F4,
-            row_hover: 0xE5E7EB,
-        },
-        "matcha" => AppThemePalette {
-            ground: 0xEAF0E8,
-            column: 0xEEF3EC,
-            panel: 0xF6F9F4,
-            header: 0xF1F5EF,
-            card: 0xFDFEFC,
-            elevated: 0xFFFFFF,
-            border: 0xCFDCCB,
-            border_soft: 0xDDE6D9,
-            muted: 0xE3EBE0,
-            text: 0x1F2B1E,
-            text_muted: 0x4D5F4A,
-            text_dim: 0x788B74,
-            status_bar: 0xEEF3EC,
-            row_hover: 0xE0E9DC,
+            border: 0xC6CFDC,
+            border_soft: 0xD4DCE6,
+            muted: 0xE2E7EF,
+            text: 0x253248,
+            text_muted: 0x4C5B70,
+            text_dim: 0x566276,
+            status_bar: 0xE5E9F0,
+            row_hover: 0xDCE3ED,
         },
         "ivory" => AppThemePalette {
             ground: 0xF2EDE3,
@@ -884,57 +756,41 @@ pub fn app_theme_palette(normalized_name: &str) -> Option<AppThemePalette> {
             muted: 0xEDE6D8,
             text: 0x322A1E,
             text_muted: 0x655A47,
-            text_dim: 0x91856F,
+            text_dim: 0x6B6252,
             status_bar: 0xF5F0E7,
             row_hover: 0xEAE2D2,
         },
-        "lavender" => AppThemePalette {
-            ground: 0xEEECF5,
-            column: 0xF1F0F8,
-            panel: 0xF8F7FC,
-            header: 0xF3F2FA,
-            card: 0xFEFEFF,
+        "matcha" => AppThemePalette {
+            ground: 0xEAF0E8,
+            column: 0xEEF3EC,
+            panel: 0xF6F9F4,
+            header: 0xF1F5EF,
+            card: 0xFDFEFC,
             elevated: 0xFFFFFF,
-            border: 0xD8D3E8,
-            border_soft: 0xE3DFF0,
-            muted: 0xE9E6F3,
-            text: 0x272138,
-            text_muted: 0x585070,
-            text_dim: 0x847C9C,
-            status_bar: 0xF1F0F8,
-            row_hover: 0xE4E0F0,
+            border: 0xCFDCCB,
+            border_soft: 0xDDE6D9,
+            muted: 0xE3EBE0,
+            text: 0x1F2B1E,
+            text_muted: 0x4D5F4A,
+            text_dim: 0x5B6958,
+            status_bar: 0xEEF3EC,
+            row_hover: 0xE0E9DC,
         },
-        "rosewater" => AppThemePalette {
-            ground: 0xF4ECEE,
-            column: 0xF6F0F1,
-            panel: 0xFBF6F7,
-            header: 0xF7F1F3,
-            card: 0xFFFDFD,
-            elevated: 0xFFFFFF,
-            border: 0xE2D2D7,
-            border_soft: 0xEBDFE2,
-            muted: 0xEFE4E7,
-            text: 0x33222A,
-            text_muted: 0x685260,
-            text_dim: 0x957E8A,
-            status_bar: 0xF6F0F1,
-            row_hover: 0xECDFE3,
-        },
-        "sandstone" => AppThemePalette {
-            ground: 0xEFE9DA,
-            column: 0xF2ECDE,
-            panel: 0xF8F3E7,
-            header: 0xF4EEE1,
-            card: 0xFDFAF1,
-            elevated: 0xFFFCF4,
-            border: 0xDACFB4,
-            border_soft: 0xE5DCC6,
-            muted: 0xEAE2CE,
-            text: 0x322E24,
-            text_muted: 0x635E4E,
-            text_dim: 0x8F8873,
-            status_bar: 0xF2ECDE,
-            row_hover: 0xE7DEC8,
+        "rose dawn" => AppThemePalette {
+            ground: 0xF0E7E4,
+            column: 0xF5ECE8,
+            panel: 0xFBF5F2,
+            header: 0xF7EEEA,
+            card: 0xFFFAF7,
+            elevated: 0xFFFDFC,
+            border: 0xD9C7CF,
+            border_soft: 0xE9DBDF,
+            muted: 0xEDE0E4,
+            text: 0x473747,
+            text_muted: 0x675364,
+            text_dim: 0x6F5C6A,
+            status_bar: 0xF5ECE8,
+            row_hover: 0xEADDE3,
         },
         _ => return None,
     };
@@ -942,13 +798,7 @@ pub fn app_theme_palette(normalized_name: &str) -> Option<AppThemePalette> {
 }
 
 fn normalize_theme_name(value: &str) -> String {
-    value
-        .trim()
-        .to_ascii_lowercase()
-        .replace(['_', '-'], " ")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+    codux_runtime::settings::canonical_terminal_theme(value).to_ascii_lowercase()
 }
 
 pub fn theme_color_value(theme_color: &str) -> u32 {
@@ -980,6 +830,9 @@ fn configure_component_theme(
 ) {
     let is_dark = !terminal.is_light;
     let theme = Theme::global_mut(cx);
+    theme.font_size = px(13.0);
+    theme.radius = px(6.0);
+    theme.radius_lg = px(10.0);
     let accent_color = raw_color(accent_hex);
 
     // Mode-scoped values, independent of the surface palette.
@@ -987,13 +840,13 @@ fn configure_component_theme(
         (
             raw_color(0xFFFFFF).opacity(0.09),
             raw_color(0xFFFFFF).opacity(0.14),
-            raw_color(0xFFFFFF).opacity(0.075),
+            raw_color(app.border),
         )
     } else {
         (
             raw_color(0x000000).opacity(0.055),
             raw_color(0x000000).opacity(0.085),
-            raw_color(0x000000).opacity(0.075),
+            raw_color(app.border),
         )
     };
     let accent = accent_color;
@@ -1028,9 +881,9 @@ fn configure_component_theme(
         )
     };
     let hover_surface = if is_dark {
-        raw_color(0xFFFFFF).opacity(0.15)
+        raw_color(0xFFFFFF).opacity(0.075)
     } else {
-        raw_color(0x000000).opacity(0.07)
+        raw_color(0x000000).opacity(0.035)
     };
 
     // Surfaces: every tone comes from the designed app palette.
@@ -1096,7 +949,7 @@ fn configure_component_theme(
     theme.secondary = card_surface;
     theme.secondary_hover = hover_surface;
     theme.secondary_foreground = foreground;
-    theme.secondary_active = control_hover;
+    theme.secondary_active = accent_bg;
     theme.group_box = card_surface;
     theme.group_box_foreground = foreground;
     theme.accent = accent_bg;
@@ -1164,7 +1017,7 @@ fn configure_component_theme(
     theme.tab_active = accent;
     theme.tab_active_foreground = primary_foreground;
     theme.tab_bar = tab_bar;
-    theme.tab_bar_segmented = card_surface;
+    theme.tab_bar_segmented = muted;
     theme.tab_foreground = muted_foreground;
     theme.colors.list = background;
     theme.list_hover = hover_surface;
@@ -1207,46 +1060,141 @@ fn configure_component_theme(
 mod tests {
     use super::*;
 
-    const CODUX_DARK_THEMES: [&str; 8] = [
-        "Codux Dark",
-        "Deep Ocean",
-        "Arctic Night",
-        "Forest Night",
-        "Ember",
-        "Amethyst Dusk",
-        "Rose Noir",
-        "Carbon",
-    ];
-    const CODUX_LIGHT_THEMES: [&str; 8] = [
-        "Codux Light",
-        "Glacier",
-        "Morning Mist",
-        "Matcha",
-        "Ivory",
-        "Lavender",
-        "Rosewater",
-        "Sandstone",
-    ];
+    fn contrast(a: u32, b: u32) -> f64 {
+        let luminance = |hex: u32| {
+            let channel = |shift: u32| {
+                let v = ((hex >> shift) & 255u32) as f64 / 255.0;
+                if v <= 0.04045 {
+                    v / 12.92
+                } else {
+                    ((v + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
+        };
+        let (a, b) = (luminance(a), luminance(b));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    #[test]
+    fn curated_themes_have_readable_terminal_text() {
+        for option in codux_runtime::settings::TERMINAL_THEMES
+            .iter()
+            .filter(|t| t.group != codux_runtime::settings::TerminalThemeGroup::System)
+        {
+            let name = option.name;
+            let p = terminal_theme_palette(name);
+            for (role, value) in [
+                ("foreground", p.foreground),
+                ("muted", p.muted_foreground),
+                ("comment", p.bright_black),
+                ("red", p.red),
+                ("green", p.green),
+                ("yellow", p.yellow),
+                ("blue", p.blue),
+                ("magenta", p.magenta),
+                ("cyan", p.cyan),
+                ("bright red", p.bright_red),
+                ("bright green", p.bright_green),
+                ("bright yellow", p.bright_yellow),
+                ("bright blue", p.bright_blue),
+                ("bright magenta", p.bright_magenta),
+                ("bright cyan", p.bright_cyan),
+            ] {
+                assert!(
+                    contrast(value, p.background) >= 4.5,
+                    "{name} {role}: {:.2}",
+                    contrast(value, p.background)
+                );
+            }
+            assert!(
+                contrast(p.foreground, p.selection) >= 4.5,
+                "{name} selection"
+            );
+            for value in [
+                p.red,
+                p.green,
+                p.yellow,
+                p.blue,
+                p.magenta,
+                p.cyan,
+                p.bright_red,
+                p.bright_green,
+                p.bright_yellow,
+                p.bright_blue,
+                p.bright_magenta,
+                p.bright_cyan,
+            ] {
+                assert!(contrast(value, p.selection) >= 4.5, "{name} selected ANSI");
+            }
+            assert!(contrast(p.cursor, p.background) >= 3.0, "{name} cursor");
+        }
+    }
 
     #[test]
     fn codux_collection_has_app_and_terminal_palettes() {
-        for (names, expect_light) in [(CODUX_DARK_THEMES, false), (CODUX_LIGHT_THEMES, true)] {
-            for name in names {
-                let terminal = terminal_theme_palette(name);
-                assert_eq!(terminal.is_light, expect_light, "{name}");
-                assert_ne!(terminal.background, terminal.foreground, "{name}");
-                let app = app_theme_palette(&normalize_theme_name(name))
-                    .unwrap_or_else(|| panic!("{name} missing app palette"));
-                // Text must contrast its ground in the designed direction.
-                let luma = |hex: u32| {
-                    0.2126 * ((hex >> 16) & 0xFF) as f32
-                        + 0.7152 * ((hex >> 8) & 0xFF) as f32
-                        + 0.0722 * (hex & 0xFF) as f32
-                };
-                let ground = luma(app.ground);
-                assert_eq!(ground > 128.0, expect_light, "{name} ground");
-                assert!((luma(app.text) - ground).abs() > 90.0, "{name} contrast");
+        use codux_runtime::settings::{TERMINAL_THEMES, TerminalThemeGroup};
+        let mut backgrounds = std::collections::HashSet::new();
+        for option in TERMINAL_THEMES
+            .iter()
+            .filter(|t| t.group != TerminalThemeGroup::System)
+        {
+            let name = option.name;
+            let terminal = terminal_theme_palette(name);
+            assert_eq!(
+                terminal.is_light,
+                option.group == TerminalThemeGroup::Light,
+                "{name}"
+            );
+            assert!(
+                backgrounds.insert(terminal.background),
+                "{name} must resolve to its own palette"
+            );
+            let app =
+                app_theme_palette(name).unwrap_or_else(|| panic!("{name} missing app palette"));
+            for background in [
+                app.ground,
+                app.column,
+                app.panel,
+                app.header,
+                app.card,
+                app.elevated,
+                app.muted,
+                app.status_bar,
+                app.row_hover,
+            ] {
+                for foreground in [app.text, app.text_muted, app.text_dim] {
+                    assert!(
+                        contrast(foreground, background) >= 4.5,
+                        "{name} app text: {:.2}",
+                        contrast(foreground, background)
+                    );
+                }
             }
+        }
+        assert_eq!(backgrounds.len(), 11);
+    }
+
+    #[test]
+    fn legacy_palette_lookups_match_migrated_settings() {
+        for (old, new) in [
+            ("arctic-night", "Slate"),
+            ("Amethyst Dusk", "Slate"),
+            ("Rose Noir", "Ember"),
+            ("Glacier", "Paper Ink"),
+            ("Morning Mist", "Paper Ink"),
+            ("Lavender", "Rose Dawn"),
+            ("Rosewater", "Rose Dawn"),
+            ("Sandstone", "Ivory"),
+        ] {
+            assert_eq!(
+                terminal_theme_palette(old).background,
+                terminal_theme_palette(new).background
+            );
+            assert_eq!(
+                app_theme_palette(old).unwrap().ground,
+                app_theme_palette(new).unwrap().ground
+            );
         }
     }
 

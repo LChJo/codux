@@ -10,7 +10,7 @@ use gpui::Rems;
 const PROJECT_TOOL_TEXT_SIZE: Rems = Rems(0.875);
 const PROJECT_TOOL_LINE_HEIGHT: Rems = Rems(1.125);
 const PROJECT_TOOL_ICON_SLOT_WIDTH: f32 = 20.0;
-const PROJECT_TOOL_LABEL_WIDTH: f32 = 212.0;
+const PROJECT_TOOL_LABEL_WIDTH: f32 = PROJECT_COLUMN_EXPANDED_WIDTH - 20.0;
 const PROJECT_TOOL_ICON_WIDTH: f32 = 40.0;
 
 #[derive(Clone)]
@@ -291,6 +291,14 @@ fn project_tools_snapshot(
         let more_label = project_column_text(language, "sidebar.footer.more", "More");
         base.flex_col()
             .items_center()
+            .child(project_column_toggle_button(
+                collapsed,
+                language,
+                None,
+                app_entity.clone(),
+                window,
+                cx,
+            ))
             .child(project_tool_button(
                 ProjectToolButtonProps {
                     icon: HeroIconName::Plus,
@@ -882,7 +890,12 @@ fn project_row(
                 .min_w_0()
                 .px(px(8.0))
                 .rounded(px(8.0))
-                .when(active, |this| this.bg(cx.theme().list_hover))
+                .border_1()
+                .border_color(cx.theme().transparent)
+                .when(active, |this| {
+                    this.bg(cx.theme().secondary)
+                        .border_color(cx.theme().primary.opacity(0.22))
+                })
                 .cursor_pointer()
                 .hover(|style| style.bg(cx.theme().list_hover))
                 .on_click(

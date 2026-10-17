@@ -1,6 +1,84 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retired_terminal_themes_migrate_on_read_and_write() {
+        for (old, new) in [
+            ("Arctic Night", "Slate"),
+            ("Amethyst Dusk", "Slate"),
+            ("Rose Noir", "Ember"),
+            ("Glacier", "Paper Ink"),
+            ("Morning Mist", "Paper Ink"),
+            ("Lavender", "Rose Dawn"),
+            ("Rosewater", "Rose Dawn"),
+            ("Sandstone", "Ivory"),
+        ] {
+            let raw = serde_json::json!({"theme": old})
+                .as_object()
+                .unwrap()
+                .clone();
+            assert_eq!(summary_from_raw(&raw).theme, new);
+            assert_eq!(sanitize_terminal_theme(old), new);
+        }
+    }
+
+    #[test]
+    fn curated_terminal_themes_cycle_save_and_reload() {
+        let support_dir = temp_dir("settings-curated-themes");
+        let settings_path = support_dir.join("settings.json");
+        fs::write(
+            &settings_path,
+            r#"{"theme":"morning_mist","futureSetting":"keep-me"}"#,
+        )
+        .unwrap();
+        let store = AppSettingsStore::from_settings_file(settings_path.clone());
+        assert_eq!(store.snapshot().theme, "Paper Ink");
+        assert_eq!(
+            SettingsService::new(support_dir.clone()).summary().theme,
+            "Paper Ink"
+        );
+        let service = SettingsService::new(support_dir.clone());
+        for theme in TERMINAL_THEMES {
+            assert_eq!(service.set_theme(theme.name).unwrap().theme, theme.name);
+            assert_eq!(store.reload_snapshot().theme, theme.name);
+        }
+        service.set_theme("Auto").unwrap();
+        let mut cycled = Vec::new();
+        for _ in TERMINAL_THEMES {
+            cycled.push(service.cycle_theme().unwrap().theme);
+        }
+        assert_eq!(cycled.len(), 12);
+        assert_eq!(cycled.last().unwrap(), "Auto");
+        cycled.sort();
+        cycled.dedup();
+        assert_eq!(cycled.len(), 12);
+        store
+            .update(|settings| settings.theme = "rosewater".to_string())
+            .unwrap();
+        crate::config::flush_all_config_writes();
+        let raw: Value =
+            serde_json::from_str(&fs::read_to_string(&settings_path).unwrap()).unwrap();
+        assert_eq!(raw["theme"], "Rose Dawn");
+        assert_eq!(raw["futureSetting"], "keep-me");
+        assert_eq!(
+            AppSettingsStore::from_settings_file(settings_path)
+                .snapshot()
+                .theme,
+            "Rose Dawn"
+        );
+        fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
+    fn curated_terminal_theme_names_are_normalized() {
+        assert_eq!(canonical_terminal_theme("  PAPER-ink  "), "Paper Ink");
+        assert_eq!(canonical_terminal_theme("amethyst_dusk"), "Slate");
+        assert_eq!(canonical_terminal_theme("rose   dawn"), "Rose Dawn");
+        assert_eq!(canonical_terminal_theme("nonsense"), "Auto");
+        assert_eq!(canonical_terminal_theme(""), "Auto");
+        assert_eq!(canonical_terminal_theme("Auto"), "Auto");
+    }
     use std::{
         fs,
         time::{SystemTime, UNIX_EPOCH},
@@ -90,7 +168,7 @@ mod tests {
 
         let store = AppSettingsStore::from_settings_file(settings_path.clone());
         store
-            .update(|settings| settings.theme = "Dark".to_string())
+            .update(|settings| settings.theme = "Codux Dark".to_string())
             .expect("update settings");
         crate::config::flush_all_config_writes();
 
@@ -102,7 +180,7 @@ mod tests {
         );
         assert_eq!(
             saved.get("theme").and_then(|value| value.as_str()),
-            Some("Dark")
+            Some("Codux Dark")
         );
 
         fs::remove_dir_all(support_dir).ok();
@@ -363,7 +441,10 @@ mod tests {
         let memory_number = SettingsService::new(support_dir.clone())
             .set_ai_memory_number("maxExtractionTranscriptTokens", "12000")
             .expect("set transcript token limit");
-        assert_eq!(memory_number.memory_max_extraction_transcript_tokens, "12000");
+        assert_eq!(
+            memory_number.memory_max_extraction_transcript_tokens,
+            "12000"
+        );
 
         let terminal_font = SettingsService::new(support_dir.clone())
             .cycle_terminal_font_size()
@@ -515,9 +596,7 @@ mod tests {
         let updated = fs::read_to_string(support_dir.join("settings.json")).expect("updated");
         let updated: serde_json::Value = serde_json::from_str(&updated).expect("updated json");
         assert_eq!(
-            updated
-                .get("sleepMode")
-                .and_then(|value| value.as_str()),
+            updated.get("sleepMode").and_then(|value| value.as_str()),
             Some("powerAdapterOnly")
         );
 
@@ -561,7 +640,11 @@ mod tests {
             assert!(!summary.shortcuts.contains_key(shortcut_id));
         }
 
-        assert!(service.set_shortcut("unsupported.shortcut", "Cmd+P").is_err());
+        assert!(
+            service
+                .set_shortcut("unsupported.shortcut", "Cmd+P")
+                .is_err()
+        );
         fs::remove_dir_all(support_dir).ok();
     }
 
@@ -805,21 +888,16 @@ mod tests {
             .expect("set codex model");
         assert_eq!(summary.runtime_tool_count, 9);
 
-        let summary = service
-            .set_codex_effort("xhigh")
-            .expect("set codex effort");
+        let summary = service.set_codex_effort("xhigh").expect("set codex effort");
         assert_eq!(summary.runtime_tool_count, 9);
 
-        let tool_permissions = crate::tool_permissions::ToolPermissionsService::new(support_dir.clone())
-            .summary();
+        let tool_permissions =
+            crate::tool_permissions::ToolPermissionsService::new(support_dir.clone()).summary();
         assert_eq!(tool_permissions.codex, "fullAccess");
         assert_eq!(tool_permissions.codex_model, "gpt-5.6");
         assert_eq!(tool_permissions.codex_effort, "xhigh");
         assert_eq!(tool_permissions.omp, "fullAccess");
-        assert_eq!(
-            tool_permissions.omp_model,
-            "anthropic/claude-sonnet-4-5"
-        );
+        assert_eq!(tool_permissions.omp_model, "anthropic/claude-sonnet-4-5");
 
         crate::config::flush_all_config_writes();
         let saved = fs::read_to_string(support_dir.join("settings.json")).expect("saved settings");
@@ -829,9 +907,18 @@ mod tests {
             .and_then(|value| value.get("runtimeTools"))
             .and_then(|value| value.as_object())
             .expect("runtime tools object");
-        assert_eq!(tools.get("codex").and_then(|value| value.as_str()), Some("fullAccess"));
-        assert_eq!(tools.get("codexModel").and_then(|value| value.as_str()), Some("gpt-5.6"));
-        assert_eq!(tools.get("codexEffort").and_then(|value| value.as_str()), Some("xhigh"));
+        assert_eq!(
+            tools.get("codex").and_then(|value| value.as_str()),
+            Some("fullAccess")
+        );
+        assert_eq!(
+            tools.get("codexModel").and_then(|value| value.as_str()),
+            Some("gpt-5.6")
+        );
+        assert_eq!(
+            tools.get("codexEffort").and_then(|value| value.as_str()),
+            Some("xhigh")
+        );
         assert_eq!(
             tools.get("omp").and_then(|value| value.as_str()),
             Some("fullAccess")
@@ -856,8 +943,8 @@ mod tests {
             .set_runtime_tool_permission("kimi", "fullAccess")
             .expect("set kimi permission");
 
-        let tool_permissions = crate::tool_permissions::ToolPermissionsService::new(support_dir.clone())
-            .sync();
+        let tool_permissions =
+            crate::tool_permissions::ToolPermissionsService::new(support_dir.clone()).sync();
         assert_eq!(tool_permissions.kiro, "default");
         assert_eq!(tool_permissions.kimi, "default");
 
@@ -869,8 +956,14 @@ mod tests {
             .and_then(|value| value.get("runtimeTools"))
             .and_then(|value| value.as_object())
             .expect("runtime tools object");
-        assert_eq!(tools.get("kiro").and_then(|value| value.as_str()), Some("default"));
-        assert_eq!(tools.get("kimi").and_then(|value| value.as_str()), Some("default"));
+        assert_eq!(
+            tools.get("kiro").and_then(|value| value.as_str()),
+            Some("default")
+        );
+        assert_eq!(
+            tools.get("kimi").and_then(|value| value.as_str()),
+            Some("default")
+        );
 
         fs::remove_dir_all(support_dir).ok();
     }

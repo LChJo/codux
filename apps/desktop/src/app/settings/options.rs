@@ -1,14 +1,6 @@
 use super::*;
 
 #[derive(Clone, Copy)]
-pub(super) struct TerminalThemePreview {
-    pub(super) background: u32,
-    pub(super) foreground: u32,
-    pub(super) muted_foreground: u32,
-    pub(super) selection: u32,
-}
-
-#[derive(Clone, Copy)]
 pub(super) struct ThemeColorValue {
     pub(super) label: &'static str,
     pub(super) color: u32,
@@ -180,43 +172,34 @@ pub(super) fn update_channel_options(language: &str) -> Vec<(String, SharedStrin
 }
 
 pub(super) fn system_theme_options() -> Vec<(&'static str, &'static str)> {
-    vec![("Auto", "Follow System")]
+    theme_options(codux_runtime::settings::TerminalThemeGroup::System)
 }
 
 pub(super) fn dark_theme_options() -> Vec<(&'static str, &'static str)> {
-    vec![
-        ("Codux Dark", "Codux Dark"),
-        ("Deep Ocean", "Deep Ocean"),
-        ("Arctic Night", "Arctic Night"),
-        ("Forest Night", "Forest Night"),
-        ("Ember", "Ember"),
-        ("Amethyst Dusk", "Amethyst Dusk"),
-        ("Rose Noir", "Rose Noir"),
-        ("Carbon", "Carbon"),
-    ]
+    theme_options(codux_runtime::settings::TerminalThemeGroup::Dark)
 }
 
 pub(super) fn light_theme_options() -> Vec<(&'static str, &'static str)> {
-    vec![
-        ("Codux Light", "Codux Light"),
-        ("Glacier", "Glacier"),
-        ("Morning Mist", "Morning Mist"),
-        ("Matcha", "Matcha"),
-        ("Ivory", "Ivory"),
-        ("Lavender", "Lavender"),
-        ("Rosewater", "Rosewater"),
-        ("Sandstone", "Sandstone"),
-    ]
+    theme_options(codux_runtime::settings::TerminalThemeGroup::Light)
 }
 
-pub(super) fn terminal_theme_preview(value: &str) -> TerminalThemePreview {
-    let palette = theme::terminal_theme_palette(value);
-    TerminalThemePreview {
-        background: palette.background,
-        foreground: palette.foreground,
-        muted_foreground: palette.muted_foreground,
-        selection: palette.selection,
-    }
+fn theme_options(
+    group: codux_runtime::settings::TerminalThemeGroup,
+) -> Vec<(&'static str, &'static str)> {
+    codux_runtime::settings::TERMINAL_THEMES
+        .iter()
+        .filter(|theme| theme.group == group)
+        .map(|theme| {
+            (
+                theme.name,
+                if theme.name == "Auto" {
+                    "Follow System"
+                } else {
+                    theme.name
+                },
+            )
+        })
+        .collect()
 }
 
 pub(super) fn theme_color_values() -> Vec<ThemeColorValue> {

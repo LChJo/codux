@@ -39,5 +39,6 @@ pub(in crate::app) fn child_window_shell<T>(
         .flex_col()
         .bg(cx.theme().background)
         .text_color(cx.theme().foreground)
+        .text_size(px(13.0))
         .child(title_row)
 }

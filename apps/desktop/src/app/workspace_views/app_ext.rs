@@ -254,6 +254,9 @@ impl CoduxApp {
                             .as_deref()
                             .is_some_and(|id| self.terminal_search_open.contains(id));
                         TerminalPaneViewSnapshot {
+                            title: slot.title.clone(),
+                            active: terminal_id.as_deref()
+                                == Some(self.state.terminal_layout.active_terminal_id.as_str()),
                             terminal_id,
                             view: slot.pane.as_ref().map(|pane| pane.view.clone()),
                             search_open,

@@ -25,7 +25,8 @@ impl SettingsService {
 
     pub fn cycle_theme(&self) -> Result<SettingsSummary, String> {
         let current = self.summary().theme;
-        let next = next_string_option(&current, terminal_theme_options(), "Auto");
+        let options = terminal_theme_options();
+        let next = next_string_option(&current, &options, "Auto");
         self.update_string("theme", next.to_string())
     }
 
