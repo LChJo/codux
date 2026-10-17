@@ -8,6 +8,13 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) {
         let keystroke = &event.keystroke;
+        if self.workspace_view == WorkspaceView::Triggers
+            && keystroke.key.eq_ignore_ascii_case("escape")
+            && self.close_trigger_overlay(cx)
+        {
+            cx.stop_propagation();
+            return;
+        }
 
         if self.should_close_window_for_keystroke(keystroke) {
             window.remove_window();

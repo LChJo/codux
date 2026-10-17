@@ -156,6 +156,18 @@ impl RuntimeStdioService {
                 })
             }
             "terminal.list" => self.terminals.list(),
+            "terminal.agents" => {
+                let bridge = self
+                    .terminals
+                    .manager()
+                    .ai_runtime()
+                    .ok_or("AI runtime is unavailable")?;
+                let tools = codux_runtime_live::ai_runtime::process_detect::detect_terminal_tools(
+                    &bridge.registry().shell_pids_snapshot(),
+                )
+                .ok_or("Unable to inspect terminal processes")?;
+                Ok(json!({ "terminalIds": tools.into_keys().collect::<Vec<_>>() }))
+            }
             "terminal.setQueryColors" => {
                 let colors = serde_json::from_value::<TerminalQueryColors>(params.clone())
                     .map_err(|error| format!("invalid terminal query colors: {error}"))?;

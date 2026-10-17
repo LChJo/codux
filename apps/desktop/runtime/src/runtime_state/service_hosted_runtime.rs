@@ -5,6 +5,51 @@ enum HostedProjectRuntime {
 }
 
 impl RuntimeService {
+    /// Query the runtime that owns the terminal; an idle shell is not an AI client.
+    pub fn trigger_started_terminals(
+        &self,
+        project_id: &str,
+        target: &ProjectRuntimeTarget,
+    ) -> Result<std::collections::HashSet<String>, String> {
+        match self.hosted_runtime_for_target_blocking(target)? {
+            None => crate::ai_runtime::process_detect::detect_terminal_tools(
+                &self.ai_runtime.registry().shell_pids_snapshot(),
+            )
+            .map(|tools| tools.into_keys().collect())
+            .ok_or_else(|| "Unable to inspect terminal processes".to_string()),
+            Some(HostedProjectRuntime::Remote(controller)) => {
+                let payload = controller.ai_stats(project_id, "")?;
+                Ok(codux_runtime_core::ai_stats::current_sessions_from_payload(&payload)
+                    .into_iter()
+                    .filter(|s| crate::ai_runtime::canonical_tool_name(&s.tool).is_some())
+                    .filter_map(|s| s.terminal_id)
+                    .collect())
+            }
+            Some(HostedProjectRuntime::Wsl(client)) => {
+                let payload = client.request("terminal.agents", json!({}))?;
+                Ok(payload.get("terminalIds").and_then(Value::as_array)
+                    .into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect())
+            }
+        }
+    }
+    /// Read the trigger's explicit runtime target, independent of the currently
+    /// selected project or a same-named path on a different host.
+    pub fn trigger_git_changed(
+        &self,
+        project_id: &str,
+        target: &ProjectRuntimeTarget,
+        path: &str,
+    ) -> Result<bool, String> {
+        let summary = if let Some(host) = self.hosted_runtime_for_target_blocking(target)? {
+            git_summary_from_payload(&host.git_status(project_id, path)?)?
+        } else {
+            crate::git::GitService::status_counts(path)
+        };
+        if let Some(error) = summary.error {
+            return Err(error);
+        }
+        Ok(summary.is_repository && summary.staged + summary.unstaged + summary.untracked > 0)
+    }
     fn drain_hosted_workspace_updates(&self) -> Vec<RemoteHostEvent> {
         self.remote_controllers
             .drain_hosted_workspace_updates()

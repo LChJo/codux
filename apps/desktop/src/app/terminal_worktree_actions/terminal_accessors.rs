@@ -30,6 +30,15 @@ impl CoduxApp {
     }
 
     pub(in crate::app) fn active_terminal_runtime_id(&self) -> String {
+        if self.workspace_view == WorkspaceView::Triggers {
+            return self
+                .trigger_workspace
+                .selected
+                .as_deref()
+                .and_then(|id| self.trigger_workspace.engine.definition(id))
+                .map(|d| d.terminal_id.clone())
+                .unwrap_or_default();
+        }
         self.active_terminal_slot()
             .and_then(|(_, slot)| slot.terminal_id.clone())
             .or_else(|| {
@@ -112,6 +121,14 @@ impl CoduxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if self.workspace_view == WorkspaceView::Triggers {
+            let id = self.active_terminal_runtime_id();
+            if let Some(pane) = self.trigger_workspace.panes.get(&id) {
+                pane.view.read(cx).focus_handle().focus(window, cx);
+                return true;
+            }
+            return false;
+        }
         let active_slot = self.active_terminal_slot().and_then(|(_, slot)| {
             slot.pane
                 .as_ref()
@@ -151,6 +168,14 @@ impl CoduxApp {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Option<gpui::Entity<TerminalView>> {
+        if self.workspace_view == WorkspaceView::Triggers {
+            return self
+                .trigger_workspace
+                .panes
+                .values()
+                .find(|p| p.view.read(cx).is_focused(window))
+                .map(|p| p.view.clone());
+        }
         self.terminals
             .iter()
             .flat_map(|tab| tab.panes.iter())
@@ -169,6 +194,14 @@ impl CoduxApp {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Option<String> {
+        if self.workspace_view == WorkspaceView::Triggers {
+            return self
+                .trigger_workspace
+                .panes
+                .iter()
+                .find(|(_, p)| p.view.read(cx).is_focused(window))
+                .map(|(id, _)| id.clone());
+        }
         self.terminals.iter().find_map(|tab| {
             tab.panes.iter().find_map(|slot| {
                 let pane = slot.pane.as_ref()?;

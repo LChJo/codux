@@ -84,6 +84,7 @@ impl CoduxApp {
             return;
         }
         self.start_runtime_ready_initialization(cx);
+        self.initialize_trigger_terminals(cx);
         self.sync_desktop_pet_window(false, cx);
         let timer = cx.background_executor().clone();
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
@@ -144,6 +145,7 @@ impl CoduxApp {
                             app.reconcile_hosted_terminal_bindings(cx);
                             app.detect_project_drive_recovery(cx);
                         }
+                        app.tick_triggers(cx);
                         if result.pet_update_events > 0 {
                             app.sync_desktop_pet_window(false, cx);
                         }

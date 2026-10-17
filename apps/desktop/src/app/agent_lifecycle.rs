@@ -232,6 +232,7 @@ impl CoduxApp {
     ) -> bool {
         let disconnected_devices = self.runtime_service.drain_disconnected_remote_devices();
         let remote_statuses = self.runtime_service.drain_remote_terminal_status();
+        self.enqueue_trigger_completion_events(events);
         let mut changed = self.clear_remote_agent_lifecycle_for_devices(&disconnected_devices);
         changed |= self.apply_terminal_status_events(events);
         changed |= self.apply_remote_terminal_status_payloads(&remote_statuses);
@@ -332,6 +333,7 @@ impl CoduxApp {
         {
             return false;
         }
+        self.note_trigger_terminal_status(status);
         let Some(next) = agent_lifecycle_state_for_terminal_status(status.state) else {
             return self.clear_pane_agent_lifecycle(&status.terminal_id);
         };

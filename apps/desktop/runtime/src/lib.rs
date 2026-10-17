@@ -64,6 +64,7 @@ pub mod system_limits;
 pub mod terminal_layout;
 pub mod terminal_runtime;
 pub mod tool_permissions;
+pub mod triggers;
 pub mod update;
 pub mod worktree;
 pub use codux_runtime_live::wrapper_helper;

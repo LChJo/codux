@@ -152,6 +152,9 @@ impl CoduxApp {
             pet_sprite_path_cache(&runtime.source_root, &state.support_dir, &pet_catalog);
         let ai_history_active_index_count = runtime_service.active_ai_history_index_count();
         let mut app = Self {
+            trigger_workspace: super::triggers::TriggerWorkspaceState::new(
+                state.support_dir.clone(),
+            ),
             window_mode: AppWindowMode::Main,
             root_focus_handle: None,
             terminals,

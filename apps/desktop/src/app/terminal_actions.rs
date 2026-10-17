@@ -251,6 +251,14 @@ impl CoduxApp {
     }
 
     pub(in crate::app) fn split_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspace_view == WorkspaceView::Triggers {
+            if let Some(id) = self.trigger_workspace.selected.clone() {
+                self.split_trigger(&id, SplitAxis::Horizontal, window, cx);
+            } else {
+                self.edit_trigger(None, window, cx);
+            }
+            return;
+        }
         let source_index = self
             .focused_terminal_runtime_id(window, cx)
             .or_else(|| {
@@ -905,6 +913,15 @@ impl CoduxApp {
     }
 
     pub(in crate::app) fn send_to_active_terminal(&mut self, text: &str, cx: &mut Context<Self>) {
+        if self.workspace_view == WorkspaceView::Triggers {
+            let id = self.active_terminal_runtime_id();
+            if let Some(pane) = self.trigger_workspace.panes.get(&id)
+                && let Err(error) = pane.send_text(text)
+            {
+                self.status_message = error.to_string();
+            }
+            return;
+        }
         if let Err(error) = self.ensure_active_terminal_mounted(cx) {
             self.status_message = format!("failed to mount active terminal: {error}");
             self.invalidate_terminal_workspace(cx);

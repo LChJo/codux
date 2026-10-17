@@ -290,7 +290,8 @@ impl Render for CoduxApp {
         }
 
         let project_column_view = self.project_column_view(cx);
-        let show_task_column = !self.task_column_collapsed;
+        let show_task_column =
+            !self.task_column_collapsed && self.workspace_view != WorkspaceView::Triggers;
         let task_column_view = show_task_column.then(|| self.task_column_view(cx));
         let workspace_column_view = self.workspace_column_view(cx);
         let status_bar_view = self.status_bar_view(cx);

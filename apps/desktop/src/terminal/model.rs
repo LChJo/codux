@@ -1050,6 +1050,15 @@ impl TerminalModel {
         text: &str,
         writable: bool,
     ) -> Result<(), FavoriteCommandPasteError> {
+        self.write_automation_input(text, writable, false)
+    }
+
+    fn write_automation_input(
+        &self,
+        text: &str,
+        writable: bool,
+        submit: bool,
+    ) -> Result<(), FavoriteCommandPasteError> {
         if !writable || self.exited {
             return Err(FavoriteCommandPasteError::Unavailable);
         }
@@ -1057,7 +1066,10 @@ impl TerminalModel {
         if (text.contains('\n') || text.contains('\r')) && !mode.bracketed_paste {
             return Err(FavoriteCommandPasteError::MultilineUnsupported);
         }
-        let bytes = codux_terminal_core::terminal_paste_input_bytes(text, mode.bracketed_paste);
+        let mut bytes = codux_terminal_core::terminal_paste_input_bytes(text, mode.bracketed_paste);
+        if submit {
+            bytes.push(b'\r');
+        }
         let mut writer = self.stdin_writer.lock();
         writer
             .write_all(&bytes)

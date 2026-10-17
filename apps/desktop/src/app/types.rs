@@ -98,6 +98,7 @@ pub(in crate::app) enum WorkspaceView {
     Files,
     Review,
     Stats,
+    Triggers,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

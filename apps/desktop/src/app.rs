@@ -142,6 +142,7 @@ mod terminal_state;
 mod terminal_worktree_actions;
 #[cfg(test)]
 mod tests;
+mod triggers;
 mod types;
 mod ui_helpers;
 mod ui_invalidation;

@@ -455,6 +455,19 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) {
         let terminal_id = terminal_id.trim();
+        let trigger_id = self
+            .trigger_workspace
+            .engine
+            .definitions()
+            .find(|d| d.terminal_id == terminal_id)
+            .map(|d| d.id.clone());
+        if let Some(id) = trigger_id {
+            if self.trigger_workspace.selected.as_ref() != Some(&id) {
+                self.trigger_workspace.selected = Some(id);
+                self.invalidate_ui(cx, [UiRegion::WorkspaceBody]);
+            }
+            return;
+        }
         if terminal_id.is_empty() {
             return;
         }

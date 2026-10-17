@@ -1,6 +1,33 @@
 use super::super::*;
 
 #[test]
+fn trigger_message_submits_once_without_splitting_multiline_prompt() {
+    let mut model = TerminalModel::new_for_test(20, 4, 100);
+    model.process_output_bytes_for_test(b"\x1b[?2004h");
+    model
+        .write_automation_input("first\n第二行", true, true)
+        .unwrap();
+    assert_eq!(
+        model.written_bytes_for_test(),
+        "\x1b[200~first\n第二行\x1b[201~\r".as_bytes()
+    );
+}
+
+#[test]
+fn trigger_message_rejects_exited_remote_owned_and_unsupported_multiline() {
+    let mut model = TerminalModel::new_for_test(20, 4, 100);
+    assert!(
+        model
+            .write_automation_input("first\nsecond", true, true)
+            .is_err()
+    );
+    assert!(model.write_automation_input("hello", false, true).is_err());
+    model.exited = true;
+    assert!(model.write_automation_input("hello", true, true).is_err());
+    assert!(model.written_bytes_for_test().is_empty());
+}
+
+#[test]
 fn favorite_commands_plain_right_click_opens_menu_even_with_mouse_tracking() {
     assert!(!terminal_right_click_reports(false, true));
     assert!(!terminal_right_click_reports(false, false));

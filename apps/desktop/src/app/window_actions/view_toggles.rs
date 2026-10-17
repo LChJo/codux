@@ -72,6 +72,11 @@ impl CoduxApp {
             WorkspaceView::Stats => {
                 self.set_workspace_view(WorkspaceView::Terminal, window, cx);
             }
+            WorkspaceView::Triggers => {
+                if let Some(id) = self.trigger_workspace.selected.clone() {
+                    self.exit_trigger_terminal(&id, cx);
+                }
+            }
         }
     }
 
@@ -82,6 +87,11 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) {
         self.workspace_view = view;
+        for pane in self.trigger_workspace.panes.values() {
+            pane.view.update(cx, |terminal, cx| {
+                terminal.set_render_visible(view == WorkspaceView::Triggers, cx)
+            });
+        }
         match view {
             WorkspaceView::Files => {
                 self.assistant_panel = Some(AssistantPanel::FileManager);
@@ -96,6 +106,10 @@ impl CoduxApp {
                 self.assistant_panel = None;
                 self.refresh_stats_workspace_data(false, cx);
             }
+            WorkspaceView::Triggers => {
+                self.assistant_panel = None;
+                self.initialize_trigger_terminals(cx);
+            }
             WorkspaceView::Terminal => {
                 self.activate_first_terminal();
                 if let Err(error) = self.ensure_active_terminal_mounted(cx) {
@@ -106,6 +120,7 @@ impl CoduxApp {
             }
         }
         self.invalidate_workspace(cx);
+        self.invalidate_ui_region(cx, UiRegion::Root);
         self.invalidate_status_bar(cx);
     }
 

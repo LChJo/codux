@@ -3,6 +3,7 @@ use super::*;
 pub(in crate::app) struct WorkspaceToolbarView {
     app_entity: gpui::Entity<CoduxApp>,
     snapshot: WorkspaceToolbarSnapshot,
+    compact: bool,
 }
 
 impl WorkspaceToolbarView {
@@ -13,6 +14,7 @@ impl WorkspaceToolbarView {
         Self {
             app_entity,
             snapshot,
+            compact: false,
         }
     }
 
@@ -35,6 +37,18 @@ impl Render for WorkspaceToolbarView {
             .flex()
             .w_full()
             .h_full()
+            .on_prepaint({
+                let view = cx.entity();
+                move |bounds, _, cx| {
+                    view.update(cx, |view, cx| {
+                        let compact = bounds.size.width < px(960.0);
+                        if view.compact != compact {
+                            view.compact = compact;
+                            cx.notify();
+                        }
+                    })
+                }
+            })
             .child(self.app_entity.update(cx, |app, cx| {
                 app.workspace_toolbar(window, cx).into_any_element()
             }))
@@ -77,6 +91,12 @@ impl Render for WorkspaceBodyView {
                 return app
                     .empty_project_workspace(window, app_cx)
                     .into_any_element();
+            }
+            if app.workspace_view == WorkspaceView::Triggers {
+                if let Some(view) = &self.terminal_workspace_view {
+                    view.update(app_cx, |view, cx| view.set_render_visible(false, cx));
+                }
+                return app.trigger_workspace_body(window, app_cx);
             }
             if app.workspace_view == WorkspaceView::Terminal {
                 let snapshot = app.terminal_workspace_snapshot();
@@ -316,6 +336,7 @@ fn workspace_view_key(view: WorkspaceView) -> &'static str {
         WorkspaceView::Files => "files",
         WorkspaceView::Review => "review",
         WorkspaceView::Stats => "stats",
+        WorkspaceView::Triggers => "triggers",
     }
 }
 

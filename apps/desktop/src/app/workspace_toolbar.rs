@@ -11,7 +11,7 @@ use codux_runtime::{i18n::translate, settings::locale_from_language_setting};
 use gpui::Rems;
 use gpui_component::menu::{DropdownMenu, PopupMenuItem};
 
-const WORKSPACE_TAB_TEXT_SIZE: Rems = Rems(0.75);
+const WORKSPACE_TAB_TEXT_SIZE: Rems = Rems(0.875);
 const WORKSPACE_TAB_LINE_HEIGHT: Rems = Rems(1.0);
 const WORKSPACE_WINDOW_CONTROL_BUTTON_WIDTH: f32 = 30.0;
 const WORKSPACE_WINDOW_CONTROL_GAP: f32 = 2.0;
@@ -31,7 +31,20 @@ impl CoduxApp {
             WorkspaceView::Files => 1,
             WorkspaceView::Review => 2,
             WorkspaceView::Stats => 3,
+            WorkspaceView::Triggers => 4,
         };
+        let project_width = if self.project_column_collapsed {
+            PROJECT_COLUMN_COLLAPSED_WIDTH
+        } else {
+            PROJECT_COLUMN_EXPANDED_WIDTH
+        };
+        let task_width =
+            if !self.task_column_collapsed && self.workspace_view != WorkspaceView::Triggers {
+                TASK_COLUMN_FIXED_WIDTH
+            } else {
+                0.0
+            };
+        let compact = window.viewport_size().width - px(project_width + task_width) < px(960.0);
         let pet_snapshot = self.pet_snapshot.clone();
         let has_project_context = self.state.selected_project.is_some();
         let remote_project_device_id = self
@@ -92,6 +105,7 @@ impl CoduxApp {
                             active_index,
                             &self.state.settings.language,
                             has_project_context,
+                            compact,
                             cx,
                         )),
                 )
@@ -449,6 +463,7 @@ fn workspace_segmented_tabs(
     active_index: usize,
     language: &str,
     enabled: bool,
+    compact: bool,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let app_entity = cx.entity();
@@ -457,11 +472,13 @@ fn workspace_segmented_tabs(
     let files_label = translate(&locale, "titlebar.files", "Files");
     let review_label = translate(&locale, "titlebar.review", "Review");
     let stats_label = translate(&locale, "titlebar.stats", "Stats");
+    let triggers_label = translate(&locale, "trigger.title", "Triggers");
     let tabs = [
         (HeroIconName::CommandLine, terminal_label),
         (HeroIconName::Document, files_label),
         (HeroIconName::ArrowPathRoundedSquare, review_label),
         (HeroIconName::ChartBar, stats_label),
+        (HeroIconName::Bolt, triggers_label),
     ];
     div()
         .rounded(px(8.0))
@@ -474,13 +491,15 @@ fn workspace_segmented_tabs(
         .children(tabs.into_iter().enumerate().map(|(index, (icon, label))| {
             let active = index == active_index;
             let click_entity = app_entity.clone();
-            div()
+            let tooltip = label.clone();
+            let icon_only = compact && index != 0 && index != 4 && index != active_index;
+            let tab = div()
                 .id(SharedString::from(format!("workspace-view-tab-{index}")))
                 .flex()
                 .items_center()
                 .gap(px(6.0))
-                .h(px(24.0))
-                .px(px(12.0))
+                .h(px(27.0))
+                .px(px(if icon_only { 9.0 } else { 12.0 }))
                 .rounded(px(6.0))
                 .text_size(WORKSPACE_TAB_TEXT_SIZE)
                 .line_height(WORKSPACE_TAB_LINE_HEIGHT)
@@ -502,6 +521,7 @@ fn workspace_segmented_tabs(
                                 let view = match index {
                                     0 => WorkspaceView::Terminal,
                                     1 => WorkspaceView::Files,
+                                    4 => WorkspaceView::Triggers,
                                     _ => WorkspaceView::Review,
                                 };
                                 app.set_workspace_view(view, window, cx);
@@ -510,7 +530,14 @@ fn workspace_segmented_tabs(
                     })
                 })
                 .child(Icon::new(icon).size_3p5())
-                .child(div().child(label))
+                .when(!icon_only, |tab| tab.child(div().child(label)));
+            with_codux_tooltip(
+                app_entity.clone(),
+                SharedString::from(format!("workspace-tab-tooltip-{index}")),
+                tab,
+                tooltip,
+            )
+            .into_any_element()
         }))
 }
 
