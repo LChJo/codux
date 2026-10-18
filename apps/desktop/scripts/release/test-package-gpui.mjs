@@ -38,7 +38,12 @@ const script = __testWindowsNsisScript(
 
 assert.match(script, /!include MUI2\.nsh/);
 assert.match(script, /ManifestDPIAware true/);
-assert.match(script, /VIProductVersion "2\.0\.0\.6"/);
+const packageVersion = fs.readFileSync("apps/desktop/Cargo.toml", "utf8")
+  .match(/^version = "([^"]+)"$/m)[1];
+const [versionCore, prerelease = ""] = packageVersion.split("-");
+const revision = prerelease.match(/(?:^|\.)(\d+)$/)?.[1] || "0";
+assert.ok(script.includes(`VIProductVersion "${versionCore}.${revision}"`));
+assert.ok(script.includes(`VIAddVersionKey /LANG=0 "ProductVersion" "${packageVersion}"`));
 assert.match(script, /!insertmacro MUI_PAGE_DIRECTORY/);
 assert.match(script, /!insertmacro MUI_LANGUAGE "English"/);
 assert.match(script, /!insertmacro MUI_LANGUAGE "SimpChinese"/);

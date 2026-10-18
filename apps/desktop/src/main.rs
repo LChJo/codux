@@ -34,10 +34,9 @@ fn main() -> Result<()> {
     }
 
     install_panic_logger();
-    #[cfg(target_os = "windows")]
-    unsafe {
-        std::env::set_var("GPUI_DISABLE_DIRECT_COMPOSITION", "true");
-    }
+    // Keep GPUI's default DirectComposition path so Windows can composite the
+    // translucent surfaces over the native blur. GPUI still honors an explicit
+    // GPUI_DISABLE_DIRECT_COMPOSITION override for driver compatibility.
     codux_runtime::system_limits::raise_open_file_limit();
 
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
