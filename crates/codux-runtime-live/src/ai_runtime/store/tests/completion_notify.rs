@@ -1,6 +1,111 @@
 use super::super::*;
 use super::fixtures::*;
 
+fn completed_probe(tool: &str, started: f64, completed: f64) -> AIRuntimeContextSnapshot {
+    AIRuntimeContextSnapshot {
+        tool: tool.into(),
+        started_at: Some(started),
+        completed_at: Some(completed),
+        response_state: Some("idle".into()),
+        has_completed_turn: true,
+        ..responding_probe_snapshot(completed)
+    }
+}
+
+#[test]
+fn completed_probe_recovers_turns_that_finish_between_polls() {
+    for tool in ["claude", "codex", "kimi"] {
+        let store = AIRuntimeStateStore::default();
+        store.apply_hook(AIHookEventPayload {
+            tool: tool.into(),
+            ..test_hook("promptSubmitted", 1000.0)
+        });
+        let first =
+            store.apply_runtime_snapshot("terminal-1", completed_probe(tool, 1000.0, 1010.0));
+        let first_id = first.completion.expect("first turn").id;
+
+        // No prompt hook or responding snapshot was observed for the next turn.
+        let second =
+            store.apply_runtime_snapshot("terminal-1", completed_probe(tool, 1020.0, 1030.0));
+        let second_id = second
+            .completion
+            .expect("new completed turn must notify")
+            .id;
+        assert_ne!(first_id, second_id, "{tool}");
+        assert_eq!(
+            store.snapshot().sessions[0].completed_turn_started_at,
+            Some(1020.0)
+        );
+
+        let mut repeated = completed_probe(tool, 1020.0, 1030.0);
+        repeated.updated_at = 1040.0;
+        assert!(
+            store
+                .apply_runtime_snapshot("terminal-1", repeated)
+                .completion
+                .is_none()
+        );
+        let third =
+            store.apply_runtime_snapshot("terminal-1", completed_probe(tool, 1050.0, 1060.0));
+        assert_ne!(third.completion.expect("third turn").id, second_id);
+    }
+}
+
+#[test]
+fn completed_probe_does_not_replay_old_turns_or_unfinished_idle_snapshots() {
+    let store = AIRuntimeStateStore::default();
+    store.apply_hook(test_hook("promptSubmitted", 1000.0));
+    let first =
+        store.apply_runtime_snapshot("terminal-1", completed_probe("codex", 1000.0, 1010.0));
+    assert!(first.completion.is_some());
+    let mut stale = completed_probe("codex", 990.0, 999.0);
+    stale.updated_at = 1020.0;
+    assert!(
+        store
+            .apply_runtime_snapshot("terminal-1", stale)
+            .completion
+            .is_none()
+    );
+    let mut unfinished = completed_probe("codex", 1030.0, 1040.0);
+    unfinished.has_completed_turn = false;
+    unfinished.completed_at = None;
+    assert!(
+        store
+            .apply_runtime_snapshot("terminal-1", unfinished)
+            .completion
+            .is_none()
+    );
+}
+
+#[test]
+fn all_completed_terminals_in_one_mutation_are_delivered_once() {
+    let mut core = AIRuntimeStateCore::default();
+    for (terminal, session, start) in [
+        ("terminal-a", "session-a", 1000.0),
+        ("terminal-b", "session-b", 1001.0),
+    ] {
+        apply_hook_unlocked(&mut core, test_hook_for("codex", terminal, session, start));
+        apply_hook_unlocked(
+            &mut core,
+            AIHookEventPayload {
+                kind: "turnCompleted".into(),
+                metadata: Some(AIHookEventMetadata {
+                    has_completed_turn: Some(true),
+                    ..empty_metadata()
+                }),
+                ..test_hook_for("codex", terminal, session, start + 10.0)
+            },
+        );
+    }
+    let events = super::super::summary::drain_completion_events_unlocked(&mut core);
+    assert_eq!(
+        events.len(),
+        2,
+        "every terminal needs its completion, not only the latest in the project"
+    );
+    assert!(super::super::summary::drain_completion_events_unlocked(&mut core).is_empty());
+}
+
 #[test]
 fn same_second_completion_snapshot_after_prompt_completes() {
     let store = AIRuntimeStateStore::default();
@@ -177,7 +282,10 @@ fn running_session_suppresses_project_completion_badge() {
     });
 
     assert!(complete.did_change);
-    assert!(complete.completion.is_none());
+    assert!(
+        complete.completion.is_some(),
+        "terminal completion must be delivered even while its project is running"
+    );
     let snapshot = store.snapshot();
     assert_eq!(snapshot.running_count, 1);
     assert_eq!(snapshot.completion_count, 0);

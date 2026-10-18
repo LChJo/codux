@@ -184,14 +184,24 @@ pub(in crate::ai_runtime::store) fn apply_runtime_snapshot_unlocked(
             false
         };
         if can_resolve_idle {
+            // A complete turn can fit between probes without a prompt hook or
+            // responding snapshot. A transcript start after the last observed
+            // idle state identifies that new turn; a later heartbeat alone does not.
+            let unobserved_turn_started_at = snapshot.started_at.filter(|started| {
+                session.state == "idle"
+                    && (session.has_completed_turn || session.was_interrupted)
+                    && *started > session.updated_at
+                    && (snapshot.has_completed_turn || snapshot.was_interrupted)
+                    && snapshot.completed_at.is_some_and(|ended| ended >= *started)
+            });
             state = "idle".to_string();
             active_turn_started_at = None;
             runtime_turn_started_at = None;
             was_interrupted = !silent_stale_prelaunch_open_turn && snapshot.was_interrupted;
             has_completed_turn = !silent_stale_prelaunch_open_turn
                 && (snapshot.has_completed_turn || !was_interrupted);
-            completed_turn_started_at = session
-                .completed_turn_started_at
+            completed_turn_started_at = unobserved_turn_started_at
+                .or(session.completed_turn_started_at)
                 .or(session.active_turn_started_at)
                 .or(session.runtime_turn_started_at)
                 .or(session.started_at)

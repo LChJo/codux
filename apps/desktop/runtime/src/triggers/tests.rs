@@ -140,6 +140,95 @@ fn definition(project: &str, kind: TriggerKind) -> TriggerDefinition {
 }
 
 #[test]
+fn triggers_completed_between_polls_release_one_pending_job_and_continue_intervals() {
+    use crate::ai_runtime::{AIRuntimeContextSnapshot, AIRuntimeStateStore};
+    let store = AIRuntimeStateStore::default();
+    let mut engine = TriggerEngine::default();
+    let d = definition("a", TriggerKind::Interval { seconds: 10 });
+    engine.upsert(d.clone(), 100).unwrap();
+    engine.set_terminal_state(&d.terminal_id, TerminalState::Idle);
+    store.apply_hook(
+        serde_json::from_value(json!({
+            "kind":"promptSubmitted", "terminalID":d.terminal_id, "projectID":"a",
+            "projectName":"Project", "sessionTitle":"Trigger", "tool":"claude",
+            "aiSessionID":"trigger-session", "updatedAt":100.0
+        }))
+        .unwrap(),
+    );
+    let mut snapshot = AIRuntimeContextSnapshot {
+        tool: "claude".into(),
+        external_session_id: Some("trigger-session".into()),
+        transcript_path: None,
+        model: None,
+        assistant_preview: None,
+        input_tokens: 0,
+        output_tokens: 0,
+        cached_input_tokens: 0,
+        total_tokens: 0,
+        usage_amounts: vec![],
+        baseline_usage_amounts: vec![],
+        started_at: Some(100.0),
+        completed_at: Some(105.0),
+        updated_at: 105.0,
+        response_state: Some("idle".into()),
+        has_completed_turn: true,
+        was_interrupted: false,
+        session_origin: "live".into(),
+        source: "probe".into(),
+        plan: None,
+    };
+    assert!(
+        store
+            .apply_runtime_snapshot(&d.terminal_id, snapshot.clone())
+            .completion
+            .is_some()
+    );
+    engine.tick(110);
+    let first = engine.take_dispatches().pop().unwrap();
+    engine.delivery_succeeded(&first, 110);
+    engine.tick(120);
+    engine.tick(130);
+    assert!(engine.has_pending(&d.id));
+    assert!(engine.take_dispatches().is_empty());
+
+    // The actual AI is already idle; only its completion can release the
+    // automatic-task guard and dispatch the single merged waiting task.
+    engine.set_terminal_state(&d.terminal_id, TerminalState::Idle);
+    snapshot.started_at = Some(112.0);
+    snapshot.completed_at = Some(115.0);
+    snapshot.updated_at = 115.0;
+    let completion = store
+        .apply_runtime_snapshot(&d.terminal_id, snapshot.clone())
+        .completion
+        .expect("finished interval must emit a new completion");
+    engine.complete("a", &d.terminal_id, &completion.id, false, 131);
+    assert!(!engine.has_pending(&d.id));
+    let jobs = engine.take_dispatches();
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].cause, TriggerCause::Pending);
+    assert!(
+        store
+            .apply_runtime_snapshot(&d.terminal_id, snapshot.clone())
+            .completion
+            .is_none()
+    );
+
+    snapshot.started_at = Some(132.0);
+    snapshot.completed_at = Some(135.0);
+    snapshot.updated_at = 135.0;
+    let completion = store
+        .apply_runtime_snapshot(&d.terminal_id, snapshot)
+        .completion
+        .unwrap();
+    engine.complete("a", &d.terminal_id, &completion.id, false, 136);
+    assert!(!engine.is_automatic(&d.terminal_id));
+    assert_eq!(engine.terminal_state(&d.terminal_id), TerminalState::Idle);
+    assert!(engine.take_dispatches().is_empty());
+    engine.tick(140);
+    assert_eq!(engine.take_dispatches().len(), 1);
+}
+
+#[test]
 fn triggers_project_completion_git_filter_and_no_recursive_automation() {
     let mut engine = TriggerEngine::default();
     let a = definition("a", TriggerKind::TaskCompletedWithGitChanges);

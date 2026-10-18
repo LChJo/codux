@@ -210,35 +210,18 @@ pub(super) fn drain_completion_events_unlocked(
     core: &mut AIRuntimeStateCore,
 ) -> Vec<AIRuntimeCompletionEvent> {
     let mut events = Vec::new();
-    let now = now_seconds();
-    let mut groups: std::collections::HashMap<String, Vec<&AISessionSnapshot>> =
-        std::collections::HashMap::new();
-    for session in core.sessions.values() {
-        groups
-            .entry(session.project_id.clone())
-            .or_default()
-            .push(session);
-    }
-    for (project_id, group) in groups.iter_mut() {
-        group.sort_by(|left, right| right.updated_at.total_cmp(&left.updated_at));
-        let AIProjectPhase::Completed {
-            tool,
-            was_interrupted,
-            ..
-        } = completed_phase_from(group, core, project_id, now)
-        else {
-            continue;
-        };
-        let Some(session) = group
-            .iter()
-            .copied()
-            .filter(|session| session.state == "idle")
-            .filter(|session| session.has_completed_turn || session.was_interrupted)
-            .max_by(|left, right| left.updated_at.total_cmp(&right.updated_at))
-            .cloned()
-        else {
-            continue;
-        };
+    // Completion is a terminal event: triggers and handoffs must receive it
+    // even while a sibling terminal is still working. Project badge aggregation
+    // remains independent in completed_phase_from.
+    let mut completed = core
+        .sessions
+        .values()
+        .filter(|session| session.state == "idle")
+        .filter(|session| session.has_completed_turn || session.was_interrupted)
+        .cloned()
+        .collect::<Vec<_>>();
+    completed.sort_by(|left, right| right.updated_at.total_cmp(&left.updated_at));
+    for session in completed {
         let completion_key = completion_event_key(&session);
         const MAX_NOTIFIED_COMPLETION_KEYS: usize = 2048;
         if core.notified_completion_keys.len() >= MAX_NOTIFIED_COMPLETION_KEYS {
@@ -247,16 +230,12 @@ pub(super) fn drain_completion_events_unlocked(
         if !core.notified_completion_keys.insert(completion_key.clone()) {
             continue;
         }
-        let project_name = group
-            .first()
-            .map(|session| session.project_name.clone())
-            .unwrap_or_else(|| project_id.clone());
         runtime_log_line(
             "runtime-state",
             &format!(
                 "completion emit key={} project={} terminal={} session={} updated_at={:.3}",
                 completion_key,
-                project_id,
+                session.project_id,
                 session.terminal_id,
                 session.ai_session_id.as_deref().unwrap_or("none"),
                 session.updated_at
@@ -264,9 +243,9 @@ pub(super) fn drain_completion_events_unlocked(
         );
         events.push(AIRuntimeCompletionEvent {
             id: completion_key,
-            project_name,
-            tool,
-            was_interrupted,
+            project_name: session.project_name.clone(),
+            tool: session.tool.clone(),
+            was_interrupted: session.was_interrupted,
             session: Some(session),
         });
     }
