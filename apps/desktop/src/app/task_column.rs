@@ -500,7 +500,7 @@ fn task_column_content(
             )
             .child(
                 resizable_panel()
-                    .size(px(260.0))
+                    .size(px(360.0))
                     .size_range(px(180.0)..Pixels::MAX)
                     .child(favorite_command_list_view),
             )
