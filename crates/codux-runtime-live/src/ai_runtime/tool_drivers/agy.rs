@@ -28,7 +28,7 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
     hook: AIRuntimeToolHookDriver::None,
     probe: Some(probe_agy_runtime),
     resource_paths: Some(resource_paths),
-    memory_injection: AIRuntimeMemoryInjectionDriver::None,
+    memory_injection: AIRuntimeMemoryInjectionDriver::AgyHook,
     lifecycle_hook_format: AIRuntimeLifecycleHookFormat::None,
     lifecycle_hooks: &[],
     lifecycle_config: None,

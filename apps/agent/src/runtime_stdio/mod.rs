@@ -65,6 +65,7 @@ pub fn run(version: &str) -> Result<(), String> {
             "worktree".to_string(),
             "terminal".to_string(),
             "aiHistory".to_string(),
+            "blackboard".to_string(),
         ],
     })?;
 

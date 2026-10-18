@@ -64,6 +64,22 @@ pub struct WslRuntimeClient {
 }
 
 impl WslRuntimeClient {
+    #[cfg(all(test, target_os = "windows"))]
+    pub(crate) fn start_test_command(
+        mut command: std::process::Command,
+    ) -> Result<Arc<Self>, String> {
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        let stdin = child.stdin.take().ok_or("Missing test runtime stdin")?;
+        let stdout = BufReader::new(child.stdout.take().ok_or("Missing test runtime stdout")?);
+        let stderr = child.stderr.take();
+        Self::finish_start("Ubuntu", child, stdin, stdout, stderr, None)
+    }
+
     #[cfg(target_os = "windows")]
     pub(crate) fn start(
         distribution: &str,

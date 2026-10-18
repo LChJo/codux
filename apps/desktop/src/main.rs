@@ -34,6 +34,10 @@ fn main() -> Result<()> {
     }
 
     install_panic_logger();
+    #[cfg(target_os = "windows")]
+    unsafe {
+        std::env::set_var("GPUI_DISABLE_DIRECT_COMPOSITION", "true");
+    }
     codux_runtime::system_limits::raise_open_file_limit();
 
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();

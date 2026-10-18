@@ -20,6 +20,9 @@ use std::{
     rename_all_fields = "camelCase"
 )]
 pub enum TriggerKind {
+    Blackboard {
+        rule: crate::blackboard::conditions::Rule,
+    },
     TaskCompletedWithGitChanges,
     TaskCompleted,
     Interval {
@@ -70,6 +73,7 @@ impl TriggerDefinition {
             return Err("trigger.validation.content".into());
         }
         match self.kind {
+            TriggerKind::Blackboard { ref rule } => rule.validate()?,
             TriggerKind::Interval { seconds } if seconds == 0 || seconds > i64::MAX as u64 => {
                 return Err("trigger.validation.interval".into());
             }
@@ -123,6 +127,7 @@ fn next_daily_alarm(now: i64, hour: u32, minute: u32) -> Option<i64> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TriggerCause {
+    Blackboard,
     Manual,
     TaskCompleted,
     TaskCompletedWithGitChanges,
@@ -508,6 +513,7 @@ impl TriggerEngine {
         self.revision += 1;
     }
     pub fn tick(&mut self, now: i64) {
+        // Timed rules share the same dispatch queue as blackboard rules.
         let due = self
             .definitions()
             .filter(|d| d.enabled && d.next_at.is_some_and(|at| at <= now))
@@ -603,6 +609,60 @@ impl TriggerEngine {
     }
     pub fn take_dispatches(&mut self) -> Vec<TriggerDispatch> {
         std::mem::take(&mut self.dispatches)
+    }
+    pub fn fire_blackboard(
+        &mut self,
+        id: &str,
+        hit: &crate::blackboard::conditions::Hit,
+        now: i64,
+    ) {
+        let Some(d) = self.definition(id).cloned() else {
+            return;
+        };
+        let mut message = d.message.clone();
+        message.push_str("\n\n<blackboard_changes>\n");
+        let mut budget = 24_000usize;
+        for event in &hit.events {
+            let excerpt = event
+                .entry
+                .body
+                .chars()
+                .take(budget.min(4000))
+                .collect::<String>();
+            budget = budget.saturating_sub(excerpt.chars().count());
+            message.push_str(&format!(
+                "{} / {}\n{}\nSource: {}\nReference: blackboard://{}/{}/{}\n{}\n\n",
+                event.component.key(),
+                event.operation,
+                event.entry.title,
+                event.terminal_id.as_deref().unwrap_or("user"),
+                event.project_id,
+                event.component.key(),
+                event.entry.id,
+                excerpt
+            ));
+            if budget == 0 {
+                break;
+            }
+        }
+        message.push_str("</blackboard_changes>");
+        if let Some(def) = self
+            .data
+            .projects
+            .get_mut(&d.project_id)
+            .and_then(|p| p.definitions.iter_mut().find(|x| x.id == id))
+        {
+            def.message = message;
+        }
+        self.fire(id, TriggerCause::Blackboard, now);
+        if let Some(def) = self
+            .data
+            .projects
+            .get_mut(&d.project_id)
+            .and_then(|p| p.definitions.iter_mut().find(|x| x.id == id))
+        {
+            def.message = d.message;
+        }
     }
     pub fn cancel_dispatch(&mut self, job: &TriggerDispatch) {
         if let Some(t) = self.terminals.get_mut(&job.terminal_id) {

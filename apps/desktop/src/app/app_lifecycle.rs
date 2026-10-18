@@ -44,12 +44,18 @@ impl CoduxApp {
             .into_iter()
             .map(|host| host.device_id)
             .collect();
-        let (terminal_layout, terminal_runtime) = normalize_terminal_restore_state(
-            super::ai_runtime_status::terminal_layout_owner_id(&state).as_deref(),
-            state.terminal_layout.clone(),
-            TerminalRuntimeSummary::default(),
-            &state.settings.language,
-        );
+        let (terminal_layout, terminal_runtime) =
+            super::terminal_state::prepare_boot_terminal_state(
+                &runtime_service,
+                state
+                    .selected_project
+                    .as_ref()
+                    .map(|project| (state.support_dir.as_path(), project.id.as_str())),
+                super::ai_runtime_status::current_terminal_layout_storage_key(&state).as_deref(),
+                super::ai_runtime_status::terminal_layout_owner_id(&state).as_deref(),
+                state.terminal_layout.clone(),
+                &state.settings.language,
+            );
         state.terminal_layout = terminal_layout;
         state.terminal_runtime = terminal_runtime;
         let restore_plan = terminal_restore_plan_for_language(
@@ -152,6 +158,7 @@ impl CoduxApp {
             pet_sprite_path_cache(&runtime.source_root, &state.support_dir, &pet_catalog);
         let ai_history_active_index_count = runtime_service.active_ai_history_index_count();
         let mut app = Self {
+            blackboard: super::blackboard::BlackboardWorkspace::default(),
             trigger_workspace: super::triggers::TriggerWorkspaceState::new(
                 state.support_dir.clone(),
             ),

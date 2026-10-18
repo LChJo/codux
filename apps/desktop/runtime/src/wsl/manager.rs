@@ -47,6 +47,14 @@ pub struct WslRuntimeManager {
 }
 
 impl WslRuntimeManager {
+    #[cfg(all(test, target_os = "windows"))]
+    pub(crate) fn cache_test_client(&self, distribution: &str, client: Arc<WslRuntimeClient>) {
+        self.clients
+            .lock()
+            .unwrap()
+            .insert(distribution.to_string(), client);
+    }
+
     pub fn new() -> Self {
         Self::default()
     }

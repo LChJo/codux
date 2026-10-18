@@ -100,6 +100,7 @@ impl AIRuntimeRegistry {
     }
 
     pub fn remove(&self, terminal_id: &str) {
+        crate::blackboard::set_state(terminal_id, false, false);
         if let Ok(mut terminals) = self.terminals.lock() {
             terminals.remove(terminal_id);
         }

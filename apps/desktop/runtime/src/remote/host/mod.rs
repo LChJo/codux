@@ -178,6 +178,7 @@ pub struct RemoteHostRuntime {
 mod agent_worktree;
 mod ai_stats;
 mod authorization;
+mod blackboard;
 mod files;
 mod git;
 mod memory;
@@ -615,6 +616,7 @@ impl RemoteHostRuntime {
             REMOTE_AI_STATE => self.handle_ai_state(&envelope),
             REMOTE_AI_SESSION => self.handle_ai_session(&envelope),
             REMOTE_MEMORY_READ => self.handle_memory_read(&envelope),
+            "blackboard.invoke" => self.handle_blackboard(&envelope),
             REMOTE_MEMORY_EXTRACT => self.handle_memory_extract(&envelope),
             REMOTE_SSH_LIST => self.handle_ssh_list(&envelope),
             REMOTE_SSH_UPSERT => self.handle_ssh_upsert(&envelope),

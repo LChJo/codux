@@ -55,7 +55,7 @@ pub struct TerminalPtySessionHandle {
 
 impl TerminalPtySession {
     pub(super) fn spawn(
-        config: TerminalPtyConfig,
+        mut config: TerminalPtyConfig,
         context: Option<&TerminalLaunchContext>,
         event_sink: Option<(Option<String>, EventSink)>,
         on_exit: Option<TerminalExitCallback>,
@@ -67,6 +67,19 @@ impl TerminalPtySession {
             .clone()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
+        let session_instance_id = config
+            .session_instance_id
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| {
+                context
+                    .and_then(|context| context.session_instance_id.clone())
+                    .filter(|value| !value.trim().is_empty())
+            })
+            .or_else(|| Some(Uuid::new_v4().to_string().to_lowercase()));
+        // The wrapper environment and runtime registry must identify the same
+        // process instance, including launches without a preassigned UUID.
+        config.session_instance_id = session_instance_id.clone();
         let cols = config.cols.unwrap_or(100).max(20);
         let rows = config.rows.unwrap_or(32).max(8);
         let shell = config
@@ -180,12 +193,6 @@ impl TerminalPtySession {
             .clone()
             .filter(|value| !value.trim().is_empty())
             .or_else(|| context.and_then(|context| context.session_key.clone()));
-        let session_instance_id = config
-            .session_instance_id
-            .clone()
-            .filter(|value| !value.trim().is_empty())
-            .or_else(|| context.and_then(|context| context.session_instance_id.clone()))
-            .or_else(|| Some(Uuid::new_v4().to_string().to_lowercase()));
         let title = config
             .title
             .clone()

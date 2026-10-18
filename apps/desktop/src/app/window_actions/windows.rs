@@ -85,6 +85,7 @@ impl CoduxApp {
         let pet_sprite_paths =
             pet_sprite_path_cache(&runtime.source_root, &state.support_dir, &pet_catalog);
         Self {
+            blackboard: crate::app::blackboard::BlackboardWorkspace::default(),
             trigger_workspace: crate::app::triggers::TriggerWorkspaceState::new(
                 state.support_dir.clone(),
             ),

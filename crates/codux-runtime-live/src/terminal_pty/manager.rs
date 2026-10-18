@@ -570,6 +570,9 @@ impl TerminalManager {
         Option<AgentWorktreeCapabilityLease>,
         Option<TerminalQueryColors>,
     ) {
+        if let Some(runtime) = &self.ai_runtime {
+            runtime.apply_terminal_runtime_environment(config.env.get_or_insert_with(HashMap::new));
+        }
         let configured_colors = terminal_query_colors(&config);
         let mut query_colors = self.query_colors.lock();
         if query_colors.is_none() {

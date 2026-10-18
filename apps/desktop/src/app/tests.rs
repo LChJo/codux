@@ -59,6 +59,115 @@ fn terminal_focus_test_tabs() -> Vec<crate::app::types::TerminalTab> {
 }
 
 #[test]
+fn boot_terminal_layout_preserves_first_pane_identity_across_reloads() {
+    use super::terminal_state::prepare_boot_terminal_state;
+    use codux_runtime::runtime_state::RuntimeService;
+    let root = std::env::temp_dir().join(format!("codux-boot-layout-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("state.json"),serde_json::json!({"projects":[{"id":"p","name":"Boot QA","path":root}],"selectedProjectId":"p"}).to_string()).unwrap();
+    let key = codux_runtime::terminal_layout::terminal_layout_storage_key("p", "p");
+    let service = RuntimeService::new(root.clone());
+    let (first, _) = prepare_boot_terminal_state(
+        &service,
+        Some((&root, "p")),
+        Some(&key),
+        Some("p"),
+        service.reload_terminal_layout(Some(&key)),
+        "english",
+    );
+    let first_id = first.top_panes[0].terminal_id.clone();
+    assert!(!first_id.is_empty());
+    let saved = service.reload_terminal_layout(Some(&key));
+    assert_eq!(
+        saved.top_panes.first().map(|p| p.terminal_id.as_str()),
+        Some(first_id.as_str()),
+        "the synchronous boot path must save its first pane before a restart"
+    );
+    drop(service);
+    let reopened = RuntimeService::new(root.clone());
+    let (second, _) = prepare_boot_terminal_state(
+        &reopened,
+        Some((&root, "p")),
+        Some(&key),
+        Some("p"),
+        reopened.reload_terminal_layout(Some(&key)),
+        "english",
+    );
+    assert_eq!(second.top_panes[0].terminal_id, first_id);
+    drop(reopened);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match std::fs::remove_dir_all(&root) {
+            Ok(()) => break,
+            Err(error)
+                if std::time::Instant::now() < deadline
+                    && matches!(error.raw_os_error(), Some(32 | 145)) =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            Err(error) => panic!("boot layout cleanup: {error}"),
+        }
+    }
+}
+
+#[test]
+fn boot_terminal_layout_recovers_latest_unpersisted_legacy_pane_within_its_workspace() {
+    use super::terminal_state::prepare_boot_terminal_state;
+    use codux_runtime::{blackboard::Store, runtime_state::RuntimeService};
+    let root = std::env::temp_dir().join(format!("codux-legacy-boot-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("state.json"),serde_json::json!({"projects":[{"id":"p","name":"Legacy QA","path":root}],"selectedProjectId":"p"}).to_string()).unwrap();
+    let store = Store::open(&root).unwrap();
+    for (owner, id, title) in [
+        ("p", "gpui-term-p-old1", "First"),
+        ("p", "gpui-term-p-old2", "Recovered"),
+        ("p-child", "gpui-term-p-child-new", "Other workspace"),
+        ("trigger", "trigger-new", "Trigger"),
+    ] {
+        store
+            .register_terminal("p", &format!("gpui:{owner}:{id}"), id, title)
+            .unwrap();
+    }
+    let service = RuntimeService::new(root.clone());
+    let key = codux_runtime::terminal_layout::terminal_layout_storage_key("p", "p");
+    let (layout, _) = prepare_boot_terminal_state(
+        &service,
+        Some((&root, "p")),
+        Some(&key),
+        Some("p"),
+        TerminalLayoutSummary::default(),
+        "english",
+    );
+    assert_eq!(layout.top_panes[0].terminal_id, "gpui-term-p-old2");
+    assert_eq!(layout.top_panes[0].title, "Recovered");
+    assert_eq!(
+        store
+            .terminal("p", &layout.top_panes[0].terminal_id)
+            .unwrap()
+            .ordinal,
+        2
+    );
+    assert_eq!(
+        service.reload_terminal_layout(Some(&key)).top_panes[0].terminal_id,
+        "gpui-term-p-old2"
+    );
+    drop(service);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match std::fs::remove_dir_all(&root) {
+            Ok(()) => break,
+            Err(error)
+                if std::time::Instant::now() < deadline
+                    && matches!(error.raw_os_error(), Some(32 | 145)) =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            Err(error) => panic!("legacy boot cleanup: {error}"),
+        }
+    }
+}
+
+#[test]
 fn terminal_restore_plan_migrates_legacy_tabs_to_top_panes() {
     let layout = TerminalLayoutSummary {
         active_terminal_id: "term-d".to_string(),

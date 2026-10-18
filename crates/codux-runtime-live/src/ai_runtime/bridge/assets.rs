@@ -107,6 +107,7 @@ impl AIRuntimeBridge {
         bin_names.push("codux-ssh");
         bin_names.push("codux-db");
         bin_names.push("codux-worktree");
+        bin_names.push("codux-blackboard");
         for stale_bin_name in [
             "kiro",
             "codewhale-tui",
@@ -369,11 +370,19 @@ fn test_wrapper_helper_script() -> &'static str {
 set -eu
 cmd="${2:-}"
 case "$cmd" in
+  managed-instructions)
+    [ "${3:-}" = --nul ] && [ "${4:-}" = kimi ] || exit 64
+    # Test-only argv transport; real Kimi rendering is covered by helper tests.
+    printf '%s\000' --agent-file "${5}"
+    shift 6
+    for arg in "$@"; do printf '%s\000' "$arg"; done
+    ;;
   tool-memory-injection)
     case "${TOOL_NAME:-}" in
       codex) printf '%s\n' codexDeveloperInstructions ;;
       claude|claude-code|reclaude|omp) printf '%s\n' appendSystemPrompt ;;
-      kimi|kimi-code) printf '%s\n' none ;;
+      codewhale) printf '%s\n' codeWhaleInstructions ;;
+      kimi|kimi-code) printf '%s\n' kimiAgent ;;
       opencode|mimo) printf '%s\n' opencodeSystemTransform ;;
     esac
     ;;

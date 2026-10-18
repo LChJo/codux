@@ -96,6 +96,12 @@ find_real_binary() {
     reclaude)
       candidate_names=("reclaude" "claude" "claude-code")
       ;;
+    kimi)
+      candidate_names=("kimi" "kimi-code")
+      ;;
+    kimi-code)
+      candidate_names=("kimi-code" "kimi")
+      ;;
     *)
       candidate_names=("$tool_name")
       ;;
@@ -191,6 +197,69 @@ restore_working_directory() {
 
 is_passthrough_invocation() {
   local first="${1:-}"
+  if [[ "${tool_name}" == "kiro-cli" ]]; then
+    local chat_command=false
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --) return 1 ;;
+        --help|-h|--help-all|--version|-V|--list-models|--list-sessions|-l|--sessions|--delete-session|-d|--delete-session=*) return 0 ;;
+        --agent|--model|--effort|--trust-tools|--resume-id|--format|-f|--output-format|--wrap|-w|--agent-engine|--mode|--repo|--session-source)
+          [[ $# -ge 2 ]] || return 1
+          shift 2 ;;
+        -*) shift ;;
+        chat)
+          [[ "$chat_command" == false ]] || return 1
+          chat_command=true
+          shift ;;
+        *)
+          [[ "$chat_command" == false ]] || return 1
+          case "$1" in
+            debug|settings|setup|update|diagnostic|init|theme|issue|login|logout|whoami|profile|user|doctor|launch|quit|restart|integrations|translate|dashboard|crew|mcp|powers|inline|agent|acp|help) return 0 ;;
+            *) return 1 ;;
+          esac ;;
+      esac
+    done
+    return 1
+  fi
+  if [[ "${tool_name}" == "kimi" || "${tool_name}" == "kimi-code" ]]; then
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --) return 1 ;;
+        --help|-h|--version|-V) return 0 ;;
+        --session|-S|--resume|-r)
+          shift
+          if [[ $# -gt 0 && "$1" != -* ]]; then shift; fi
+          ;;
+        --agent|--agent-file|--model|-m|--prompt|-p|--config|--config-file|--work-dir|-w|--skills-dir|--add-dir|--output-format)
+          [[ $# -ge 2 ]] || return 1
+          shift 2
+          ;;
+        -*) shift ;;
+        provider|session|export|fork|login|logout|doctor|vis|install-desktop|app|migrate|upgrade|update|acp|web|server|rc|remote|term|mcp|help|config|info) return 0 ;;
+        *) return 1 ;;
+      esac
+    done
+    return 1
+  fi
+  if [[ "${tool_name}" == "agy" ]]; then
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --) return 1 ;;
+        --help|-h|--version|-V) return 0 ;;
+        --print|--prompt|--prompt-interactive|-p|-i|--print=*|--prompt=*|--prompt-interactive=*) return 1 ;;
+        --agent|--model|--mode|--effort|--project|--conversation|--log-file|--add-dir|--json-schema|--input-format|--output-format|--print-timeout)
+          [[ $# -ge 2 ]] || return 1
+          shift 2
+          ;;
+        --continue|-c|--new-project|--remote-control|--sandbox|--dangerously-skip-permissions|--disable-slash-commands|--agent=*|--model=*|--mode=*|--effort=*|--project=*|--conversation=*|--log-file=*|--add-dir=*|--json-schema=*|--input-format=*|--output-format=*|--print-timeout=*|--sandbox=*|--dangerously-skip-permissions=*|--remote-control=*|--new-project=*|--continue=*|--disable-slash-commands=*)
+          shift
+          ;;
+        agent|agents|models|changelog|plugins|plugin|mcp|install|remote-control|mic-serve|update|help) return 0 ;;
+        *) return 1 ;;
+      esac
+    done
+    return 1
+  fi
   if [[ "${tool_name}" == "omp" ]]; then
     while [[ $# -gt 0 ]]; do
       first="$1"
@@ -651,19 +720,90 @@ PY
   return 1
 }
 
+merge_managed_instructions() {
+  local strategy="$1"
+  local prompt_file="$2"
+  local arg
+  local -a merged_args=()
+  while IFS= read -r -d '' arg; do
+    merged_args+=("${arg}")
+  done < <(CODUX_REAL_TOOL_BINARY="${real_bin}" run_wrapper_helper managed-instructions --nul "${strategy}" "${prompt_file}" -- "${launch_args[@]}")
+  if (( ${#merged_args} == 0 )); then
+    print -u2 -- 'Codux: unable to combine project instructions.'
+    exit 1
+  fi
+  launch_args=("${merged_args[@]}")
+}
+
+apply_managed_agy_context() {
+  tool_uses_memory_injection "agyHook" || return 0
+  unset CODUX_AGY_CONTEXT_MANIFEST CODUX_MANAGED_INSTRUCTIONS_HELPER
+  local prompt_file="${CODUX_BLACKBOARD_CONTEXT_FILE:-}"
+  if [[ -n "${prompt_file}" && ! -f "${prompt_file}" ]]; then
+    print -u2 -- 'Codux: Agy project instructions are missing.'
+    exit 1
+  fi
+  [[ -n "${prompt_file}" ]] || prompt_file="$(memory_prompt_file || true)"
+  [[ -n "${prompt_file}" ]] || return 0
+  local generated=""
+  IFS= read -r -d '' generated < <(run_wrapper_helper managed-instructions --nul agy "${prompt_file}" -- "${launch_args[@]}")
+  if [[ -z "${generated}" || ! -f "${generated}" ]]; then
+    print -u2 -- 'Codux: unable to prepare Agy project instructions.'
+    exit 1
+  fi
+  export CODUX_AGY_CONTEXT_MANIFEST="${generated}"
+  export CODUX_MANAGED_INSTRUCTIONS_HELPER="${wrapper_helper}"
+}
+
+prepare_managed_kimi_context() {
+  local prompt_file="$1" arg=""
+  local -a prepared=()
+  while IFS= read -r -d '' arg; do prepared+=("${arg}"); done < <(CODUX_REAL_TOOL_BINARY="${real_bin}" run_wrapper_helper managed-instructions --nul kimi-launch "${prompt_file}" -- "${launch_args[@]}")
+  if (( ${#prepared} < 2 )); then
+    print -u2 -- 'Codux: unable to prepare Kimi project instructions.'
+    exit 1
+  fi
+  unset CODUX_NATIVE_KIMI_CONTEXT_MANIFEST
+  if [[ "${prepared[1]}" == "native" && -f "${prepared[2]}" ]]; then
+    export CODUX_NATIVE_KIMI_CONTEXT_MANIFEST="${prepared[2]}"
+    export CODUX_MANAGED_INSTRUCTIONS_HELPER="${wrapper_helper}"
+  elif [[ "${prepared[1]}" != "python" ]]; then
+    print -u2 -- 'Codux: invalid Kimi instruction strategy.'
+    exit 1
+  fi
+  launch_args=("${prepared[@]:2}")
+}
+
+apply_managed_kiro_context() {
+  tool_uses_memory_injection "kiroHook" || return 0
+  unset CODUX_KIRO_CONTEXT_MANIFEST CODUX_KIRO_CONTEXT_MODE
+  local prompt_file="${CODUX_BLACKBOARD_CONTEXT_FILE:-}" arg=""
+  if [[ -n "$prompt_file" && ! -f "$prompt_file" ]]; then
+    print -u2 -- 'Codux: Kiro project instructions are missing.'
+    exit 1
+  fi
+  [[ -n "$prompt_file" ]] || prompt_file="$(memory_prompt_file || true)"
+  [[ -n "$prompt_file" ]] || return 0
+  local -a prepared=()
+  while IFS= read -r -d '' arg; do prepared+=("$arg"); done < <(CODUX_REAL_TOOL_BINARY="${real_bin}" run_wrapper_helper managed-instructions --nul kiro "$prompt_file" -- "${launch_args[@]}")
+  if (( ${#prepared} != ${#launch_args} + 2 )) || [[ ! -f "${prepared[1]}" || ( "${prepared[2]}" != inline && "${prepared[2]}" != global ) ]]; then
+    print -u2 -- 'Codux: unable to prepare Kiro project instructions.'
+    exit 1
+  fi
+  export CODUX_KIRO_CONTEXT_MANIFEST="${prepared[1]}"
+  export CODUX_KIRO_CONTEXT_MODE="${prepared[2]}"
+  export CODUX_MANAGED_INSTRUCTIONS_HELPER="${wrapper_helper}"
+}
+
 apply_codex_memory_developer_instructions() {
   tool_uses_memory_injection "codexDeveloperInstructions" || return 0
-  if [[ -z "${DMUX_AI_MEMORY_WORKSPACE_ROOT:-}" || ! -d "${DMUX_AI_MEMORY_WORKSPACE_ROOT}" ]]; then
+  if [[ ! -f "${CODUX_BLACKBOARD_CONTEXT_FILE:-}" && ( -z "${DMUX_AI_MEMORY_WORKSPACE_ROOT:-}" || ! -d "${DMUX_AI_MEMORY_WORKSPACE_ROOT}" ) ]]; then
     log_line "codex instructions skipped: memory workspace missing"
     return 0
   fi
-  local memory_agents="${DMUX_AI_MEMORY_WORKSPACE_ROOT}/AGENTS.md"
+  local memory_agents="${CODUX_BLACKBOARD_CONTEXT_FILE:-${DMUX_AI_MEMORY_WORKSPACE_ROOT}/AGENTS.md}"
   if [[ ! -f "${memory_agents}" ]]; then
     log_line "codex instructions skipped: AGENTS.md missing path=${memory_agents}"
-    return 0
-  fi
-  if has_config_key_arg "developer_instructions" "${launch_args[@]}"; then
-    log_line "codex instructions skipped: developer_instructions already provided"
     return 0
   fi
   local memory_instructions
@@ -672,7 +812,7 @@ apply_codex_memory_developer_instructions() {
     log_line "codex instructions skipped: AGENTS.md empty path=${memory_agents}"
     return 0
   fi
-  launch_args=(-c "developer_instructions=$(codex_toml_string "${memory_instructions}")" "${launch_args[@]}")
+  merge_managed_instructions codex "${memory_agents}"
   log_line "codex instructions injected path=${memory_agents} chars=${#memory_instructions}"
 }
 
@@ -681,7 +821,8 @@ apply_append_system_prompt_memory_instructions() {
   local label="$2"
   tool_uses_memory_injection "${strategy}" || return 0
   if has_exact_arg "--append-system-prompt" "${launch_args[@]}" || has_prefix_arg "--append-system-prompt=" "${launch_args[@]}"; then
-    log_line "${label} instructions skipped: append-system-prompt already provided"
+    local prompt_file="$(memory_prompt_file || true)"
+    [[ -n "${prompt_file}" ]] && merge_managed_instructions append "${prompt_file}"
     return 0
   fi
   local prompt_file
@@ -775,6 +916,43 @@ run_wrapped_ai_command() {
 }
 
 extract_resume_target() {
+  if [[ "${tool_name}" == "kiro-cli" ]]; then
+    local -a kiro_args=("$@")
+    local index=1 target="" arg=""
+    while (( index <= ${#kiro_args} )); do
+      arg="${kiro_args[index]}"
+      case "$arg" in
+        --) break ;;
+        --resume-id) (( index++ )); (( index <= ${#kiro_args} )) && target="${kiro_args[index]}" ;;
+        --resume-id=*) target="${arg#--resume-id=}" ;;
+        --agent|--model|--effort|--trust-tools|--format|-f|--output-format|--wrap|-w|--agent-engine|--mode|--repo|--session-source|--delete-session|-d) (( index++ )) ;;
+      esac
+      (( index++ ))
+    done
+    print -r -- "$target"
+    return 0
+  fi
+  if [[ "${tool_name}" == "agy" ]]; then
+    local -a agy_args=("$@")
+    local agy_index=1 agy_target="" agy_arg=""
+    while (( agy_index <= ${#agy_args} )); do
+      agy_arg="${agy_args[agy_index]}"
+      case "${agy_arg}" in
+        --) break ;;
+        --conversation)
+          (( agy_index++ ))
+          (( agy_index <= ${#agy_args} )) && agy_target="${agy_args[agy_index]}"
+          ;;
+        --conversation=*) agy_target="${agy_arg#--conversation=}" ;;
+        --agent|--model|--mode|--effort|--project|--log-file|--add-dir|--json-schema|--input-format|--output-format|--print-timeout|--print|-p|--prompt|--prompt-interactive|-i)
+          (( agy_index++ ))
+          ;;
+      esac
+      (( agy_index++ ))
+    done
+    print -r -- "${agy_target}"
+    return 0
+  fi
   local previous=""
   for arg in "$@"; do
     case "${previous}" in
@@ -947,9 +1125,22 @@ restore_working_directory || exit $?
 
 apply_managed_lifecycle_env() {
   local env_path="${wrapper_dir}/managed-env/${tool_name}.env"
-  [[ -f "${env_path}" ]] || return 0
-  source "${env_path}"
-  log_line "managed lifecycle env tool=${tool_name} path=${env_path}"
+  if [[ -f "${env_path}" ]]; then
+    source "${env_path}"
+    log_line "managed lifecycle env tool=${tool_name} path=${env_path}"
+  fi
+  if [[ "$tool_name" == "codewhale" ]]; then
+    local prompt_file="$(memory_prompt_file || true)"
+    if [[ -n "${prompt_file}" ]]; then
+      local generated=""
+      IFS= read -r -d '' generated < <(run_wrapper_helper managed-instructions --nul codewhale "${prompt_file}" -- "${launch_args[@]}")
+      if [[ -z "${generated}" || ! -f "${generated}" ]]; then
+        print -u2 -- 'Codux: unable to prepare CodeWhale project instructions.'
+        exit 1
+      fi
+      export DEEPSEEK_MANAGED_CONFIG_PATH="${generated}"
+    fi
+  fi
 }
 
 if is_passthrough_invocation "$@"; then
@@ -1042,12 +1233,19 @@ if [[ "$tool_name" == "agy" ]]; then
   local_permission_mode="$(configured_permission_mode || true)"
   launch_args=("$@")
   apply_configured_model_arg
+  apply_managed_agy_context
   if [[ "${local_permission_mode}" == "fullAccess" ]] \
     && ! has_exact_arg "--approval-mode" "${launch_args[@]}" \
     && ! has_prefix_arg "--approval-mode=" "${launch_args[@]}" \
+    && ! has_exact_arg "--mode" "${launch_args[@]}" \
+    && ! has_prefix_arg "--mode=" "${launch_args[@]}" \
+    && ! has_exact_arg "--sandbox" "${launch_args[@]}" \
+    && ! has_prefix_arg "--sandbox=" "${launch_args[@]}" \
+    && ! has_exact_arg "--dangerously-skip-permissions" "${launch_args[@]}" \
+    && ! has_prefix_arg "--dangerously-skip-permissions=" "${launch_args[@]}" \
     && ! has_exact_arg "--yolo" "${launch_args[@]}" \
     && ! has_exact_arg "-y" "${launch_args[@]}"; then
-    launch_args=(--approval-mode yolo "${launch_args[@]}")
+    launch_args=(--dangerously-skip-permissions "${launch_args[@]}")
   fi
   launch_model="$(extract_model_target "${launch_args[@]}" || true)"
   resume_target=""
@@ -1082,17 +1280,34 @@ fi
 if [[ "$tool_name" == "kimi" || "$tool_name" == "kimi-code" ]]; then
   launch_args=("$@")
   apply_configured_model_arg
+  if tool_uses_memory_injection "kimiAgent"; then
+    kimi_context="${CODUX_BLACKBOARD_CONTEXT_FILE:-${DMUX_AI_MEMORY_PROMPT_FILE:-}}"
+    if [[ -n "${CODUX_BLACKBOARD_CONTEXT_FILE:-}" && ! -f "${CODUX_BLACKBOARD_CONTEXT_FILE}" ]]; then
+      print -u2 -- 'Codux: Kimi project instructions are missing.'
+      exit 1
+    fi
+    if [[ -n "${kimi_context}" && -f "${kimi_context}" ]]; then
+      prepare_managed_kimi_context "${kimi_context}"
+    fi
+  fi
   launch_model="$(extract_model_target "${launch_args[@]}" || true)"
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
-  write_runtime_binding "${resume_target}" "${launch_model}" "" "$(runtime_session_origin_for_resume "${resume_target}")"
-  run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" TERM_PROGRAM=ghostty DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
+  kimi_index=""
+  if [[ -n "${CODUX_NATIVE_KIMI_CONTEXT_MANIFEST:-}" ]]; then
+    kimi_home="${KIMI_CODE_HOME:-${HOME}/.kimi-code}"
+    kimi_index="${kimi_home:A}/session_index.jsonl"
+  fi
+  write_runtime_binding "${resume_target}" "${launch_model}" "${kimi_index}" "$(runtime_session_origin_for_resume "${resume_target}")"
+  run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" TERM_PROGRAM=ghostty DMUX_ACTIVE_AI_TOOL="${tool_name}" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
   exit $?
 fi
 
 if [[ "$tool_name" == "kiro-cli" ]]; then
   launch_args=("$@")
-  launch_model="$(configured_tool_model || true)"
+  apply_managed_kiro_context
+  launch_model="$(extract_model_target "${launch_args[@]}" || true)"
+  [[ -n "$launch_model" ]] || launch_model="$(configured_tool_model || true)"
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
   write_runtime_binding "${resume_target}" "${launch_model}" "" "$(runtime_session_origin_for_resume "${resume_target}")"

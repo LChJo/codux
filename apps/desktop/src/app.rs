@@ -106,6 +106,7 @@ mod app_lifecycle;
 mod app_render;
 mod app_select;
 mod app_state;
+mod blackboard;
 mod db_actions;
 mod db_profile_editor;
 mod desktop_pet;

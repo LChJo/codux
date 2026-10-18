@@ -16,6 +16,7 @@ impl CoduxApp {
             .min_w_0()
             .min_h_0()
             .child(match self.workspace_view {
+                WorkspaceView::Blackboard => self.blackboard_workspace_body(window, cx),
                 WorkspaceView::Triggers => self.trigger_workspace_body(window, cx),
                 WorkspaceView::Terminal => self.terminal_workspace_body(cx).into_any_element(),
                 WorkspaceView::Files => self.files_workspace_body(window, cx).into_any_element(),

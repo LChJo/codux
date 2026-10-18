@@ -112,8 +112,9 @@ pub(crate) fn kimi_session_dir_since(
     project_path: &str,
     external_session_id: Option<&str>,
     started_at: Option<f64>,
+    transcript_path: Option<&str>,
 ) -> Option<PathBuf> {
-    for share in kimi_share_dirs() {
+    for share in kimi_share_dirs(transcript_path) {
         if !share.join("session_index.jsonl").exists() {
             continue;
         }
@@ -126,15 +127,33 @@ pub(crate) fn kimi_session_dir_since(
     None
 }
 
-fn kimi_share_dirs() -> Vec<PathBuf> {
+fn kimi_share_dirs(transcript_path: Option<&str>) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
+    if let Some(path) = transcript_path.map(Path::new) {
+        // The wrapper initially binds its own index, then the probe binds the
+        // selected wire. This preserves per-terminal home overrides without
+        // changing the owning runtime's process environment.
+        for parent in path.ancestors().skip(1).take(6) {
+            if path
+                .file_name()
+                .is_some_and(|name| name == "session_index.jsonl")
+                || parent.join("session_index.jsonl").is_file()
+            {
+                push_unique_path(&mut dirs, parent.to_path_buf());
+                break;
+            }
+        }
+    }
+    if let Some(custom) = std::env::var_os("KIMI_CODE_HOME").filter(|value| !value.is_empty()) {
+        push_unique_path(&mut dirs, PathBuf::from(custom));
+    }
     if let Ok(custom) = std::env::var("KIMI_SHARE_DIR") {
         let custom = custom.trim();
         if !custom.is_empty() {
-            dirs.push(PathBuf::from(custom));
+            push_unique_path(&mut dirs, PathBuf::from(custom));
         }
     }
-    dirs.push(home_dir().join(".kimi-code"));
+    push_unique_path(&mut dirs, home_dir().join(".kimi-code"));
     dirs
 }
 
@@ -256,14 +275,19 @@ pub(crate) fn kimi_runtime_resource_paths(
     project_path: Option<&str>,
     external_session_id: Option<&str>,
     started_at: Option<f64>,
+    transcript_path: Option<&str>,
 ) -> Vec<PathBuf> {
     let mut paths = Vec::new();
-    for share in kimi_share_dirs() {
+    for share in kimi_share_dirs(transcript_path) {
         push_unique_path(&mut paths, share.join("session_index.jsonl"));
     }
     if let Some(project_path) = normalized_string(project_path)
-        && let Some(session_dir) =
-            kimi_session_dir_since(&project_path, external_session_id, started_at)
+        && let Some(session_dir) = kimi_session_dir_since(
+            &project_path,
+            external_session_id,
+            started_at,
+            transcript_path,
+        )
     {
         push_unique_path(&mut paths, kimi_wire_path(&session_dir));
         push_unique_path(&mut paths, kimi_state_path(&session_dir));
@@ -652,62 +676,79 @@ fn codex_file_belongs_to_project_since(
     project_path: &str,
     started_at: Option<f64>,
 ) -> bool {
-    let Some(mut reader) = codex_project_match_reader(path, started_at) else {
-        return false;
-    };
-    let mut line = String::new();
+    // A developer/context record may exceed the usual live tail. Grow the
+    // search window until it includes a fresh cwd record, without accepting an
+    // old session header merely because its file was touched recently.
+    let size = fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    let mut window = CODEX_LIVE_TRANSCRIPT_TAIL_BYTES;
     loop {
-        line.clear();
-        let Ok(bytes) = reader.read_line(&mut line) else {
-            break;
+        let Some(mut reader) = codex_project_match_reader(path, started_at, window) else {
+            return false;
         };
-        if bytes == 0 {
-            break;
-        }
-        let Ok(row) = serde_json::from_str::<Value>(&line) else {
-            continue;
-        };
-        if let Some(started_at) = started_at {
-            let row_timestamp = row
-                .get("timestamp")
-                .and_then(|value| value.as_str())
-                .and_then(super::common::parse_iso8601_seconds)
-                .or_else(|| {
-                    row.get("payload")
-                        .and_then(|payload| payload.get("timestamp"))
-                        .and_then(|value| value.as_str())
-                        .and_then(super::common::parse_iso8601_seconds)
-                });
-            if row_timestamp
-                .map(|timestamp| timestamp + 1.0 < started_at)
-                .unwrap_or(true)
-            {
+        let mut line = String::new();
+        let mut matched = None;
+        loop {
+            line.clear();
+            let Ok(bytes) = reader.read_line(&mut line) else {
+                break;
+            };
+            if bytes == 0 {
+                break;
+            }
+            let Ok(row) = serde_json::from_str::<Value>(&line) else {
                 continue;
+            };
+            if let Some(started_at) = started_at {
+                let row_timestamp = row
+                    .get("timestamp")
+                    .and_then(|value| value.as_str())
+                    .and_then(super::common::parse_iso8601_seconds)
+                    .or_else(|| {
+                        row.get("payload")
+                            .and_then(|payload| payload.get("timestamp"))
+                            .and_then(|value| value.as_str())
+                            .and_then(super::common::parse_iso8601_seconds)
+                    });
+                if row_timestamp
+                    .map(|timestamp| timestamp + 1.0 < started_at)
+                    .unwrap_or(true)
+                {
+                    continue;
+                }
+            }
+            let row_type = row.get("type").and_then(|value| value.as_str());
+            let payload = row.get("payload").unwrap_or(&Value::Null);
+            if matches!(row_type, Some("session_meta") | Some("turn_context"))
+                && let Some(cwd) = payload.get("cwd").and_then(|value| value.as_str())
+            {
+                matched = Some(paths_equivalent(Some(cwd), project_path));
             }
         }
-        let row_type = row.get("type").and_then(|value| value.as_str());
-        let payload = row.get("payload").unwrap_or(&Value::Null);
-        if matches!(row_type, Some("session_meta") | Some("turn_context"))
-            && let Some(cwd) = payload.get("cwd").and_then(|value| value.as_str())
-        {
-            return paths_equivalent(Some(cwd), project_path);
+        if let Some(matched) = matched {
+            return matched;
         }
+        if started_at.is_none() || window >= size || window >= 16 * 1024 * 1024 {
+            return false;
+        }
+        window = (window * 2).min(16 * 1024 * 1024);
     }
-    false
 }
 
-fn codex_project_match_reader(path: &Path, started_at: Option<f64>) -> Option<BufReader<fs::File>> {
+fn codex_project_match_reader(
+    path: &Path,
+    started_at: Option<f64>,
+    window: u64,
+) -> Option<BufReader<fs::File>> {
     let mut file = fs::File::open(path).ok()?;
     let metadata = file.metadata().ok()?;
-    if started_at.is_some() && metadata.len() > CODEX_LIVE_TRANSCRIPT_TAIL_BYTES {
-        let start = metadata
-            .len()
-            .saturating_sub(CODEX_LIVE_TRANSCRIPT_TAIL_BYTES);
+    if started_at.is_some() && metadata.len() > window {
+        let start = metadata.len().saturating_sub(window);
         file.seek(std::io::SeekFrom::Start(start)).ok()?;
         let mut reader = BufReader::with_capacity(32 * 1024, file);
         if start > 0 {
-            let mut partial = String::new();
-            reader.read_line(&mut partial).ok()?;
+            reader.skip_until(b'\n').ok()?;
         }
         return Some(reader);
     }
@@ -774,6 +815,55 @@ fn collect_recursive_files(dir: &Path, extension: &str, files: &mut Vec<PathBuf>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codex_large_rollout_discovers_fresh_context_before_oversized_payloads() {
+        let root =
+            std::env::temp_dir().join(format!("codux-large-rollout-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let path = root.join("rollout.jsonl");
+        let stamp = |at| {
+            chrono::DateTime::from_timestamp(at, 0)
+                .unwrap()
+                .to_rfc3339()
+        };
+        for (header, current, context_at, final_at, expected) in [
+            (true, true, 2000, 2002, true),
+            (true, true, 1001, 1002, false),
+            (true, true, 1001, 2002, false),
+            (true, false, 2000, 2002, false),
+            (false, true, 2000, 2002, true),
+        ] {
+            let rows = [
+                serde_json::json!({"timestamp":stamp(1000),"type":"session_meta","payload":{"cwd":if header { root.to_string_lossy().to_string() } else { "/other-project".into() }}}),
+                serde_json::json!({"timestamp":stamp(context_at),"type":"turn_context","payload":{"cwd":if current { root.to_string_lossy().to_string() } else { "/other-project".into() }}}),
+                serde_json::json!({"timestamp":stamp(2000),"type":"response_item","payload":{"role":"developer","content":"x".repeat(CODEX_LIVE_TRANSCRIPT_TAIL_BYTES as usize + 1024)}}),
+                serde_json::json!({"timestamp":stamp(final_at),"type":"event_msg","payload":{"type":"task_complete"}}),
+            ];
+            fs::write(
+                &path,
+                rows.into_iter()
+                    .map(|row| row.to_string() + "\n")
+                    .collect::<String>(),
+            )
+            .unwrap();
+            assert_eq!(
+                codex_file_belongs_to_project_since(&path, &root.to_string_lossy(), Some(2000.0)),
+                expected,
+                "header={header}, final_at={final_at}"
+            );
+            assert!(!codex_file_belongs_to_project_since(
+                &path,
+                "/different-project",
+                Some(2000.0)
+            ));
+        }
+        assert_eq!(
+            root.canonicalize().unwrap().parent(),
+            Some(std::env::temp_dir().canonicalize().unwrap().as_path())
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn omp_session_selection_respects_project_start_and_ownership() {

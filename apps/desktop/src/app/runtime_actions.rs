@@ -145,6 +145,7 @@ impl CoduxApp {
                             app.reconcile_hosted_terminal_bindings(cx);
                             app.detect_project_drive_recovery(cx);
                         }
+                        app.tick_blackboard(cx);
                         app.tick_triggers(cx);
                         if result.pet_update_events > 0 {
                             app.sync_desktop_pet_window(false, cx);

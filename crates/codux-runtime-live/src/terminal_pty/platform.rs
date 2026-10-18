@@ -1,3 +1,5 @@
+#[cfg(not(windows))]
+use super::environment::CONFIGURED_ENV_KEYS;
 use super::*;
 
 #[cfg(windows)]

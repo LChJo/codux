@@ -296,6 +296,35 @@ fn make_handler(
             return;
         }
 
+        if kind == "blackboard.invoke" {
+            let slot = Arc::clone(&slot);
+            let device = device_id.map(str::to_string);
+            let request = request_id.map(str::to_string);
+            runtime.spawn(async move {
+                let result = tokio::task::spawn_blocking(move || blackboard_payload(&payload))
+                    .await
+                    .unwrap_or_else(|error| Err(error.to_string()));
+                let (kind, payload) = match result {
+                    Ok(result) => ("blackboard.result", json!({"result":result})),
+                    Err(error) => (REMOTE_ERROR, json!({"message":error})),
+                };
+                let mut envelope = json!({"type":kind,"payload":payload});
+                if let Some(device) = device.as_deref() {
+                    envelope["deviceId"] = json!(device);
+                }
+                if let Some(request) = request.as_deref() {
+                    envelope["requestId"] = json!(request);
+                }
+                if let Ok(bytes) = serde_json::to_vec(&envelope)
+                    && let Ok(guard) = slot.lock()
+                    && let Some(transport) = guard.as_ref()
+                {
+                    transport.send(bytes, device.as_deref());
+                }
+            });
+            return;
+        }
+
         // Memory extraction runs the engine + an LLM (async, possibly slow), so
         // it is handled imperatively on its own runtime thread and sends its own
         // reply, rather than blocking the message dispatch.
@@ -882,6 +911,41 @@ fn make_handler(
             transport.send(bytes, device_id);
         }
     })
+}
+
+fn blackboard_payload(payload: &Value) -> Result<Value, String> {
+    let (project, path) = AgentProjectStore::new().resolve_target(
+        payload
+            .get("projectId")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        payload
+            .get("projectPath")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    );
+    if project.is_empty() {
+        return Err("blackboard.project.required".into());
+    }
+    let support = crate::paths::data_dir();
+    if payload.get("op").and_then(Value::as_str) == Some("refresh") {
+        return serde_json::to_value(codux_runtime_live::blackboard::refresh_snapshot(
+            &support,
+            &project,
+            std::path::Path::new(&path),
+        )?)
+        .map_err(|e| e.to_string());
+    }
+    codux_blackboard::dispatch::dispatch(
+        &codux_blackboard::Store::open(support)?,
+        &project,
+        payload
+            .get("op")
+            .and_then(Value::as_str)
+            .unwrap_or("snapshot"),
+        payload,
+        codux_blackboard::Actor::user(),
+    )
 }
 
 /// Resolve the git target project: id → stored path, path → stored id, then

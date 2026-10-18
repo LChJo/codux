@@ -21,4 +21,5 @@ mod app_runtime_ready_tests {
     include!("service_core_tests/pet_history.rs");
     include!("service_core_tests/system_remote.rs");
     include!("service_core_tests/favorite_commands.rs");
+    include!("service_core_tests/wsl_blackboard.rs");
 }

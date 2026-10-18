@@ -2,6 +2,56 @@ use super::*;
 use crate::terminal_pty::environment::{CONFIGURED_ENV_KEYS, configured_dotenv};
 
 #[test]
+fn blackboard_environment_uses_root_project_and_carries_rules_without_a_memory_workspace() {
+    let root = std::env::temp_dir().join(format!("codux-board-env-{}", uuid::Uuid::new_v4()));
+    let store = codux_blackboard::Store::open(&root).unwrap();
+    store
+        .write(
+            "root",
+            codux_blackboard::Component::Rules,
+            None,
+            "Project rule",
+            "Always verify changes",
+            serde_json::json!({}),
+            codux_blackboard::Actor::user(),
+        )
+        .unwrap();
+    let config = TerminalPtyConfig {
+        support_dir: Some(root.clone()),
+        cwd: Some(root.join("not-present").to_string_lossy().into_owned()),
+        project_id: Some("worktree".into()),
+        root_project_id: Some("root".into()),
+        session_key: Some("pane".into()),
+        title: Some("Agent".into()),
+        ..Default::default()
+    };
+    let env = terminal_environment("powershell", None, "board-env-terminal", &config, None);
+    assert_eq!(env["CODUX_BLACKBOARD_PROJECT_ID"], "root");
+    assert!(env["CODUX_TERMINAL_LABEL"].starts_with("T01"));
+    let path = &env["CODUX_BLACKBOARD_CONTEXT_FILE"];
+    assert_eq!(env["DMUX_AI_MEMORY_PROMPT_FILE"], *path);
+    assert!(
+        std::fs::read_to_string(path)
+            .unwrap()
+            .contains("Always verify changes")
+    );
+    assert!(store.terminal("worktree", "board-env-terminal").is_err());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match std::fs::remove_dir_all(&root) {
+            Ok(()) => break,
+            Err(error)
+                if std::time::Instant::now() < deadline
+                    && matches!(error.raw_os_error(), Some(32 | 145)) =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(error) => panic!("blackboard environment cleanup: {error}"),
+        }
+    }
+}
+
+#[test]
 fn terminal_environment_forces_utf8_locale() {
     let config = TerminalPtyConfig {
         env: Some(HashMap::from([
@@ -109,6 +159,9 @@ fn configured_env_keys_cover_common_tool_settings() {
         "OPENCODE_DB",
         "MIMOCODE_HOME",
         "KIMI_SHARE_DIR",
+        "KIMI_CODE_HOME",
+        "KIRO_AGENT_ENGINE",
+        "KIRO_AGENT_CONFIG_DIR",
         "XDG_CONFIG_HOME",
         "XDG_DATA_HOME",
         "SSL_CERT_FILE",

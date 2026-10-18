@@ -7,6 +7,24 @@ fn bridge_stages_runtime_assets_without_installing_hooks() {
 
     bridge.stage_assets().unwrap();
 
+    let blackboard = bridge.wrapper_bin_dir().join(if cfg!(windows) {
+        "codux-blackboard.ps1"
+    } else {
+        "codux-blackboard"
+    });
+    assert!(
+        blackboard.is_file(),
+        "Managed terminals must receive the blackboard CLI"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_ne!(
+            fs::metadata(&blackboard).unwrap().permissions().mode() & 0o111,
+            0
+        );
+    }
+
     assert!(bridge.managed_hook_script().is_file());
     let zsh_hook = fs::read_to_string(
         dir.join("root")
@@ -151,7 +169,7 @@ fn bridge_stages_runtime_assets_without_installing_hooks() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|tool| tool["id"] == "kimi" && tool["memoryInjection"] == "none")
+            .any(|tool| tool["id"] == "kimi" && tool["memoryInjection"] == "kimiAgent")
     );
     let codewhale_driver = launch_config["tools"]
         .as_array()
@@ -159,7 +177,10 @@ fn bridge_stages_runtime_assets_without_installing_hooks() {
         .iter()
         .find(|tool| tool["id"] == "codewhale")
         .unwrap();
-    assert_eq!(codewhale_driver["memoryInjection"].as_str(), Some("none"));
+    assert_eq!(
+        codewhale_driver["memoryInjection"].as_str(),
+        Some("codeWhaleInstructions")
+    );
     assert_eq!(
         codewhale_driver["lifecycleConfig"]["envVar"].as_str(),
         Some("DEEPSEEK_MANAGED_CONFIG_PATH")

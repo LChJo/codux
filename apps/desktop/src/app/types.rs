@@ -97,6 +97,7 @@ pub(in crate::app) enum WorkspaceView {
     Terminal,
     Files,
     Review,
+    Blackboard,
     Stats,
     Triggers,
 }

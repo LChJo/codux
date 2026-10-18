@@ -45,7 +45,7 @@ fn memory_project_records(support_dir: &Path) -> Vec<MemoryProjectRecord> {
     )
 }
 
-fn host_project_id(support_dir: &Path, payload: &Value) -> Option<String> {
+pub(super) fn host_project_id(support_dir: &Path, payload: &Value) -> Option<String> {
     if let Some(path) = payload
         .get("projectPath")
         .and_then(Value::as_str)

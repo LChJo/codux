@@ -42,6 +42,10 @@ impl AgentProjectStore {
             .unwrap_or_default()
     }
 
+    pub(crate) fn resolve_target(&self, project_id: &str, project_path: &str) -> (String, String) {
+        resolve_project_target(&self.list(), project_id, project_path)
+    }
+
     pub fn add(&self, path: &str, name: Option<&str>) -> Result<Vec<ProjectListItem>, String> {
         let raw_path = path.trim();
         if raw_path.is_empty() {
@@ -86,6 +90,35 @@ impl AgentProjectStore {
     }
 }
 
+fn resolve_project_target(
+    projects: &[ProjectListItem],
+    project_id: &str,
+    project_path: &str,
+) -> (String, String) {
+    let project_id = project_id.trim();
+    let project_path = project_path.trim();
+    // A controller can assign its own ID, including one that names a different
+    // project on this host. The host's root path determines data ownership.
+    let project = projects
+        .iter()
+        .find(|project| {
+            !project_path.is_empty()
+                && codux_runtime_core::path::local_paths_equal(
+                    Path::new(&project.path),
+                    Path::new(project_path),
+                )
+        })
+        .or_else(|| {
+            projects
+                .iter()
+                .find(|project| !project_id.is_empty() && project.id == project_id)
+        });
+    match project {
+        Some(project) => (project.id.clone(), project.path.clone()),
+        None => (project_id.to_string(), project_path.to_string()),
+    }
+}
+
 fn project_id_for_path(path: &str) -> String {
     let mut hasher = DefaultHasher::new();
     codux_runtime_core::path::local_path_identity_key(Path::new(path))
@@ -106,6 +139,38 @@ fn default_project_name(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_root_path_wins_over_a_colliding_controller_project_id() {
+        let projects = [
+            ProjectListItem {
+                id: "controller-id".into(),
+                name: "Other".into(),
+                path: "C:/other".into(),
+            },
+            ProjectListItem {
+                id: "host-id".into(),
+                name: "Root".into(),
+                path: "C:/project".into(),
+            },
+        ];
+        assert_eq!(
+            resolve_project_target(&projects, "controller-id", "C:/project/"),
+            ("host-id".into(), "C:/project".into()),
+        );
+        assert_eq!(
+            resolve_project_target(&projects, "unknown-controller-id", "C:/project"),
+            ("host-id".into(), "C:/project".into()),
+        );
+        assert_eq!(
+            resolve_project_target(&projects, "host-id", ""),
+            ("host-id".into(), "C:/project".into()),
+        );
+        assert_eq!(
+            resolve_project_target(&projects, "legacy-id", "C:/unregistered"),
+            ("legacy-id".into(), "C:/unregistered".into()),
+        );
+    }
 
     #[test]
     fn project_ids_and_names_follow_target_path_syntax() {

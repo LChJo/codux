@@ -220,7 +220,8 @@ impl CoduxApp {
                         let id = editor.read(cx).definition.id.clone();
                         el.child(
                             div()
-                                .w(px(340.0))
+                                .w(px(440.0))
+                                .max_w_full()
                                 .flex_shrink_0()
                                 .min_h_0()
                                 .flex()
@@ -597,7 +598,7 @@ impl CoduxApp {
                                     .truncate()
                                     .text_size(px(12.0))
                                     .font_weight(FontWeight::MEDIUM)
-                                    .child(d.title.clone()),
+                                    .child(self.terminal_numbered_label(&d.terminal_id, &d.title)),
                             )
                             .on_click(cx.listener(move |app, _, window, cx| {
                                 app.edit_trigger(Some(&edit), window, cx)

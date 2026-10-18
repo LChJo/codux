@@ -1,5 +1,6 @@
 use super::*;
 use chrono::{Local, NaiveDateTime, TimeZone, Timelike};
+use codux_runtime::blackboard::conditions::Preview;
 use gpui_component::Selectable;
 
 pub(super) struct TriggerEditor {
@@ -13,12 +14,17 @@ pub(super) struct TriggerEditor {
     time: gpui::Entity<InputState>,
     date: gpui::Entity<InputState>,
     kind: usize,
+    blackboard: gpui::Entity<super::blackboard_editor::BlackboardConditionEditor>,
     once: bool,
     pub error: Option<String>,
     language: String,
+    preview_source: Option<(RuntimeService, ProjectInfo)>,
+    preview: Option<Result<Preview, String>>,
+    preview_in_flight: bool,
+    _preview_subscriptions: Vec<Subscription>,
 }
 
-pub(super) const PRESETS: [(&str, &str, HeroIconName); 5] = [
+pub(super) const PRESETS: [(&str, &str, HeroIconName); 6] = [
     (
         "trigger.kind.git",
         "Task completed + Git changes",
@@ -40,6 +46,11 @@ pub(super) const PRESETS: [(&str, &str, HeroIconName); 5] = [
         "Manual",
         HeroIconName::CursorArrowRays,
     ),
+    (
+        "trigger.kind.blackboard",
+        "Blackboard changes",
+        HeroIconName::Squares2x2,
+    ),
 ];
 
 pub(super) fn kind_index(kind: &TriggerKind) -> usize {
@@ -49,6 +60,7 @@ pub(super) fn kind_index(kind: &TriggerKind) -> usize {
         TriggerKind::Interval { .. } => 2,
         TriggerKind::Alarm { .. } => 3,
         TriggerKind::Manual => 4,
+        TriggerKind::Blackboard { .. } => 5,
     }
 }
 
@@ -56,6 +68,8 @@ impl TriggerEditor {
     pub fn new(
         definition: TriggerDefinition,
         language: String,
+        terminals: Vec<codux_runtime::blackboard::TerminalBinding>,
+        preview_source: Option<(RuntimeService, ProjectInfo)>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -100,6 +114,31 @@ impl TriggerEditor {
         );
         let kind = kind_index(&definition.kind);
         let once = at.is_some();
+        let board_rule = match &definition.kind {
+            TriggerKind::Blackboard { rule } => rule.clone(),
+            _ => Default::default(),
+        };
+        let blackboard = cx.new(|cx| {
+            super::blackboard_editor::BlackboardConditionEditor::new(
+                board_rule,
+                language.clone(),
+                terminals,
+                window,
+                cx,
+            )
+        });
+        let preview_subscriptions = vec![
+            cx.observe(&blackboard, |editor, _, cx| {
+                editor.preview = None;
+                cx.notify();
+            }),
+            cx.subscribe(&message, |editor, _, event, cx| {
+                if matches!(event, InputEvent::Change) {
+                    editor.preview = None;
+                    cx.notify();
+                }
+            }),
+        ];
         Self {
             definition,
             name,
@@ -111,10 +150,55 @@ impl TriggerEditor {
             time,
             date,
             kind,
+            blackboard,
             once,
             error: None,
             language,
+            preview_source,
+            preview: None,
+            preview_in_flight: false,
+            _preview_subscriptions: preview_subscriptions,
         }
+    }
+
+    fn preview_blackboard(&mut self, cx: &mut Context<Self>) {
+        if self.preview_in_flight {
+            return;
+        }
+        let Some((service, project)) = self.preview_source.clone() else {
+            return;
+        };
+        let rule = match self.blackboard.read(cx).build(cx) {
+            Ok(rule) => rule,
+            Err(error) => {
+                self.preview = Some(Err(error));
+                cx.notify();
+                return;
+            }
+        };
+        let expected_rule = rule.clone();
+        let expected_message = self.message.read(cx).value().to_string();
+        self.preview = None;
+        self.preview_in_flight = true;
+        cx.notify();
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let result = codux_runtime::async_runtime::spawn_blocking(move || {
+                let snapshot = service.blackboard_snapshot(&project)?;
+                rule.preview(&snapshot)
+            })
+            .await
+            .unwrap_or_else(|error| Err(error.to_string()));
+            let _ = this.update(cx, |editor, cx| {
+                editor.preview_in_flight = false;
+                if editor.blackboard.read(cx).build(cx).ok().as_ref() == Some(&expected_rule)
+                    && editor.message.read(cx).value().as_str() == expected_message
+                {
+                    editor.preview = Some(result);
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub fn build(&self, cx: &App) -> Result<TriggerDefinition, String> {
@@ -124,6 +208,9 @@ impl TriggerEditor {
         d.startup_command = self.command.read(cx).value().trim().to_string();
         d.working_directory = self.directory.read(cx).value().trim().to_string();
         d.kind = match self.kind {
+            5 => TriggerKind::Blackboard {
+                rule: self.blackboard.read(cx).build(cx)?,
+            },
             0 => TriggerKind::TaskCompletedWithGitChanges,
             1 => TriggerKind::TaskCompleted,
             2 => TriggerKind::Interval {
@@ -207,6 +294,7 @@ impl Render for TriggerEditor {
                                             "trigger.prompt.interval",
                                             "trigger.prompt.alarm",
                                             "trigger.prompt.manual",
+                                            "trigger.prompt.blackboard",
                                         ];
                                         let old =
                                             trigger_text(&editor.language, keys[editor.kind], "");
@@ -224,6 +312,7 @@ impl Render for TriggerEditor {
                             }),
                     ),
             )
+            .when(self.kind == 5, |el| el.child(self.blackboard.clone()))
             .when(self.kind == 2, |el| {
                 el.child(label(tr("trigger.field.interval", "Interval")))
                     .child(Input::new(&self.interval))
@@ -271,6 +360,84 @@ impl Render for TriggerEditor {
             })
             .child(label(tr("trigger.field.message", "Message")))
             .child(Input::new(&self.message).h(px(140.0)))
+            .when(self.kind == 5, |el| {
+                el.child(
+                    Button::new("blackboard-preview")
+                        .small()
+                        .icon(HeroIconName::Play)
+                        .label(tr("blackboard.preview", "Preview rule"))
+                        .disabled(self.preview_in_flight || self.preview_source.is_none())
+                        .on_click(cx.listener(|editor, _, _, cx| editor.preview_blackboard(cx))),
+                )
+                .when_some(self.preview.clone(), |el, result| {
+                    let mut panel = div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .p_2()
+                        .rounded_md()
+                        .bg(cx.theme().secondary);
+                    match result {
+                        Err(error) => {
+                            panel = panel.child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().danger)
+                                    .child(tr(&error, &error)),
+                            )
+                        }
+                        Ok(preview) => {
+                            let matched = preview.hit.is_some();
+                            panel = panel.child(div().text_sm().child(if matched {
+                                tr("blackboard.preview.matched", "Matched")
+                            } else if !preview.state_matches {
+                                tr(
+                                    "blackboard.preview.state_unmet",
+                                    "Current state does not match",
+                                )
+                            } else {
+                                tr("blackboard.preview.unmatched", "No match")
+                            }));
+                            panel = panel.child(div().text_xs().child(format!(
+                                "{}: {} · {}",
+                                tr("blackboard.preview.events", "Simulated events"),
+                                preview.events.len(),
+                                tr("blackboard.preview.not_sent", "Not sent")
+                            )));
+                            for event in preview.events {
+                                panel = panel.child(div().text_xs().child(format!(
+                                    "{} · {}{}",
+                                    crate::app::blackboard::component_name(
+                                        &self.language,
+                                        event.component
+                                    ),
+                                    tr(
+                                        &format!("blackboard.event.{}", event.operation),
+                                        &event.operation
+                                    ),
+                                    if event.entry.title.is_empty() {
+                                        String::new()
+                                    } else {
+                                        format!(" · {}", event.entry.title)
+                                    }
+                                )));
+                            }
+                            panel = panel
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .child(tr("blackboard.preview.message", "Message preview")),
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .child(self.message.read(cx).value().to_string()),
+                                );
+                        }
+                    }
+                    el.child(panel)
+                })
+            })
             .child(label(tr("trigger.field.command", "Startup command")))
             .child(Input::new(&self.command))
             .child(label(tr("trigger.field.directory", "Working directory")))
@@ -333,12 +500,33 @@ impl CoduxApp {
             }
         };
         let language = self.state.settings.language.clone();
+        let preview_source = self
+            .state
+            .projects
+            .iter()
+            .find(|p| p.id == d.project_id)
+            .cloned()
+            .map(|project| (self.runtime_service.clone(), project));
         if id.is_some() {
             self.trigger_workspace.selected = Some(d.id.clone());
         }
         self.trigger_workspace.split_target = None;
-        self.trigger_workspace.editor =
-            Some(cx.new(|cx| TriggerEditor::new(d, language, window, cx)));
+        let terminals = self
+            .blackboard
+            .snapshots
+            .get(&d.project_id)
+            .map(|s| s.terminals.clone())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|mut terminal| {
+                terminal.title =
+                    self.terminal_current_title(&terminal.terminal_id, &terminal.title);
+                terminal
+            })
+            .collect();
+        self.trigger_workspace.editor = Some(
+            cx.new(|cx| TriggerEditor::new(d, language, terminals, preview_source, window, cx)),
+        );
         self.trigger_workspace.logs = false;
         self.invalidate_ui(cx, [UiRegion::WorkspaceBody]);
     }
@@ -416,6 +604,7 @@ impl CoduxApp {
         });
         match result {
             Ok(d) => {
+                self.reset_blackboard_trigger(&d.id);
                 self.trigger_workspace.engine = candidate;
                 self.trigger_workspace.split_target = None;
                 self.trigger_workspace.selected = Some(d.id.clone());

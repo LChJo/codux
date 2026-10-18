@@ -116,6 +116,10 @@ pub enum AIRuntimeMemoryInjectionDriver {
     None,
     CodexDeveloperInstructions,
     AppendSystemPrompt,
+    CodeWhaleInstructions,
+    KimiAgent,
+    AgyHook,
+    KiroHook,
     #[serde(rename = "opencodeSystemTransform")]
     OpenCodeSystemTransform,
 }
@@ -575,9 +579,12 @@ mod tests {
         );
         assert_eq!(
             codewhale.memory_injection,
-            AIRuntimeMemoryInjectionDriver::None
+            AIRuntimeMemoryInjectionDriver::CodeWhaleInstructions
         );
-        assert_eq!(kimi.memory_injection, AIRuntimeMemoryInjectionDriver::None);
+        assert_eq!(
+            kimi.memory_injection,
+            AIRuntimeMemoryInjectionDriver::KimiAgent
+        );
         assert_eq!(
             omp.memory_injection,
             AIRuntimeMemoryInjectionDriver::AppendSystemPrompt

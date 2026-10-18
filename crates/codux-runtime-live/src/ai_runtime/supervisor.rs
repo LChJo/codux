@@ -463,6 +463,7 @@ fn after_mutation(
     if mutation.did_change {
         refresh_transcript_monitors(transcript_monitors, &state.transcript_monitored_sessions());
         let snapshot = state.snapshot();
+        crate::blackboard::observe_sessions(&snapshot.sessions);
         push_event(
             events,
             AIRuntimeSupervisorEvent::State {

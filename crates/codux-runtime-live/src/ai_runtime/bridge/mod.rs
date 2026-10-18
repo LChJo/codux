@@ -116,7 +116,7 @@ impl AIRuntimeBridge {
     /// The runtime is non-intrusive by design: it never installs hooks into the
     /// CLIs' own config files. Live state comes from process-tree tool detection,
     /// transcript probes, and screen scraping. This only strips any codux hook
-    /// entries a prior build left behind, leaving each CLI genuinely hookless.
+    /// entries a prior build left behind, preserving the user's own hooks.
     ///
     /// Idempotent and no-write once clean, so it is safe to run on every start.
     fn strip_managed_hook_configs(&self, phase: &str) -> Result<(), String> {
@@ -229,6 +229,23 @@ impl AIRuntimeBridge {
 
     pub fn wrapper_bin_dir(&self) -> &Path {
         &self.wrapper_bin_dir
+    }
+
+    pub(crate) fn apply_terminal_runtime_environment(
+        &self,
+        environment: &mut std::collections::HashMap<String, String>,
+    ) {
+        for (key, path) in [
+            ("DMUX_RUNTIME_EVENT_DIR", self.runtime_event_dir.clone()),
+            ("DMUX_AI_RUNTIME_BINDING_DIR", self.binding_dir.clone()),
+            ("DMUX_CLAUDE_SESSION_MAP_DIR", self.claude_session_map_dir()),
+            (
+                "DMUX_OPENCODE_SESSION_MAP_DIR",
+                self.opencode_session_map_dir(),
+            ),
+        ] {
+            environment.insert(key.into(), path.to_string_lossy().into_owned());
+        }
     }
 
     pub fn managed_hook_script(&self) -> &Path {

@@ -5,6 +5,7 @@ use codux_runtime::triggers::{
     TriggerStore,
 };
 
+mod blackboard_editor;
 mod editor;
 mod view;
 use editor::TriggerEditor;
@@ -644,11 +645,18 @@ impl CoduxApp {
         }
         let definitions = jobs.iter().map(|(_, d, _)| d.clone()).collect::<Vec<_>>();
         let service = self.runtime_service.clone();
+        let projects = self.state.projects.clone();
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
             // Check actual processes immediately before delivery, rather than
             // trusting a prior idle/AI snapshot after a CLI has returned to Shell.
             let started = codux_runtime::async_runtime::spawn_blocking(move || {
-                probe_trigger_agents(&service, &definitions)
+                let mut started=probe_trigger_agents(&service, &definitions);
+                for definition in &definitions {
+                    if !started.contains(&definition.terminal_id){continue;}
+                    let result=projects.iter().find(|p|p.id==definition.project_id).ok_or("blackboard.project.required".to_string()).and_then(|p|service.blackboard_request(p,"terminal.state",serde_json::json!({"terminalId":definition.terminal_id,"active":true,"automatic":true})).map(|_|()));
+                    if result.is_err(){started.remove(&definition.terminal_id);}
+                }
+                started
             })
             .await
             .unwrap_or_default();
@@ -668,10 +676,12 @@ impl CoduxApp {
                         .get(&job.terminal_id)
                         .and_then(TerminalPane::terminal_instance_id);
                     if current != instance || d.terminal_id != job.terminal_id {
+                        app.clear_blackboard_automatic(&d.project_id,&job.terminal_id,cx);
                         continue;
                     }
                     if !d.enabled {
                         app.trigger_workspace.engine.cancel_dispatch(&job);
+                        app.clear_blackboard_automatic(&d.project_id,&job.terminal_id,cx);
                         continue;
                     }
                     if d.exited
@@ -697,6 +707,7 @@ impl CoduxApp {
                             outcome,
                             app_now_seconds() as i64,
                         );
+                        app.clear_blackboard_automatic(&d.project_id,&job.terminal_id,cx);
                         continue;
                     }
                     app.send_ready_trigger_message(job, cx);
@@ -742,12 +753,51 @@ impl CoduxApp {
                 .trigger_workspace
                 .engine
                 .delivery_succeeded(&job, app_now_seconds() as i64),
-            Err(error) => self.trigger_workspace.engine.delivery_failed(
-                &job.trigger_id,
-                &error,
-                app_now_seconds() as i64,
-            ),
+            Err(error) => {
+                self.trigger_workspace.engine.delivery_failed(
+                    &job.trigger_id,
+                    &error,
+                    app_now_seconds() as i64,
+                );
+                if let Some(d) = self
+                    .trigger_workspace
+                    .engine
+                    .definition(&job.trigger_id)
+                    .cloned()
+                {
+                    self.clear_blackboard_automatic(&d.project_id, &job.terminal_id, cx);
+                }
+            }
         }
+    }
+    fn clear_blackboard_automatic(
+        &mut self,
+        project: &str,
+        terminal: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(project) = self
+            .state
+            .projects
+            .iter()
+            .find(|p| p.id == project)
+            .cloned()
+        else {
+            return;
+        };
+        let service = self.runtime_service.clone();
+        let terminal = terminal.to_string();
+        cx.spawn(async move |_: gpui::WeakEntity<Self>, _| {
+            let _ = codux_runtime::async_runtime::spawn_blocking(move || {
+                service.blackboard_request(
+                    &project,
+                    "terminal.state",
+                    serde_json::json!({"terminalId":terminal,"active":true,"automatic":false}),
+                )
+            })
+            .await;
+        })
+        .detach();
     }
 
     fn refresh_trigger_agent_presence(&mut self, cx: &mut Context<Self>) {
@@ -854,6 +904,7 @@ impl CoduxApp {
         self.flush_trigger_changes(cx);
     }
     pub(in crate::app) fn toggle_trigger(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.reset_blackboard_trigger(id);
         if let Some(d) = self.trigger_workspace.engine.definition(id).cloned() {
             let result =
                 self.trigger_workspace
@@ -873,6 +924,7 @@ impl CoduxApp {
         }
     }
     pub(in crate::app) fn restart_trigger_terminal(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.reset_blackboard_trigger(id);
         if let Some(d) = self.trigger_workspace.engine.definition(id).cloned() {
             self.trigger_workspace
                 .agent_terminals

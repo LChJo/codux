@@ -5,6 +5,10 @@ use std::sync::OnceLock;
 const I18N_MANIFEST_JSON: &str = include_str!("../../runtime-assets/i18n/locales.json");
 const I18N_SHARDS: &[(&str, &str)] = &[
     (
+        "locales/blackboard.json",
+        include_str!("../../runtime-assets/i18n/locales/blackboard.json"),
+    ),
+    (
         "locales/triggers.json",
         include_str!("../../runtime-assets/i18n/locales/triggers.json"),
     ),

@@ -30,20 +30,24 @@ impl CoduxApp {
             WorkspaceView::Terminal => 0,
             WorkspaceView::Files => 1,
             WorkspaceView::Review => 2,
-            WorkspaceView::Stats => 3,
+            WorkspaceView::Blackboard => 3,
             WorkspaceView::Triggers => 4,
+            WorkspaceView::Stats => 5,
         };
         let project_width = if self.project_column_collapsed {
             PROJECT_COLUMN_COLLAPSED_WIDTH
         } else {
             PROJECT_COLUMN_EXPANDED_WIDTH
         };
-        let task_width =
-            if !self.task_column_collapsed && self.workspace_view != WorkspaceView::Triggers {
-                TASK_COLUMN_FIXED_WIDTH
-            } else {
-                0.0
-            };
+        let task_width = if !self.task_column_collapsed
+            && !matches!(
+                self.workspace_view,
+                WorkspaceView::Triggers | WorkspaceView::Blackboard | WorkspaceView::Stats
+            ) {
+            TASK_COLUMN_FIXED_WIDTH
+        } else {
+            0.0
+        };
         let compact = window.viewport_size().width - px(project_width + task_width) < px(960.0);
         let pet_snapshot = self.pet_snapshot.clone();
         let has_project_context = self.state.selected_project.is_some();
@@ -473,12 +477,14 @@ fn workspace_segmented_tabs(
     let review_label = translate(&locale, "titlebar.review", "Review");
     let stats_label = translate(&locale, "titlebar.stats", "Stats");
     let triggers_label = translate(&locale, "trigger.title", "Triggers");
+    let blackboard_label = translate(&locale, "blackboard.title", "Blackboard");
     let tabs = [
         (HeroIconName::CommandLine, terminal_label),
         (HeroIconName::Document, files_label),
         (HeroIconName::ArrowPathRoundedSquare, review_label),
-        (HeroIconName::ChartBar, stats_label),
+        (HeroIconName::Squares2x2, blackboard_label),
         (HeroIconName::Bolt, triggers_label),
+        (HeroIconName::ChartBar, stats_label),
     ];
     div()
         .rounded(px(8.0))
@@ -492,7 +498,7 @@ fn workspace_segmented_tabs(
             let active = index == active_index;
             let click_entity = app_entity.clone();
             let tooltip = label.clone();
-            let icon_only = compact && index != 0 && index != 4 && index != active_index;
+            let icon_only = compact && ![0, active_index].contains(&index);
             let tab = div()
                 .id(SharedString::from(format!("workspace-view-tab-{index}")))
                 .flex()
@@ -515,12 +521,13 @@ fn workspace_segmented_tabs(
                 .when(enabled, |this| {
                     this.cursor_pointer().on_click(move |_, window, cx| {
                         cx.update_entity(&click_entity, |app, cx| {
-                            if index == 3 {
+                            if index == 5 {
                                 app.show_stats_workspace_view(window, cx);
                             } else {
                                 let view = match index {
                                     0 => WorkspaceView::Terminal,
                                     1 => WorkspaceView::Files,
+                                    3 => WorkspaceView::Blackboard,
                                     4 => WorkspaceView::Triggers,
                                     _ => WorkspaceView::Review,
                                 };

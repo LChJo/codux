@@ -1,10 +1,11 @@
 [package]
 name = "codux"
-version = "2.0.0-beta.13"
+version = "2.0.0-beta.14"
 edition = "2024"
 
 [dependencies]
 anyhow = "1"
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 codux-runtime = { path = "runtime" }
 codux-terminal-core = { path = "../../crates/codux-terminal-core" }
@@ -28,12 +29,16 @@ uuid = { version = "1", features = ["v5"] }
 winresource = "0.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+gpui-wry = { git = "https://github.com/longbridge/gpui-component", rev = "da2a9ca7c112c93de20d8e4d9dfaf8d53536aa47" }
+wry = { version = "0.53.3", package = "lb-wry" }
 cocoa = "=0.26.0"
 core-foundation-sys = "0.8"
 objc = "0.2"
 raw-window-handle = "0.6"
 
 [target.'cfg(target_os = "windows")'.dependencies]
+gpui-wry = { git = "https://github.com/longbridge/gpui-component", rev = "da2a9ca7c112c93de20d8e4d9dfaf8d53536aa47" }
+wry = { version = "0.53.3", package = "lb-wry" }
 raw-window-handle = "0.6"
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",

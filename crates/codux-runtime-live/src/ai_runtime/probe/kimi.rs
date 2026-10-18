@@ -23,8 +23,12 @@ pub(crate) fn probe_kimi_runtime(
 ) -> Option<AIRuntimeContextSnapshot> {
     let project_path = normalized_string(request.project_path.as_deref())?;
     let external_id = normalized_string(request.external_session_id.as_deref());
-    let session_dir =
-        kimi_session_dir_since(&project_path, external_id.as_deref(), request.started_at)?;
+    let session_dir = kimi_session_dir_since(
+        &project_path,
+        external_id.as_deref(),
+        request.started_at,
+        request.transcript_path.as_deref(),
+    )?;
     let wire_path = kimi_wire_path(&session_dir);
     let state_path = kimi_state_path(&session_dir);
     let parsed = parse_kimi_wire(&wire_path)
@@ -44,7 +48,7 @@ pub(crate) fn probe_kimi_runtime(
             .and_then(|name| name.to_str())
             .and_then(|name| normalized_string(Some(name)))
     });
-    let has_completed_turn = response_state.as_deref() == Some("idle");
+    let has_completed_turn = response_state.as_deref() == Some("idle") && !parsed.was_interrupted;
     Some(AIRuntimeContextSnapshot {
         tool: "kimi".to_string(),
         external_session_id: session_id,
@@ -61,7 +65,7 @@ pub(crate) fn probe_kimi_runtime(
         started_at: (parsed.last_turn_begin_at > 0.0).then_some(parsed.last_turn_begin_at),
         completed_at: (parsed.last_turn_end_at > 0.0).then_some(parsed.last_turn_end_at),
         response_state,
-        was_interrupted: false,
+        was_interrupted: parsed.was_interrupted,
         has_completed_turn,
         session_origin: "unknown".to_string(),
         source: "probe".to_string(),
@@ -81,12 +85,15 @@ struct KimiWireState {
     pending_request: bool,
     model: Option<String>,
     uses_flat_records: bool,
+    flat_response_state: Option<&'static str>,
+    flat_turn_id: Option<i64>,
+    was_interrupted: bool,
 }
 
 impl KimiWireState {
     fn response_state(&self) -> Option<String> {
         if self.uses_flat_records {
-            return None;
+            return self.flat_response_state.map(str::to_owned);
         }
         if self.last_turn_begin_at > self.last_turn_end_at {
             Some("responding".to_string())
@@ -119,6 +126,13 @@ fn parse_kimi_wire(path: &Path) -> Option<KimiWireState> {
             continue;
         };
         let timestamp = kimi_row_timestamp(&row);
+        if row
+            .get("agentId")
+            .and_then(Value::as_str)
+            .is_some_and(|id| id != "main")
+        {
+            continue;
+        }
         if let Some(timestamp) = timestamp {
             state.updated_at = state.updated_at.max(timestamp);
         }
@@ -216,12 +230,48 @@ fn parse_flat_kimi_record(row: &Value, timestamp: Option<f64>, state: &mut KimiW
         return false;
     };
     match event {
-        "config.update" | "llm.request" => {
+        "config.update" | "profile.bind" | "llm.request" => {
             state.uses_flat_records = true;
             state.model = kimi_model(row).or_else(|| state.model.clone());
         }
-        "turn.prompt" | "turn.steer" | "turn.cancel" => {
+        "turn.prompt" | "agent.turn.started" => {
             state.uses_flat_records = true;
+            // Prompt submissions may queue behind a running turn. Preserve
+            // its identity until the next actual agent.turn.started event.
+            if event == "agent.turn.started" || state.flat_response_state != Some("responding") {
+                state.flat_response_state = Some("responding");
+                state.flat_turn_id = row.get("turnId").and_then(Value::as_i64);
+                state.was_interrupted = false;
+                if let Some(timestamp) = timestamp {
+                    state.last_turn_begin_at = timestamp;
+                }
+            }
+        }
+        "turn.steer" | "turn.cancel" => {
+            // Cancelling a queued prompt does not end the active turn. Only
+            // the durable turn.ended record can confirm how it finished.
+            state.uses_flat_records = true;
+        }
+        "turn.ended" => {
+            state.uses_flat_records = true;
+            if state
+                .flat_turn_id
+                .zip(row.get("turnId").and_then(Value::as_i64))
+                .is_some_and(|(active, ended)| active != ended)
+            {
+                return true;
+            }
+            let reason = row.get("reason").and_then(Value::as_str);
+            if matches!(
+                reason,
+                Some("completed" | "cancelled" | "failed" | "blocked")
+            ) {
+                state.flat_response_state = Some("idle");
+                state.was_interrupted = reason != Some("completed");
+                if let Some(timestamp) = timestamp {
+                    state.last_turn_end_at = timestamp;
+                }
+            }
         }
         "usage.record" => {
             state.uses_flat_records = true;
@@ -445,13 +495,60 @@ mod tests {
             r#"{"type":"usage.record","model":"kimi-code/k3","usage":{"inputOther":4,"output":2,"inputCacheRead":30,"inputCacheCreation":1},"usageScope":"turn","time":1784382082647}"#,
         ]);
         let parsed = parse_kimi_wire(&path).expect("parsed");
-        assert_eq!(parsed.response_state(), None);
+        assert_eq!(parsed.response_state().as_deref(), Some("responding"));
         assert_eq!(parsed.model.as_deref(), Some("kimi-code/k3"));
         assert_eq!(parsed.input_tokens, 14);
         assert_eq!(parsed.output_tokens, 7);
         assert_eq!(parsed.cached_input_tokens, 54);
         assert_eq!(parsed.total_tokens, 21);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn native_turn_records_report_completion_and_reject_retired_turns() {
+        let (dir, path) = write_wire(&[
+            r#"{"type":"metadata","protocol_version":"2.0"}"#,
+            r#"{"type":"profile.bind","modelAlias":"qa","time":10000}"#,
+            r#"{"type":"turn.prompt","agentId":"main","turnId":0,"time":10001}"#,
+            r#"{"type":"agent.turn.started","turnId":0,"time":10002}"#,
+            r#"{"type":"turn.ended","agentId":"main","turnId":0,"reason":"completed","time":10003}"#,
+            r#"{"type":"turn.prompt","agentId":"main","turnId":1,"time":10004}"#,
+            r#"{"type":"turn.ended","agentId":"main","turnId":0,"reason":"completed","time":10005}"#,
+            r#"{"type":"turn.ended","agentId":"child","turnId":1,"reason":"completed","time":10006}"#,
+        ]);
+        let parsed = parse_kimi_wire(&path).unwrap();
+        assert_eq!(parsed.response_state().as_deref(), Some("responding"));
+        assert_eq!(parsed.last_turn_begin_at, 10004.0);
+        let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+        writeln!(file, r#"{{"type":"turn.ended","agentId":"main","turnId":1,"reason":"completed","time":10007}}"#).unwrap();
+        let parsed = parse_kimi_wire(&path).unwrap();
+        assert_eq!(parsed.response_state().as_deref(), Some("idle"));
+        assert_eq!(parsed.last_turn_end_at, 10007.0);
+        assert_eq!(parsed.model.as_deref(), Some("qa"));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn native_config_and_queued_cancellation_do_not_finish_the_active_turn() {
+        let (dir, path) = write_wire(&[
+            r#"{"type":"profile.bind","modelAlias":"qa","time":10000}"#,
+            r#"{"type":"turn.prompt","agentId":"main","turnId":1,"time":10001}"#,
+            r#"{"type":"turn.prompt","agentId":"main","turnId":2,"time":10002}"#,
+            r#"{"type":"turn.cancel","agentId":"main","turnId":2,"target":"queued","time":10003}"#,
+        ]);
+        let parsed = parse_kimi_wire(&path).unwrap();
+        assert_eq!(parsed.response_state().as_deref(), Some("responding"));
+        assert_eq!(
+            parsed.last_turn_begin_at, 10001.0,
+            "Queued input must not replace the active turn"
+        );
+        let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+        writeln!(file, r#"{{"type":"turn.ended","agentId":"main","turnId":1,"reason":"completed","time":10004}}"#).unwrap();
+        assert_eq!(
+            parse_kimi_wire(&path).unwrap().response_state().as_deref(),
+            Some("idle")
+        );
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

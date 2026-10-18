@@ -74,6 +74,7 @@ pub(in crate::app) fn settings_with_active_restart_locked_values(
 }
 
 pub struct CoduxApp {
+    pub(in crate::app) blackboard: super::blackboard::BlackboardWorkspace,
     pub(in crate::app) trigger_workspace: super::triggers::TriggerWorkspaceState,
     pub(in crate::app) window_mode: AppWindowMode,
     pub(in crate::app) root_focus_handle: Option<FocusHandle>,

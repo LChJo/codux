@@ -34,6 +34,7 @@ pub mod host_browser;
 // agent runs the exact same git logic. Re-exported as `crate::git`.
 pub use codux_git as git;
 pub mod favorite_commands;
+pub use codux_blackboard as blackboard;
 pub mod i18n;
 pub mod llm;
 pub mod memory;

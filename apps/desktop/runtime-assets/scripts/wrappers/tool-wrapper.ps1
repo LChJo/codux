@@ -70,6 +70,8 @@ function Find-Real-Binary([string]$Name, [string]$SearchPath) {
       "claude" { @("claude.ps1", "claude.exe", "claude-code.ps1", "claude-code.exe", "reclaude.ps1", "reclaude.exe"); break }
       "claude-code" { @("claude-code.ps1", "claude-code.exe", "claude.ps1", "claude.exe", "reclaude.ps1", "reclaude.exe"); break }
       "reclaude" { @("reclaude.ps1", "reclaude.exe", "claude.ps1", "claude.exe", "claude-code.ps1", "claude-code.exe"); break }
+      "kimi" { @("kimi.ps1", "kimi.exe", "kimi-code.ps1", "kimi-code.exe"); break }
+      "kimi-code" { @("kimi-code.ps1", "kimi-code.exe", "kimi.ps1", "kimi.exe"); break }
       default { @("$Name.ps1", "$Name.exe") }
     }
     foreach ($candidate in $candidateNames) {
@@ -196,8 +198,8 @@ function Tool-Model-Key([string]$Name) {
   }
 }
 
-function Has-Arg([string[]]$Args, [string]$Name) {
-  return $Args -contains $Name
+function Has-Arg([string[]]$CommandArgs, [string]$Name) {
+  return $CommandArgs -contains $Name
 }
 
 function Test-Elevated-Process {
@@ -210,32 +212,32 @@ function Test-Elevated-Process {
   }
 }
 
-function Has-Prefix-Arg([string[]]$Args, [string]$Prefix) {
-  foreach ($arg in $Args) {
+function Has-Prefix-Arg([string[]]$CommandArgs, [string]$Prefix) {
+  foreach ($arg in $CommandArgs) {
     if ($arg.StartsWith($Prefix, [StringComparison]::Ordinal)) { return $true }
   }
   return $false
 }
 
-function Has-Option-Value([string[]]$Args, [string[]]$Names) {
-  for ($index = 0; $index -lt $Args.Count; $index++) {
-    if ($Names -contains $Args[$index]) { return $true }
+function Has-Option-Value([string[]]$CommandArgs, [string[]]$Names) {
+  for ($index = 0; $index -lt $CommandArgs.Count; $index++) {
+    if ($Names -contains $CommandArgs[$index]) { return $true }
     foreach ($name in $Names) {
-      if ($Args[$index].StartsWith("$name=", [StringComparison]::Ordinal)) { return $true }
+      if ($CommandArgs[$index].StartsWith("$name=", [StringComparison]::Ordinal)) { return $true }
     }
   }
   return $false
 }
 
-function Codex-Allows-Additional-Writable-Roots([string[]]$Args) {
-  for ($index = 0; $index -lt $Args.Count; $index++) {
-    $arg = $Args[$index]
+function Codex-Allows-Additional-Writable-Roots([string[]]$CommandArgs) {
+  for ($index = 0; $index -lt $CommandArgs.Count; $index++) {
+    $arg = $CommandArgs[$index]
     if ($arg -eq "--dangerously-bypass-approvals-and-sandbox" -or $arg -eq "--full-auto") {
       return $true
     }
     if ($arg -eq "--sandbox" -or $arg -eq "-s") {
-      if ($index + 1 -lt $Args.Count) {
-        $value = $Args[$index + 1]
+      if ($index + 1 -lt $CommandArgs.Count) {
+        $value = $CommandArgs[$index + 1]
         if ($value -eq "workspace-write" -or $value -eq "danger-full-access") { return $true }
       }
     }
@@ -249,8 +251,8 @@ function Codex-Allows-Additional-Writable-Roots([string[]]$Args) {
   return $false
 }
 
-function Codex-Has-Sandbox-Mode-Arg([string[]]$Args) {
-  foreach ($arg in $Args) {
+function Codex-Has-Sandbox-Mode-Arg([string[]]$CommandArgs) {
+  foreach ($arg in $CommandArgs) {
     if ($arg -eq "--dangerously-bypass-approvals-and-sandbox" -or
         $arg -eq "--full-auto" -or
         $arg -eq "--sandbox" -or
@@ -263,11 +265,11 @@ function Codex-Has-Sandbox-Mode-Arg([string[]]$Args) {
   return $false
 }
 
-function Has-Config-Key([string[]]$Args, [string]$Key) {
-  for ($index = 0; $index -lt $Args.Count; $index++) {
-    $arg = $Args[$index]
-    if (($arg -eq "-c" -or $arg -eq "--config") -and $index + 1 -lt $Args.Count) {
-      if ($Args[$index + 1].StartsWith("$Key=", [StringComparison]::Ordinal)) { return $true }
+function Has-Config-Key([string[]]$CommandArgs, [string]$Key) {
+  for ($index = 0; $index -lt $CommandArgs.Count; $index++) {
+    $arg = $CommandArgs[$index]
+    if (($arg -eq "-c" -or $arg -eq "--config") -and $index + 1 -lt $CommandArgs.Count) {
+      if ($CommandArgs[$index + 1].StartsWith("$Key=", [StringComparison]::Ordinal)) { return $true }
     }
     if ($arg.StartsWith("-c$Key=", [StringComparison]::Ordinal) -or
         $arg.StartsWith("--config=$Key=", [StringComparison]::Ordinal)) {
@@ -277,31 +279,61 @@ function Has-Config-Key([string[]]$Args, [string]$Key) {
   return $false
 }
 
-function Extract-Model([string[]]$Args) {
-  for ($index = 0; $index -lt $Args.Count; $index++) {
-    $arg = $Args[$index]
-    if (($arg -eq "--model" -or $arg -eq "-m") -and $index + 1 -lt $Args.Count) { return $Args[$index + 1] }
+function Extract-Model([string[]]$CommandArgs) {
+  for ($index = 0; $index -lt $CommandArgs.Count; $index++) {
+    $arg = $CommandArgs[$index]
+    if (($arg -eq "--model" -or $arg -eq "-m") -and $index + 1 -lt $CommandArgs.Count) { return $CommandArgs[$index + 1] }
     if ($arg.StartsWith("--model=", [StringComparison]::Ordinal)) { return $arg.Substring("--model=".Length) }
   }
   return ""
 }
 
-function Extract-Resume-Target([string[]]$Args) {
-  for ($index = 0; $index -lt $Args.Count; $index++) {
-    $arg = $Args[$index]
+function Extract-Resume-Target([string[]]$CommandArgs) {
+  if ($Tool -eq 'kiro-cli') {
+    $target = ''
+    $valueOptions = @('--agent','--model','--effort','--trust-tools','--format','-f','--output-format','--wrap','-w','--agent-engine','--mode','--repo','--session-source','--delete-session','-d')
+    for ($index=0; $index -lt $CommandArgs.Count; $index++) {
+      $arg=$CommandArgs[$index]
+      if ($arg -eq '--') { break }
+      if ($arg -eq '--resume-id') {
+        if ($index+1 -lt $CommandArgs.Count) { $target=$CommandArgs[++$index] }
+      } elseif ($arg.StartsWith('--resume-id=',[StringComparison]::Ordinal)) {
+        $target=$arg.Substring('--resume-id='.Length)
+      } elseif ($valueOptions -contains $arg) { $index++ }
+    }
+    return $target
+  }
+  if ($Tool -eq 'agy') {
+    $target = ''
+    $valueOptions = @('--agent','--model','--mode','--effort','--project','--log-file','--add-dir','--json-schema','--input-format','--output-format','--print-timeout','--print','-p','--prompt','--prompt-interactive','-i')
+    for ($index = 0; $index -lt $CommandArgs.Count; $index++) {
+      $arg = $CommandArgs[$index]
+      if ($arg -eq '--') { break }
+      if ($arg -eq '--conversation') {
+        if ($index + 1 -lt $CommandArgs.Count) { $target = $CommandArgs[++$index] }
+      } elseif ($arg.StartsWith('--conversation=', [StringComparison]::Ordinal)) {
+        $target = $arg.Substring('--conversation='.Length)
+      } elseif ($valueOptions -contains $arg) {
+        $index++
+      }
+    }
+    return $target
+  }
+  for ($index = 0; $index -lt $CommandArgs.Count; $index++) {
+    $arg = $CommandArgs[$index]
     if (($arg -eq "--resume" -or
           $arg -eq "-r" -or
           $arg -eq "--resume-id" -or
           $arg -eq "--session" -or
           $arg -eq "--session-id") -and
-        $index + 1 -lt $Args.Count -and
-        -not $Args[$index + 1].StartsWith("-", [StringComparison]::Ordinal)) {
-      return $Args[$index + 1]
+        $index + 1 -lt $CommandArgs.Count -and
+        -not $CommandArgs[$index + 1].StartsWith("-", [StringComparison]::Ordinal)) {
+      return $CommandArgs[$index + 1]
     }
     if ($arg -eq "resume" -and
-        $index + 1 -lt $Args.Count -and
-        -not $Args[$index + 1].StartsWith("-", [StringComparison]::Ordinal)) {
-      return $Args[$index + 1]
+        $index + 1 -lt $CommandArgs.Count -and
+        -not $CommandArgs[$index + 1].StartsWith("-", [StringComparison]::Ordinal)) {
+      return $CommandArgs[$index + 1]
     }
     if ($arg.StartsWith("--resume=", [StringComparison]::Ordinal)) { return $arg.Substring("--resume=".Length) }
     if ($arg.StartsWith("--resume-id=", [StringComparison]::Ordinal)) { return $arg.Substring("--resume-id=".Length) }
@@ -311,20 +343,20 @@ function Extract-Resume-Target([string[]]$Args) {
   return ""
 }
 
-function Extract-Omp-Session-Directory([string[]]$Args) {
+function Extract-Omp-Session-Directory([string[]]$CommandArgs) {
   $value = ""
   $launchDirectory = (Get-Location).Path
   $cwdValue = ""
-  for ($index = 0; $index -lt $Args.Count; $index++) {
-    $arg = $Args[$index]
-    if ($arg -eq "--cwd" -and $index + 1 -lt $Args.Count) {
-      $cwdValue = $Args[$index + 1]
+  for ($index = 0; $index -lt $CommandArgs.Count; $index++) {
+    $arg = $CommandArgs[$index]
+    if ($arg -eq "--cwd" -and $index + 1 -lt $CommandArgs.Count) {
+      $cwdValue = $CommandArgs[$index + 1]
     }
     if ($arg.StartsWith("--cwd=", [StringComparison]::Ordinal)) {
       $cwdValue = $arg.Substring("--cwd=".Length)
     }
-    if ($arg -eq "--session-dir" -and $index + 1 -lt $Args.Count) {
-      $value = $Args[$index + 1]
+    if ($arg -eq "--session-dir" -and $index + 1 -lt $CommandArgs.Count) {
+      $value = $CommandArgs[$index + 1]
     }
     if ($arg.StartsWith("--session-dir=", [StringComparison]::Ordinal)) {
       $value = $arg.Substring("--session-dir=".Length)
@@ -359,6 +391,66 @@ function Is-Metadata-Invocation([string[]]$CommandArgs) {
 
 function Is-Passthrough-Invocation([string[]]$CommandArgs) {
   if ($CommandArgs.Count -eq 0) { return $false }
+  if ($Tool -eq 'kiro-cli') {
+    $valueOptions = @('--agent','--model','--effort','--trust-tools','--resume-id','--format','-f','--output-format','--wrap','-w','--agent-engine','--mode','--repo','--session-source')
+    $commands = @('debug','settings','setup','update','diagnostic','init','theme','issue','login','logout','whoami','profile','user','doctor','launch','quit','restart','integrations','translate','dashboard','crew','mcp','powers','inline','agent','acp','help')
+    $chat = $false
+    for ($index=0; $index -lt $CommandArgs.Count; $index++) {
+      $arg=$CommandArgs[$index]
+      if ($arg -eq '--') { return $false }
+      if ($arg -in @('--help','-h','--help-all','--version','-V','--list-models','--list-sessions','-l','--sessions','--delete-session','-d') -or $arg.StartsWith('--delete-session=')) { return $true }
+      if ($valueOptions -contains $arg) { $index++; continue }
+      if ($arg.StartsWith('-')) { continue }
+      if (-not $chat -and $arg -eq 'chat') { $chat=$true; continue }
+      if ($chat) { return $false }
+      return $commands -contains $arg
+    }
+    return $false
+  }
+  if ($Tool -eq 'kimi' -or $Tool -eq 'kimi-code') {
+    $valueOptions = @('--agent','--agent-file','--model','-m','--prompt','-p','--config','--config-file','--work-dir','-w','--skills-dir','--add-dir','--output-format')
+    $sessionOptions = @('--session','-S','--resume','-r')
+    $commands = @('provider','session','export','fork','login','logout','doctor','vis','install-desktop','app','migrate','upgrade','update','acp','web','server','rc','remote','term','mcp','help','config','info')
+    for ($index = 0; $index -lt $CommandArgs.Count; $index++) {
+      $arg = $CommandArgs[$index]
+      if ($arg -eq '--') { return $false }
+      if ($arg -in @('--help','-h','--version','-V')) { return $true }
+      if ($arg -cin $sessionOptions) {
+        if ($index + 1 -lt $CommandArgs.Count -and -not $CommandArgs[$index + 1].StartsWith('-')) { $index++ }
+        continue
+      }
+      if ($arg -cin $valueOptions) {
+        if ($index + 1 -ge $CommandArgs.Count) { return $false }
+        $index++
+        continue
+      }
+      if ($arg.StartsWith('-')) { continue }
+      return $arg -cin $commands
+    }
+    return $false
+  }
+  if ($Tool -eq 'agy') {
+    $valueOptions = @('--agent','--model','--mode','--effort','--project','--conversation','--log-file','--add-dir','--json-schema','--input-format','--output-format','--print-timeout')
+    $booleanOptions = @('--continue','-c','--new-project','--remote-control','--sandbox','--dangerously-skip-permissions','--disable-slash-commands')
+    $commands = @('agent','agents','models','changelog','plugins','plugin','mcp','install','remote-control','mic-serve','update','help')
+    for ($index = 0; $index -lt $CommandArgs.Count; $index++) {
+      $arg = $CommandArgs[$index]
+      if ($arg -eq '--') { return $false }
+      if ($arg -in @('--help','-h','--version','-V')) { return $true }
+      # A prompt value is text, even when it matches a subcommand or flag.
+      if ($arg -match '^(--print|--prompt|--prompt-interactive|-p|-i)(=|$)') { return $false }
+      if ($valueOptions -contains $arg) {
+        if ($index + 1 -ge $CommandArgs.Count) { return $false }
+        $index++
+        continue
+      }
+      if ($booleanOptions -contains $arg) { continue }
+      $name = ($arg -split '=',2)[0]
+      if ($arg.Contains('=') -and (($valueOptions -contains $name) -or ($booleanOptions -contains $name))) { continue }
+      return ($commands -contains $arg)
+    }
+    return $false
+  }
   if ($Tool -eq "omp") {
     $command = ""
     for ($index = 0; $index -lt $CommandArgs.Count; $index++) {
@@ -416,39 +508,6 @@ function Is-Passthrough-Invocation([string[]]$CommandArgs) {
   return $false
 }
 
-function Codex-Profile-Name([string]$Seed) {
-  if ([string]::IsNullOrWhiteSpace($Seed)) {
-    $Seed = [Guid]::NewGuid().ToString("N")
-  }
-  try {
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Seed)
-    $hash = [Security.Cryptography.SHA256]::Create().ComputeHash($bytes)
-    $hex = -join ($hash | ForEach-Object { $_.ToString("x2") })
-    return "codux-runtime-$($hex.Substring(0, 16))"
-  } catch {
-    return "codux-runtime-$([Guid]::NewGuid().ToString("N").Substring(0, 16))"
-  }
-}
-
-function Write-Codex-Developer-Instructions-Profile([string]$Content, [string]$Seed) {
-  if ([string]::IsNullOrWhiteSpace($Content)) { return "" }
-  try {
-    $codexHome = $env:CODEX_HOME
-    if ([string]::IsNullOrWhiteSpace($codexHome)) {
-      $codexHome = Join-Path $env:USERPROFILE ".codex"
-    }
-    New-Item -ItemType Directory -Force -Path $codexHome | Out-Null
-    $profileName = Codex-Profile-Name $Seed
-    $profilePath = Join-Path $codexHome "$profileName.config.toml"
-    $tomlString = $Content | ConvertTo-Json -Compress
-    Set-Content -LiteralPath $profilePath -Value "developer_instructions = $tomlString" -Encoding UTF8
-    return $profileName
-  } catch {
-    Write-Live-Log "failed to write codex developer instructions profile: $($_.Exception.Message)"
-    return ""
-  }
-}
-
 function Get-Memory-Prompt-File {
   $promptFile = $env:DMUX_AI_MEMORY_PROMPT_FILE
   if ([string]::IsNullOrWhiteSpace($promptFile) -or -not (Test-Path -LiteralPath $promptFile)) {
@@ -457,28 +516,138 @@ function Get-Memory-Prompt-File {
   return $promptFile
 }
 
-function Apply-Append-System-Prompt([string[]]$Args, [string]$Strategy, [string]$Label) {
-  if ($memoryInjectionStrategy -ne $Strategy) { return $Args }
-  if (Has-Option-Value $Args @("--append-system-prompt")) {
-    Write-Live-Log "$Label instructions skipped: append-system-prompt already provided"
-    return $Args
+function Invoke-Managed-Instructions([string]$Kind, [string]$PromptFile, [string[]]$CommandArgs) {
+  $helperPath = Join-Path $wrapperDir 'codux-wrapper-helper.exe'
+  if (-not (Test-Path -LiteralPath $helperPath)) { throw 'Codux instruction helper is missing' }
+  $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+  $startInfo.FileName = $helperPath
+  $startInfo.Arguments = '--codux-wrapper-helper managed-instructions --json-stdin'
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
+  $startInfo.RedirectStandardInput = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+  $child = [Diagnostics.Process]::Start($startInfo)
+  try {
+    $request = @{kind=$Kind;contextFile=$PromptFile;args=@($CommandArgs);binary=$realBin} | ConvertTo-Json -Depth 8 -Compress
+    $bytes = [Text.Encoding]::UTF8.GetBytes($request)
+    $child.StandardInput.BaseStream.Write($bytes,0,$bytes.Length)
+    $child.StandardInput.Close()
+    $response = $child.StandardOutput.ReadToEnd()
+    $failure = $child.StandardError.ReadToEnd()
+    $child.WaitForExit()
+    if ($child.ExitCode -ne 0) { throw "Codux instruction helper failed: $failure" }
+    foreach ($argument in (ConvertFrom-Json -InputObject $response)) { [string]$argument }
+  } finally { $child.Dispose() }
+}
+
+function Apply-Append-System-Prompt([string[]]$CommandArgs, [string]$Strategy, [string]$Label) {
+  if ($memoryInjectionStrategy -ne $Strategy) { return $CommandArgs }
+  if (Has-Option-Value $CommandArgs @("--append-system-prompt")) {
+    $promptFile = Get-Memory-Prompt-File
+    if ([string]::IsNullOrWhiteSpace($promptFile)) { return $CommandArgs }
+    return Invoke-Managed-Instructions 'append' $promptFile $CommandArgs
   }
   $promptFile = Get-Memory-Prompt-File
   if ([string]::IsNullOrWhiteSpace($promptFile)) {
     Write-Live-Log "$Label instructions skipped: prompt file missing"
-    return $Args
+    return $CommandArgs
   }
   try {
-    $prompt = Get-Content -LiteralPath $promptFile -Raw
+    $prompt = Get-Content -LiteralPath $promptFile -Raw -Encoding UTF8
     if ([string]::IsNullOrWhiteSpace($prompt)) {
       Write-Live-Log "$Label instructions skipped: prompt empty path=$promptFile"
-      return $Args
+      return $CommandArgs
     }
     Write-Live-Log "$Label instructions injected path=$promptFile chars=$($prompt.Length)"
-    return @("--append-system-prompt", $prompt) + $Args
+    return @("--append-system-prompt", $prompt) + $CommandArgs
   } catch {
     Write-Live-Log "$Label instructions skipped: failed to read prompt path=$promptFile error=$($_.Exception.Message)"
-    return $Args
+    return $CommandArgs
+  }
+}
+
+function Apply-Managed-CodeWhale-Context([string[]]$CommandArgs) {
+  if ($Tool -ne 'codewhale') { return }
+  $promptFile = Get-Memory-Prompt-File
+  if ([string]::IsNullOrWhiteSpace($promptFile)) { return }
+  $paths = @(Invoke-Managed-Instructions 'codewhale' $promptFile $CommandArgs)
+  if ($paths.Count -ne 1 -or -not (Test-Path -LiteralPath $paths[0])) {
+    throw 'Codux: unable to prepare CodeWhale project instructions.'
+  }
+  $env:DEEPSEEK_MANAGED_CONFIG_PATH = $paths[0]
+}
+
+function Apply-Managed-Kimi-Context([string[]]$CommandArgs) {
+  if ($memoryInjectionStrategy -ne 'kimiAgent') { return $CommandArgs }
+  $promptFile = $env:CODUX_BLACKBOARD_CONTEXT_FILE
+  if ([string]::IsNullOrWhiteSpace($promptFile)) {
+    $promptFile = Get-Memory-Prompt-File
+  } elseif (-not (Test-Path -LiteralPath $promptFile)) {
+    [Console]::Error.WriteLine('Codux: Kimi project instructions are missing.')
+    exit 1
+  }
+  if ([string]::IsNullOrWhiteSpace($promptFile)) { return $CommandArgs }
+  try {
+    $env:CODUX_NATIVE_KIMI_CONTEXT_MANIFEST = $null
+    $prepared = @(Invoke-Managed-Instructions 'kimi-launch' $promptFile $CommandArgs)
+    if ($prepared.Count -lt 2) { throw 'Invalid Kimi launch response.' }
+    if ($prepared[0] -eq 'native') {
+      if (-not (Test-Path -LiteralPath $prepared[1])) { throw 'Kimi Code instruction manifest is missing.' }
+      $env:CODUX_NATIVE_KIMI_CONTEXT_MANIFEST = $prepared[1]
+      $env:CODUX_MANAGED_INSTRUCTIONS_HELPER = Join-Path $wrapperDir 'codux-wrapper-helper.exe'
+    } elseif ($prepared[0] -ne 'python') { throw 'Invalid Kimi instruction strategy.' }
+    for ($index = 2; $index -lt $prepared.Count; $index++) { [string]$prepared[$index] }
+    return
+  } catch {
+    [Console]::Error.WriteLine("Codux: unable to load Kimi project instructions. $($_.Exception.Message)")
+    exit 1
+  }
+}
+
+function Apply-Managed-Agy-Context([string[]]$CommandArgs) {
+  if ($Tool -ne 'agy' -or $memoryInjectionStrategy -ne 'agyHook') { return }
+  try {
+    $env:CODUX_AGY_CONTEXT_MANIFEST = $null
+    $env:CODUX_MANAGED_INSTRUCTIONS_HELPER = $null
+    $promptFile = $env:CODUX_BLACKBOARD_CONTEXT_FILE
+    if ([string]::IsNullOrWhiteSpace($promptFile)) {
+      $promptFile = Get-Memory-Prompt-File
+    } elseif (-not (Test-Path -LiteralPath $promptFile)) {
+      throw 'Agy project instructions are missing.'
+    }
+    if ([string]::IsNullOrWhiteSpace($promptFile)) { return }
+    $paths = @(Invoke-Managed-Instructions 'agy' $promptFile $CommandArgs)
+    if ($paths.Count -ne 1 -or -not (Test-Path -LiteralPath $paths[0])) {
+      throw 'Unable to prepare Agy project instructions.'
+    }
+    $env:CODUX_AGY_CONTEXT_MANIFEST = $paths[0]
+    $env:CODUX_MANAGED_INSTRUCTIONS_HELPER = Join-Path $wrapperDir 'codux-wrapper-helper.exe'
+  } catch {
+    [Console]::Error.WriteLine("Codux: unable to load Agy project instructions. $($_.Exception.Message)")
+    exit 1
+  }
+}
+
+function Apply-Managed-Kiro-Context([string[]]$CommandArgs) {
+  if ($memoryInjectionStrategy -ne 'kiroHook') { return }
+  try {
+    $env:CODUX_KIRO_CONTEXT_MANIFEST=$null
+    $env:CODUX_KIRO_CONTEXT_MODE=$null
+    $promptFile=$env:CODUX_BLACKBOARD_CONTEXT_FILE
+    if ([string]::IsNullOrWhiteSpace($promptFile)) { $promptFile=Get-Memory-Prompt-File }
+    elseif (-not (Test-Path -LiteralPath $promptFile)) { throw 'Kiro project instructions are missing.' }
+    if ([string]::IsNullOrWhiteSpace($promptFile)) { return }
+    $prepared=@(Invoke-Managed-Instructions 'kiro' $promptFile $CommandArgs)
+    if ($prepared.Count -ne ($CommandArgs.Count+2) -or -not (Test-Path -LiteralPath $prepared[0]) -or $prepared[1] -notin @('inline','global')) { throw 'Invalid Kiro instruction preparation.' }
+    $env:CODUX_KIRO_CONTEXT_MANIFEST=$prepared[0]
+    $env:CODUX_KIRO_CONTEXT_MODE=$prepared[1]
+    $env:CODUX_MANAGED_INSTRUCTIONS_HELPER=Join-Path $wrapperDir 'codux-wrapper-helper.exe'
+  } catch {
+    [Console]::Error.WriteLine("Codux: unable to load Kiro project instructions. $($_.Exception.Message)")
+    exit 1
   }
 }
 
@@ -499,6 +668,20 @@ function Invoke-Real-Binary([string]$Binary, [string[]]$CommandArgs, [string]$Se
   $previousPath = $env:PATH
   try {
     $env:PATH = $SearchPath
+    $nativeHelper = Join-Path $wrapperDir 'codux-wrapper-helper.exe'
+    if (($Binary.EndsWith('.exe', [StringComparison]::OrdinalIgnoreCase) -or $Tool -eq 'codex' -or (($Tool -eq 'kimi' -or $Tool -eq 'kimi-code') -and -not [string]::IsNullOrWhiteSpace($env:CODUX_NATIVE_KIMI_CONTEXT_MANIFEST))) -and (Test-Path -LiteralPath $nativeHelper)) {
+      $requestPath = Join-Path ([IO.Path]::GetTempPath()) "codux-launch-$([Guid]::NewGuid().ToString('N')).json"
+      try {
+        $cwd = if (-not [string]::IsNullOrWhiteSpace($LaunchDir) -and (Test-Path -LiteralPath $LaunchDir)) { $LaunchDir } else { (Get-Location).ProviderPath }
+        $request = @{binary=$Binary;args=@($CommandArgs);cwd=$cwd;tool=$Tool} | ConvertTo-Json -Depth 5 -Compress
+        [IO.File]::WriteAllText($requestPath, $request, [Text.UTF8Encoding]::new($false))
+        & $nativeHelper --codux-wrapper-helper native-launch $requestPath
+        $script:DMUX_WRAPPER_EXIT_CODE = $LASTEXITCODE
+        return
+      } finally {
+        if (Test-Path -LiteralPath $requestPath) { Remove-Item -LiteralPath $requestPath -Force }
+      }
+    }
     if (-not [string]::IsNullOrWhiteSpace($LaunchDir) -and (Test-Path -LiteralPath $LaunchDir)) {
       Push-Location -LiteralPath $LaunchDir
       try {
@@ -713,27 +896,26 @@ if ($memoryInjectionStrategy -eq "codexDeveloperInstructions" -and
 }
 
 if ($memoryInjectionStrategy -eq "codexDeveloperInstructions" -and
-    -not [string]::IsNullOrWhiteSpace($env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
-    (Test-Path -LiteralPath $env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
-    -not (Has-Config-Key $launchArgs "developer_instructions")) {
-  $memoryAgents = Join-Path $env:DMUX_AI_MEMORY_WORKSPACE_ROOT "AGENTS.md"
+    ((-not [string]::IsNullOrWhiteSpace($env:CODUX_BLACKBOARD_CONTEXT_FILE) -and (Test-Path -LiteralPath $env:CODUX_BLACKBOARD_CONTEXT_FILE)) -or
+     (-not [string]::IsNullOrWhiteSpace($env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and (Test-Path -LiteralPath $env:DMUX_AI_MEMORY_WORKSPACE_ROOT)))) {
+  $memoryAgents = if (-not [string]::IsNullOrWhiteSpace($env:CODUX_BLACKBOARD_CONTEXT_FILE)) { $env:CODUX_BLACKBOARD_CONTEXT_FILE } else { Join-Path $env:DMUX_AI_MEMORY_WORKSPACE_ROOT "AGENTS.md" }
   if (Test-Path -LiteralPath $memoryAgents) {
     try {
-      $content = Get-Content -LiteralPath $memoryAgents -Raw
+      $merged = @(Invoke-Managed-Instructions 'codex' $memoryAgents $launchArgs)
+      $content = $merged[1].Substring('developer_instructions='.Length) | ConvertFrom-Json
       if (-not [string]::IsNullOrWhiteSpace($content)) {
-        $profileName = Write-Codex-Developer-Instructions-Profile $content "$env:DMUX_SESSION_ID|$memoryAgents"
-        if (-not [string]::IsNullOrWhiteSpace($profileName) -and -not (Has-Option-Value $launchArgs @("--profile", "--profile-v2"))) {
-          $launchArgs = @("--profile", $profileName) + $launchArgs
-        } else {
-          $tomlString = $content | ConvertTo-Json -Compress
-          $launchArgs = @("-c", "developer_instructions=$tomlString") + $launchArgs
-        }
+        # CLI precedence is required: trusted project settings override profiles.
+        $launchArgs = $merged
         Write-Live-Log "codex instructions injected path=$memoryAgents chars=$($content.Length)"
       } else {
         Write-Live-Log "codex instructions skipped: AGENTS.md empty path=$memoryAgents"
       }
     } catch {
       Write-Live-Log "codex instructions skipped: failed to read AGENTS.md path=$memoryAgents error=$($_.Exception.Message)"
+      if (-not [string]::IsNullOrWhiteSpace($env:CODUX_BLACKBOARD_CONTEXT_FILE)) {
+        [Console]::Error.WriteLine('Codux: unable to load project instructions.')
+        exit 1
+      }
     }
   } else {
     Write-Live-Log "codex instructions skipped: AGENTS.md missing path=$memoryAgents"
@@ -767,10 +949,10 @@ if ($permissionMode -eq "fullAccess") {
       $launchArgs = @("--dangerously-skip-permissions") + $launchArgs
     }
   } elseif ($Tool -eq "agy") {
-    if (-not (Has-Option-Value $launchArgs @("--approval-mode")) -and
+    if (-not (Has-Option-Value $launchArgs @("--approval-mode", "--mode", "--sandbox", "--dangerously-skip-permissions")) -and
         -not (Has-Arg $launchArgs "--yolo") -and
         -not (Has-Arg $launchArgs "-y")) {
-      $launchArgs = @("--approval-mode", "yolo") + $launchArgs
+      $launchArgs = @("--dangerously-skip-permissions") + $launchArgs
     }
   } elseif ($Tool -eq "omp") {
     if (-not (Has-Option-Value $launchArgs @("--approval-mode")) -and
@@ -803,14 +985,23 @@ if (($Tool -eq "claude" -or $Tool -eq "claude-code" -or $Tool -eq "reclaude") -a
 if ($memoryInjectionStrategy -eq "appendSystemPrompt") {
   $launchArgs = Apply-Append-System-Prompt $launchArgs "appendSystemPrompt" $Tool
 }
+$launchArgs = @(Apply-Managed-Kimi-Context $launchArgs)
+Apply-Managed-Agy-Context $launchArgs
+Apply-Managed-Kiro-Context $launchArgs
 
 if ($Tool -eq "omp") {
   $launchArgs += @("--config", (Join-Path $wrapperDir "managed-config\omp.yml"))
 }
 
-$launchModel = if ($Tool -eq "kiro-cli") { $configuredModel } else { Extract-Model $launchArgs }
+$launchModel = Extract-Model $launchArgs
+if ($Tool -eq 'kiro-cli' -and [string]::IsNullOrWhiteSpace($launchModel)) { $launchModel=$configuredModel }
 $resumeTarget = Extract-Resume-Target $launchArgs
 $transcriptPath = if ($Tool -eq "omp") { Extract-Omp-Session-Directory $launchArgs } else { "" }
+if (($Tool -eq 'kimi' -or $Tool -eq 'kimi-code') -and -not [string]::IsNullOrWhiteSpace($env:CODUX_NATIVE_KIMI_CONTEXT_MANIFEST)) {
+  $kimiHome = if (-not [string]::IsNullOrEmpty($env:KIMI_CODE_HOME)) { $env:KIMI_CODE_HOME } else { Join-Path $env:USERPROFILE '.kimi-code' }
+  $kimiHome = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($kimiHome)
+  $transcriptPath = Join-Path $kimiHome 'session_index.jsonl'
+}
 $bindingExternalSessionId = if (-not [string]::IsNullOrWhiteSpace($resumeTarget)) { $resumeTarget } else { $env:DMUX_EXTERNAL_SESSION_ID }
 $bindingSessionOrigin = if (-not [string]::IsNullOrWhiteSpace($resumeTarget)) { "restored" } else { "" }
 $env:DMUX_ACTIVE_AI_MODEL = $launchModel
@@ -830,9 +1021,11 @@ if ($Tool -eq "opencode" -or $Tool -eq "mimo") {
 
 if ($Tool -eq "kimi" -or $Tool -eq "kimi-code") {
   $env:TERM_PROGRAM = "ghostty"
+  $env:DMUX_ACTIVE_AI_TOOL = $Tool
 }
 
 Apply-Managed-Lifecycle-Env $Tool
+Apply-Managed-CodeWhale-Context $launchArgs
 
 $launchDir = ""
 Write-Runtime-Binding $bindingExternalSessionId $launchModel $transcriptPath $bindingSessionOrigin

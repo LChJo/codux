@@ -6,6 +6,7 @@ members = [
     "apps/wrapper-helper",
     "crates/codux-ai-history",
     "crates/codux-ai-sessions",
+    "crates/codux-blackboard",
     "crates/codux-git",
     "crates/codux-llm",
     "crates/codux-memory",

@@ -13,6 +13,7 @@ fn resource_paths(session: &AISessionSnapshot) -> Vec<PathBuf> {
         session.project_path.as_deref(),
         session.ai_session_id.as_deref(),
         session.started_at,
+        session.transcript_path.as_deref(),
     )
 }
 
@@ -28,7 +29,7 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
     hook: AIRuntimeToolHookDriver::None,
     probe: Some(probe_kimi_runtime),
     resource_paths: Some(resource_paths),
-    memory_injection: AIRuntimeMemoryInjectionDriver::None,
+    memory_injection: AIRuntimeMemoryInjectionDriver::KimiAgent,
     lifecycle_hook_format: AIRuntimeLifecycleHookFormat::None,
     lifecycle_hooks: &[],
     lifecycle_config: None,

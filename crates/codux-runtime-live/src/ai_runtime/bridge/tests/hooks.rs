@@ -641,7 +641,7 @@ fn codewhale_wrapper_applies_configured_model_and_resume_session() {
 
 #[cfg(not(windows))]
 #[test]
-fn kimi_wrapper_applies_model_and_enables_native_progress() {
+fn kimi_wrapper_forwards_managed_agent_model_and_native_progress() {
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
 
@@ -700,7 +700,11 @@ fn kimi_wrapper_applies_model_and_enables_native_progress() {
         args.lines().any(|arg| arg == "TERM_PROGRAM=ghostty"),
         "{args}"
     );
-    assert!(!args.contains("--agent-file"), "{args}");
+    assert!(args.lines().any(|arg| arg == "--agent-file"), "{args}");
+    assert!(
+        args.lines().any(|arg| arg == prompt_file.to_string_lossy()),
+        "{args}"
+    );
     assert!(!args.lines().any(|arg| arg == "--approval-mode"), "{args}");
     assert!(!args.lines().any(|arg| arg == "yolo"), "{args}");
     assert!(args.lines().any(|arg| arg == "hello"), "{args}");
@@ -1044,7 +1048,7 @@ fn claude_wrapper_falls_back_to_app_support_settings_when_managed_file_missing()
     assert!(args.lines().any(|arg| arg == "--resume"), "{args}");
     assert!(args.lines().any(|arg| arg == "session-1"), "{args}");
 
-    let log = String::from_utf8_lossy(&fs::read(&log_file).unwrap());
+    let log = String::from_utf8_lossy(&fs::read(&log_file).unwrap()).into_owned();
     assert!(log.contains("source=app-support"), "{log}");
 
     let binding: serde_json::Value =
@@ -1106,7 +1110,7 @@ fn claude_wrapper_uses_settings_fallback_when_managed_file_is_corrupt() {
         "{args}"
     );
 
-    let log = String::from_utf8_lossy(&fs::read(&log_file).unwrap());
+    let log = String::from_utf8_lossy(&fs::read(&log_file).unwrap()).into_owned();
     assert!(log.contains("parse failure"), "{log}");
     assert!(log.contains("source=app-support"), "{log}");
     fs::remove_dir_all(dir).unwrap();
@@ -1159,7 +1163,7 @@ fn claude_wrapper_skips_injection_but_still_launches_when_no_settings_source() {
     assert!(args.lines().any(|arg| arg == "--resume"), "{args}");
     assert!(args.lines().any(|arg| arg == "session-1"), "{args}");
 
-    let log = String::from_utf8_lossy(&fs::read(&log_file).unwrap());
+    let log = String::from_utf8_lossy(&fs::read(&log_file).unwrap()).into_owned();
     assert!(log.contains("source=none"), "{log}");
     fs::remove_dir_all(dir).unwrap();
 }
@@ -1216,7 +1220,7 @@ fn claude_wrapper_reads_settings_fallback_without_helper_binary() {
         "{args}"
     );
 
-    let log = String::from_utf8_lossy(&fs::read(&log_file).unwrap());
+    let log = String::from_utf8_lossy(&fs::read(&log_file).unwrap()).into_owned();
     assert!(log.contains("source=app-support"), "{log}");
     fs::remove_dir_all(dir).unwrap();
 }

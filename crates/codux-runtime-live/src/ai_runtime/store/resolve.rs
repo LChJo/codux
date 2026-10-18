@@ -22,7 +22,8 @@ pub(super) fn resolve_hook_event_with_claude_cache(
     claude_cache: Option<&mut ClaudeProbeCache>,
 ) -> AIHookEventPayload {
     match canonical_tool_name(&event.tool).as_deref() {
-        Some("codex") => resolve_codex_hook_event(event, current_session),
+        Some("codex") => resolve_completed_transcript_hook_event(event, current_session, "codex"),
+        Some("kimi") => resolve_completed_transcript_hook_event(event, current_session, "kimi"),
         Some("claude") => resolve_claude_hook_event(event, current_session, claude_cache),
         Some("kiro") => resolve_project_probe_hook_event(event, current_session, "kiro"),
         Some("codewhale") => resolve_project_probe_hook_event(event, current_session, "codewhale"),
@@ -33,18 +34,33 @@ pub(super) fn resolve_hook_event_with_claude_cache(
     }
 }
 
-fn resolve_codex_hook_event(
+fn resolve_completed_transcript_hook_event(
     event: AIHookEventPayload,
     current_session: Option<&AISessionSnapshot>,
+    tool: &str,
 ) -> AIHookEventPayload {
     let fallback = matching_fallback_session(&event, current_session);
-    let resolved = with_fallback(event, fallback);
-    if resolved.kind != "turnCompleted"
-        || resolved
-            .metadata
-            .as_ref()
-            .and_then(|metadata| normalized_string(metadata.transcript_path.as_deref()))
-            .is_none()
+    let mut resolved = with_fallback(event, fallback);
+    let closing = resolved.kind == "sessionEnded";
+    let transcript_path = resolved
+        .metadata
+        .as_ref()
+        .and_then(|metadata| normalized_string(metadata.transcript_path.as_deref()))
+        .or_else(|| {
+            closing
+                .then(|| fallback.and_then(|session| session.transcript_path.clone()))
+                .flatten()
+        });
+    if (!closing && (resolved.kind != "turnCompleted" || transcript_path.is_none()))
+        || (closing && fallback.is_none())
+        || (closing
+            && fallback.is_some_and(|session| {
+                session
+                    .terminal_instance_id
+                    .as_ref()
+                    .zip(resolved.terminal_instance_id.as_ref())
+                    .is_some_and(|(current, incoming)| current != incoming)
+            }))
     {
         return resolved;
     }
@@ -53,22 +69,57 @@ fn resolve_codex_hook_event(
         terminal_instance_id: resolved.terminal_instance_id.clone(),
         project_id: resolved.project_id.clone(),
         project_path: resolved.project_path.clone(),
-        tool: "codex".to_string(),
+        tool: tool.to_string(),
         external_session_id: normalized_string(resolved.ai_session_id.as_deref())
             .or_else(|| fallback.and_then(|session| session.ai_session_id.clone())),
-        transcript_path: resolved
-            .metadata
-            .as_ref()
-            .and_then(|metadata| normalized_string(metadata.transcript_path.as_deref())),
+        transcript_path,
         started_at: fallback
             .and_then(|session| session.started_at)
             .or(Some(resolved.updated_at)),
         updated_at: resolved.updated_at,
         occupied_external_session_ids: Default::default(),
     };
-    probe_runtime(&request)
-        .map(|snapshot| merge_snapshot_into_hook(resolved.clone(), snapshot, fallback))
-        .unwrap_or(resolved)
+    let Some(snapshot) = probe_runtime(&request) else {
+        return resolved;
+    };
+    if closing {
+        // A short exec can finish between transcript polls. Read its final
+        // record before the wrapper's exit event retires the live session.
+        // An unfinished or earlier turn is never inferred to have completed.
+        let active = fallback.and_then(|session| {
+            session
+                .active_turn_started_at
+                .or(session.runtime_turn_started_at)
+                .or(session.started_at)
+        });
+        if !snapshot.has_completed_turn
+            || snapshot.was_interrupted
+            || snapshot.response_state.as_deref() != Some("idle")
+            || active
+                .zip(snapshot.completed_at)
+                .is_some_and(|(started, completed)| {
+                    completed + COMPLETION_TIMESTAMP_SKEW_SECONDS < started
+                })
+        {
+            return resolved;
+        }
+        resolved.kind = "turnCompleted".into();
+        resolved.metadata = Some(AIHookEventMetadata {
+            transcript_path: snapshot.transcript_path.clone(),
+            ..resolved.metadata.unwrap_or(AIHookEventMetadata {
+                transcript_path: None,
+                notification_type: None,
+                source: None,
+                reason: None,
+                cwd: None,
+                target_tool_name: None,
+                message: None,
+                was_interrupted: None,
+                has_completed_turn: None,
+            })
+        });
+    }
+    merge_snapshot_into_hook(resolved, snapshot, fallback)
 }
 
 fn resolve_claude_hook_event(

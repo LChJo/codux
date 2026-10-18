@@ -1,6 +1,6 @@
 [package]
 name = "codux-runtime"
-version = "2.0.0-beta.13"
+version = "2.0.0-beta.14"
 edition = "2024"
 
 [dependencies]
@@ -12,6 +12,7 @@ bytes = "1.9"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 codux-ai-history = { path = "../../../crates/codux-ai-history" }
 codux-ai-sessions = { path = "../../../crates/codux-ai-sessions" }
+codux-blackboard = { path = "../../../crates/codux-blackboard" }
 codux-git = { path = "../../../crates/codux-git" }
 codux-llm = { path = "../../../crates/codux-llm" }
 codux-memory = { path = "../../../crates/codux-memory" }

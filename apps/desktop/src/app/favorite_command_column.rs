@@ -195,9 +195,16 @@ impl Render for FavoriteCommandListView {
                 ))
                 .into_any_element()
         } else if empty {
-            div().p_3().text_sm().text_color(cx.theme().muted_foreground)
-                .child(if count == 0 { tr("favorite.section.empty", "Select text and right-click to save a command. Drag a command into a conversation to use it.") }
-                    else { tr("favorite.search.empty", "No matching commands") }).into_any_element()
+            div()
+                .p_3()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(if count == 0 {
+                    tr("favorite.section.empty", "No saved commands")
+                } else {
+                    tr("favorite.search.empty", "No matching commands")
+                })
+                .into_any_element()
         } else {
             let app = self.app_entity.clone();
             let language = lang.clone();

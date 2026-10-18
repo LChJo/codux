@@ -44,11 +44,12 @@ pub(in crate::ai_runtime::store) fn apply_hook_unlocked(
             .as_ref()
             .and_then(|session| session.terminal_instance_id.as_deref())
             != terminal_instance_id.as_deref()
-        && event.updated_at
-            < previous
-                .as_ref()
-                .map(|session| session.updated_at)
-                .unwrap_or(0.0)
+        && (event.kind == "sessionEnded"
+            || event.updated_at
+                < previous
+                    .as_ref()
+                    .map(|session| session.updated_at)
+                    .unwrap_or(0.0))
     {
         return false;
     }

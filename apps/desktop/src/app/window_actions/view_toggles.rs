@@ -77,6 +77,12 @@ impl CoduxApp {
                     self.exit_trigger_terminal(&id, cx);
                 }
             }
+            WorkspaceView::Blackboard => {
+                let component = self.blackboard.selected;
+                let mut layout = self.blackboard_layout();
+                layout.close(component);
+                self.save_blackboard_layout(layout, cx);
+            }
         }
     }
 
@@ -87,12 +93,19 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) {
         self.workspace_view = view;
+        if view != WorkspaceView::Blackboard {
+            self.hide_blackboard_web(cx);
+        }
         for pane in self.trigger_workspace.panes.values() {
             pane.view.update(cx, |terminal, cx| {
                 terminal.set_render_visible(view == WorkspaceView::Triggers, cx)
             });
         }
         match view {
+            WorkspaceView::Blackboard => {
+                self.assistant_panel = None;
+                self.tick_blackboard(cx);
+            }
             WorkspaceView::Files => {
                 self.assistant_panel = Some(AssistantPanel::FileManager);
                 self.refresh_files_panel_state_async(cx);

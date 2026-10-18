@@ -250,7 +250,10 @@ fn parse_opencode_session_message_rows(
         let updated_at = opencode_epoch_value_seconds(updated_at_raw);
         parsed.updated_at = parsed.updated_at.max(created_at).max(updated_at);
         match message_type.as_str() {
-            "user" => parsed.last_user_at = parsed.last_user_at.max(created_at),
+            "user" => {
+                parsed.last_user_at = parsed.last_user_at.max(created_at);
+                parsed.assistant_preview = None;
+            }
             "assistant" => parse_opencode_v2_assistant_message(parsed, &data, created_at, false),
             _ => {}
         }
@@ -296,6 +299,7 @@ fn parse_opencode_message_part_rows(
             .unwrap_or("");
         if role == "user" {
             parsed.last_user_at = parsed.last_user_at.max(created_at);
+            parsed.assistant_preview = None;
         } else if role == "assistant" {
             parse_opencode_message_part_assistant_message(
                 conn,
@@ -418,6 +422,7 @@ fn probe_mimo_schema(
             .unwrap_or("");
         if role == "user" {
             parsed.last_user_at = parsed.last_user_at.max(created_at);
+            parsed.assistant_preview = None;
         } else if role == "assistant" {
             parse_mimo_assistant_message(conn, &mut parsed, &message_id, &data, created_at);
         }
@@ -642,8 +647,8 @@ fn parse_opencode_v2_assistant_message(
             .and_then(|value| value.as_str())
             .and_then(opencode_model_from_value);
     }
-    if parsed.assistant_preview.is_none() {
-        parsed.assistant_preview = opencode_v2_assistant_preview(data);
+    if let Some(preview) = opencode_v2_assistant_preview(data) {
+        parsed.assistant_preview = Some(preview);
     }
     if include_tokens {
         absorb_assistant_tokens(parsed, data);
@@ -704,12 +709,11 @@ fn parse_opencode_message_part_assistant_message(
         .and_then(|value| value.as_str())
         .map(str::to_string);
     if let Some(parts) = mimo_parts_for_message(conn, message_id) {
+        let mut public_text = None;
         for part in parts {
             let part_type = part.get("type").and_then(|value| value.as_str());
-            if parsed.assistant_preview.is_none() && matches!(part_type, Some("text" | "reasoning"))
-            {
-                parsed.assistant_preview =
-                    joined_preview_from_values(&[part.get("text"), part.get("content")]);
+            if public_text.is_none() && part_type == Some("text") {
+                public_text = joined_preview_from_values(&[part.get("text"), part.get("content")]);
             }
             if part_type == Some("tool")
                 && !opencode_v2_tool_state_is_terminal(part.get("state").unwrap_or(&Value::Null))
@@ -722,6 +726,9 @@ fn parse_opencode_message_part_assistant_message(
                     .and_then(|value| value.as_str())
                     .map(str::to_string);
             }
+        }
+        if public_text.is_some() {
+            parsed.assistant_preview = public_text;
         }
     }
 
@@ -751,7 +758,7 @@ fn opencode_v2_assistant_preview(data: &Value) -> Option<String> {
     let content = data.get("content")?.as_array()?;
     for item in content {
         let item_type = item.get("type").and_then(|value| value.as_str());
-        if !matches!(item_type, Some("text") | Some("reasoning")) {
+        if item_type != Some("text") {
             continue;
         }
         if let Some(preview) = joined_preview_from_values(&[
@@ -796,18 +803,20 @@ fn parse_mimo_assistant_message(
 
     let mut has_open_tool = false;
     if let Some(parts) = mimo_parts_for_message(conn, message_id) {
+        let mut public_text = None;
         for part in parts {
             let part_type = part.get("type").and_then(|value| value.as_str());
-            if parsed.assistant_preview.is_none() && matches!(part_type, Some("text" | "reasoning"))
-            {
-                parsed.assistant_preview =
-                    joined_preview_from_values(&[part.get("text"), part.get("content")]);
+            if public_text.is_none() && part_type == Some("text") {
+                public_text = joined_preview_from_values(&[part.get("text"), part.get("content")]);
             }
             if part_type == Some("tool")
                 && !opencode_v2_tool_state_is_terminal(part.get("state").unwrap_or(&Value::Null))
             {
                 has_open_tool = true;
             }
+        }
+        if public_text.is_some() {
+            parsed.assistant_preview = public_text;
         }
     }
 
@@ -887,6 +896,35 @@ fn opencode_value_timestamp(value: &Value) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn latest_public_preview_replaces_older_turns_and_clears_on_new_user_input() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE session_message(session_id TEXT,type TEXT,data TEXT,time_created INTEGER,time_updated INTEGER,seq INTEGER);").unwrap();
+        for (role, text, seq) in [
+            ("assistant", "Old answer", 1),
+            ("user", "New task", 2),
+            ("assistant", "Latest handoff", 3),
+        ] {
+            let data=serde_json::json!({"content":[{"type":"reasoning","text":"private"},{"type":"text","text":text}]}).to_string();
+            conn.execute(
+                "INSERT INTO session_message VALUES('s',?1,?2,?3,?3,?3)",
+                rusqlite::params![role, data, seq],
+            )
+            .unwrap();
+        }
+        let mut parsed = OpenCodeParsedMessages::default();
+        parse_opencode_session_message_rows(&conn, &mut parsed, "s");
+        assert_eq!(parsed.assistant_preview.as_deref(), Some("Latest handoff"));
+        conn.execute(
+            "INSERT INTO session_message VALUES('s','user','{}',4,4,4)",
+            [],
+        )
+        .unwrap();
+        let mut parsed = OpenCodeParsedMessages::default();
+        parse_opencode_session_message_rows(&conn, &mut parsed, "s");
+        assert_eq!(parsed.assistant_preview, None);
+    }
 
     fn v2_schema() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().expect("db");

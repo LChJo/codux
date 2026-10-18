@@ -12,6 +12,8 @@ test-support = []
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 codux-ai-history = { path = "../codux-ai-history" }
+codux-blackboard = { path = "../codux-blackboard" }
+codux-git = { path = "../codux-git" }
 codux-protocol = { path = "../codux-protocol" }
 codux-runtime-core = { path = "../codux-runtime-core" }
 codux-terminal-core = { path = "../codux-terminal-core" }
@@ -30,4 +32,9 @@ sha2 = "0.10"
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls", "any", "postgres", "mysql", "sqlite", "json"] }
 sysinfo = { version = "0.36.1", default-features = false, features = ["system", "disk", "network"] }
 tokio = { version = "1", features = ["rt", "time"] }
+toml = "0.8"
+toml_edit = "0.22"
 uuid = { version = "1", features = ["v4", "v5"] }
+
+[target.'cfg(windows)'.dependencies]
+base64 = "0.22"

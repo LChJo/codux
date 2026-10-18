@@ -14,6 +14,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub(super) struct RuntimeStdioService {
+    blackboard_support_dir: PathBuf,
+    blackboard: codux_blackboard::Store,
     terminals: RuntimeStdioTerminals,
     ai_history: codux_ai_history::indexer::AIHistoryIndexer,
     _agent_worktree_control: Arc<AgentWorktreeControl>,
@@ -39,6 +41,8 @@ impl RuntimeStdioService {
             .manager()
             .bind_agent_worktree_control(Arc::clone(&control));
         Ok(Self {
+            blackboard_support_dir: data_dir.clone(),
+            blackboard: codux_blackboard::Store::open(&data_dir)?,
             terminals,
             ai_history,
             _agent_worktree_control: control,
@@ -47,6 +51,23 @@ impl RuntimeStdioService {
     }
 
     pub(super) fn dispatch(&self, method: &str, params: &Value) -> Result<Value, String> {
+        if let Some(operation) = method.strip_prefix("blackboard.") {
+            if operation == "refresh" {
+                return serde_json::to_value(codux_runtime_live::blackboard::refresh_snapshot(
+                    &self.blackboard_support_dir,
+                    required_str(params, "projectId")?,
+                    std::path::Path::new(required_str(params, "projectPath")?),
+                )?)
+                .map_err(|e| e.to_string());
+            }
+            return codux_blackboard::dispatch::dispatch(
+                &self.blackboard,
+                required_str(params, "projectId")?,
+                operation,
+                params,
+                codux_blackboard::Actor::user(),
+            );
+        }
         match method {
             "file.list" => Ok(file_list_payload(
                 params.get("path").and_then(Value::as_str),

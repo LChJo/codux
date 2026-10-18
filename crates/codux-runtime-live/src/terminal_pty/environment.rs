@@ -38,6 +38,9 @@ pub(super) const CONFIGURED_ENV_KEYS: &[&str] = &[
     "MIMOCODE_HOME",
     "MIMOCODE_DB",
     "KIMI_SHARE_DIR",
+    "KIMI_CODE_HOME",
+    "KIRO_AGENT_ENGINE",
+    "KIRO_AGENT_CONFIG_DIR",
     "CODEWHALE_PROVIDER",
     "CODEWHALE_HOME",
     "DEEPSEEK_API_KEY",
@@ -213,11 +216,17 @@ pub fn terminal_environment(
             support_dir.join("db_profiles.json").display().to_string(),
         );
     }
-    let root_project_id = context
-        .map(|context| context.root_project_id.clone())
+    let root_project_id = config
+        .root_project_id
+        .clone()
+        .or_else(|| context.map(|context| context.root_project_id.clone()))
         .or_else(|| config.project_id.clone())
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| project_id.clone());
+    values.insert(
+        "CODUX_BLACKBOARD_PROJECT_ID".to_string(),
+        root_project_id.clone(),
+    );
     values.insert("CODUX_DB_PROJECT_ID".to_string(), root_project_id);
     if let Some(path) = config
         .tool_permissions_file
@@ -342,7 +351,58 @@ pub fn terminal_environment(
         }
     }
     ensure_utf8_locale(&mut values);
+    prepare_blackboard_context(&mut values);
     values
+}
+
+fn prepare_blackboard_context(values: &mut HashMap<String, String>) {
+    let Some(root) = values
+        .get("DMUX_APP_SUPPORT_ROOT")
+        .filter(|v| !v.is_empty())
+    else {
+        return;
+    };
+    let Some(project) = values.get("CODUX_BLACKBOARD_PROJECT_ID") else {
+        return;
+    };
+    let Some(terminal) = values.get("CODUX_TERMINAL_ID") else {
+        return;
+    };
+    let key = values
+        .get("DMUX_SESSION_KEY")
+        .filter(|v| !v.is_empty())
+        .unwrap_or(terminal);
+    let title = values
+        .get("DMUX_SESSION_TITLE")
+        .map(String::as_str)
+        .unwrap_or("Terminal");
+    let result = (|| {
+        let store = codux_blackboard::Store::open(root)?;
+        let binding = store.register_terminal(project, key, terminal, title)?;
+        if let Some(path) = values.get("CODUX_PROJECT_PATH") {
+            crate::blackboard::register(terminal, project, Path::new(root), Path::new(path))?;
+        }
+        let memory = values.get("DMUX_AI_MEMORY_PROMPT_FILE").map(Path::new);
+        let path = store.write_context(project, terminal, memory)?;
+        Ok::<_, String>((path, binding.label()))
+    })();
+    match result {
+        Ok((path, label)) => {
+            values.insert(
+                "CODUX_BLACKBOARD_CONTEXT_FILE".into(),
+                path.display().to_string(),
+            );
+            values.insert(
+                "DMUX_AI_MEMORY_PROMPT_FILE".into(),
+                path.display().to_string(),
+            );
+            values.insert("CODUX_TERMINAL_LABEL".into(), label);
+        }
+        Err(error) => crate::ai_runtime::log::runtime_log_line(
+            "blackboard",
+            &format!("terminal context unavailable: {error}"),
+        ),
+    }
 }
 
 pub(super) fn ensure_utf8_locale(values: &mut HashMap<String, String>) {

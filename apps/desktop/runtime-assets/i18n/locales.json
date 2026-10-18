@@ -13,6 +13,7 @@
     "zh-Hant"
   ],
   "shards": [
+    "locales/blackboard.json",
     "locales/triggers.json",
     "locales/about.json",
     "locales/agent.json",

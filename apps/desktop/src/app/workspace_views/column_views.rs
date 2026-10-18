@@ -92,11 +92,18 @@ impl Render for WorkspaceBodyView {
                     .empty_project_workspace(window, app_cx)
                     .into_any_element();
             }
-            if app.workspace_view == WorkspaceView::Triggers {
+            if matches!(
+                app.workspace_view,
+                WorkspaceView::Triggers | WorkspaceView::Blackboard
+            ) {
                 if let Some(view) = &self.terminal_workspace_view {
                     view.update(app_cx, |view, cx| view.set_render_visible(false, cx));
                 }
-                return app.trigger_workspace_body(window, app_cx);
+                return if app.workspace_view == WorkspaceView::Blackboard {
+                    app.blackboard_workspace_body(window, app_cx)
+                } else {
+                    app.trigger_workspace_body(window, app_cx)
+                };
             }
             if app.workspace_view == WorkspaceView::Terminal {
                 let snapshot = app.terminal_workspace_snapshot();
@@ -335,6 +342,7 @@ fn workspace_view_key(view: WorkspaceView) -> &'static str {
         WorkspaceView::Terminal => "terminal",
         WorkspaceView::Files => "files",
         WorkspaceView::Review => "review",
+        WorkspaceView::Blackboard => "blackboard",
         WorkspaceView::Stats => "stats",
         WorkspaceView::Triggers => "triggers",
     }

@@ -5,6 +5,18 @@ use std::os::unix::fs::PermissionsExt;
 
 const RUNTIME_ASSETS: &[(&str, &[u8])] = &[
     (
+        "scripts/wrappers/bin/codux-blackboard",
+        include_bytes!(
+            "../../../../apps/desktop/runtime-assets/scripts/wrappers/bin/codux-blackboard"
+        ),
+    ),
+    (
+        "scripts/wrappers/bin/codux-blackboard.ps1",
+        include_bytes!(
+            "../../../../apps/desktop/runtime-assets/scripts/wrappers/bin/codux-blackboard.ps1"
+        ),
+    ),
+    (
         "scripts/shell-hooks/dmux-ai-hook.zsh",
         include_bytes!(
             "../../../../apps/desktop/runtime-assets/scripts/shell-hooks/dmux-ai-hook.zsh"
@@ -234,6 +246,25 @@ pub fn runtime_asset_content(relative_path: &str) -> Option<&'static [u8]> {
         .find_map(|(path, content)| (*path == relative_path).then_some(*content))
 }
 
+fn staged_script_content<'a>(relative_path: &str, content: &'a [u8]) -> std::borrow::Cow<'a, [u8]> {
+    let unix_script = relative_path.ends_with(".sh")
+        || relative_path.ends_with(".zsh")
+        || relative_path.contains("/shell-hooks/zsh/")
+        || (content.starts_with(b"#!") && !relative_path.ends_with(".ps1"));
+    if !unix_script || !content.windows(2).any(|bytes| bytes == b"\r\n") {
+        return std::borrow::Cow::Borrowed(content);
+    }
+    std::borrow::Cow::Owned(
+        content
+            .iter()
+            .enumerate()
+            .filter_map(|(index, byte)| {
+                (*byte != b'\r' || content.get(index + 1) != Some(&b'\n')).then_some(*byte)
+            })
+            .collect(),
+    )
+}
+
 pub fn stage_runtime_asset(
     relative_path: &str,
     destination: &Path,
@@ -244,17 +275,18 @@ pub fn stage_runtime_asset(
 
     let content = runtime_asset_content(relative_path)
         .ok_or_else(|| format!("runtime asset {relative_path} was not embedded"))?;
+    let content = staged_script_content(relative_path, content);
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
 
     let should_write = match fs::read(destination) {
-        Ok(existing) => existing != content,
+        Ok(existing) => existing.as_slice() != content.as_ref(),
         Err(_) => true,
     };
 
     if should_write {
-        fs::write(destination, content).map_err(|error| error.to_string())?;
+        fs::write(destination, content.as_ref()).map_err(|error| error.to_string())?;
     }
 
     #[cfg(unix)]
@@ -288,6 +320,47 @@ pub fn stage_runtime_dir(relative_path: &str, destination: &Path) -> Result<(), 
 mod tests {
     use super::*;
     use uuid::Uuid;
+
+    #[test]
+    fn normalizes_only_unix_script_line_endings() {
+        assert_eq!(
+            staged_script_content("scripts/tool.sh", b"#!/bin/sh\r\nprintf '\r'\r\n").as_ref(),
+            b"#!/bin/sh\nprintf '\r'\n"
+        );
+        assert_eq!(
+            staged_script_content("scripts/bin/tool", b"#!/bin/sh\r\necho ok\r\n").as_ref(),
+            b"#!/bin/sh\necho ok\n"
+        );
+        assert_eq!(
+            staged_script_content("scripts/tool.ps1", b"line\r\n").as_ref(),
+            b"line\r\n"
+        );
+        assert_eq!(
+            staged_script_content("data.bin", b"\0\r\n").as_ref(),
+            b"\0\r\n"
+        );
+    }
+
+    #[test]
+    fn unix_scripts_are_staged_with_lf_on_every_build_platform() {
+        let dir = std::env::temp_dir().join(format!("codux-script-lines-{}", Uuid::new_v4()));
+        for (path, content) in RUNTIME_ASSETS {
+            if path.ends_with(".sh")
+                || path.ends_with(".zsh")
+                || path.contains("/shell-hooks/zsh/")
+                || (content.starts_with(b"#!") && !path.ends_with(".ps1"))
+            {
+                let destination = dir.join(path);
+                stage_runtime_asset(path, &destination, true).unwrap();
+                let staged = fs::read(&destination).unwrap();
+                assert!(
+                    !staged.windows(2).any(|w| w == b"\r\n"),
+                    "{path} must execute on Unix even when embedded from a Windows checkout"
+                );
+            }
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn stages_runtime_asset_and_nested_directory() {

@@ -396,6 +396,10 @@ impl CoduxApp {
                             osc_title.map(String::as_str),
                             &labels.language,
                         );
+                        let title = terminal_id
+                            .as_deref()
+                            .map(|id| self.terminal_numbered_label(id, &title))
+                            .unwrap_or(title);
                         let lifecycle = terminal_id
                             .as_deref()
                             .and_then(|id| self.pane_agent_lifecycle.get(id))
@@ -428,6 +432,11 @@ impl CoduxApp {
                 osc_title.map(String::as_str),
                 &labels.language,
             );
+            let title = slot
+                .terminal_id
+                .as_deref()
+                .map(|id| self.terminal_numbered_label(id, &title))
+                .unwrap_or(title);
             terminals.push(TaskTerminalRow {
                 terminal_id: slot.terminal_id.clone(),
                 pane_index: 0,

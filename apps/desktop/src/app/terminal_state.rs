@@ -196,6 +196,71 @@ pub(in crate::app) fn normalize_terminal_restore_state(
     (layout, runtime)
 }
 
+pub(in crate::app) fn prepare_boot_terminal_state(
+    service: &RuntimeService,
+    legacy_project: Option<(&std::path::Path, &str)>,
+    storage_key: Option<&str>,
+    owner_id: Option<&str>,
+    layout: TerminalLayoutSummary,
+    language: &str,
+) -> (TerminalLayoutSummary, TerminalRuntimeSummary) {
+    let mut layout = structural_terminal_layout(layout);
+    // The first prototype did not save the default pane on synchronous boot.
+    // Recover its last unowned binding only when no layout survived, before
+    // allocating a new identity. Worktree and trigger identities stay separate.
+    if layout.top_panes.is_empty()
+        && let (Some((support, project)), Some(owner)) = (legacy_project, owner_id)
+    {
+        let recovered = (|| {
+            let store = codux_runtime::blackboard::Store::open(support)?;
+            let candidate = store
+                .active_terminal_owners(project)?
+                .into_iter()
+                .find(|binding| {
+                    binding.pid.is_none()
+                        && binding.key == format!("gpui:{owner}:{}", binding.terminal_id)
+                        && binding
+                            .terminal_id
+                            .starts_with(&format!("gpui-term-{owner}-"))
+                });
+            candidate
+                .map(|binding| store.terminal(project, &binding.terminal_id))
+                .transpose()
+        })();
+        match recovered {
+            Ok(Some(binding)) => layout.top_panes.push(TerminalPaneSummary {
+                terminal_id: binding.terminal_id,
+                title: binding.title,
+            }),
+            Ok(None) => {}
+            Err(error) => service.runtime_trace_frontend(
+                "terminal-layout",
+                &format!("legacy boot identity lookup failed: {error}"),
+            ),
+        }
+    }
+    let (layout, runtime) = normalize_terminal_restore_state(
+        owner_id,
+        layout,
+        TerminalRuntimeSummary::default(),
+        language,
+    );
+    // Local boot attaches synchronously, so it does not pass through the async
+    // restore callback that normally saves pane identities. Commit them before
+    // spawning a shell so even an interrupted first launch restores the same IDs.
+    if let Some(key) = storage_key
+        && !layout.top_panes.is_empty()
+    {
+        if let Err(error) = service.save_terminal_layout_with_grid(key, layout.clone()) {
+            service.runtime_trace_frontend(
+                "terminal-layout",
+                &format!("boot layout persist failed owner={key}: {error}"),
+            );
+        }
+    }
+    (layout, runtime)
+}
+
 pub(in crate::app) fn top_terminal_id(owner_id: &str, index: usize) -> String {
     let _ = index;
     unique_terminal_id(owner_id)

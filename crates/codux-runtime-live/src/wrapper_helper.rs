@@ -12,6 +12,8 @@ use std::{
 };
 
 const DB_QUERY_TIMEOUT_SECONDS: u64 = 15;
+mod managed_instructions;
+mod native_launch;
 const DB_QUERY_MAX_ROWS: usize = 100;
 const AGENT_WORKTREE_ERROR_OSC: &[u8] = b"\x1b]9;4;2\x07";
 const DB_QUERY_MAX_CELL_CHARS: usize = 240;
@@ -61,6 +63,12 @@ pub fn handle_args(args: &[String]) -> Result<bool, String> {
         "json-nested-string-key" => print_json_nested_string_key(),
         "codex-effort" => print_codex_effort(),
         "toml-string" => print_toml_string(),
+        "managed-instructions" => managed_instructions::run_cli(&args[2..]),
+        "codex-startup-context" => managed_instructions::print_startup_context(&args[2..]),
+        "agy-startup-context" => managed_instructions::print_agy_startup_context(),
+        "native-kimi-prompt-context" => managed_instructions::print_native_kimi_context(),
+        "kiro-prompt-context" => managed_instructions::print_kiro_context(&args[2..]),
+        "native-launch" => native_launch::run_cli(&args[2..]),
         "opencode-session-state" => print_opencode_session_state(),
         "hook-notification-type" => print_hook_notification_type(),
         "hook-session-id" => print_hook_session_id(),
@@ -75,6 +83,7 @@ pub fn handle_args(args: &[String]) -> Result<bool, String> {
         "db-list-profiles" => print_db_profiles(),
         "db-query" => print_db_query(),
         "agent-worktree" => run_agent_worktree_command(&args[2..]),
+        "blackboard" => codux_blackboard::dispatch::run_cli(&args[2..]),
         "agent-worktree-launch" => launch_agent_worktree_prompt(),
         _ => return Err(format!("unknown wrapper helper subcommand: {subcommand}")),
     }?;
@@ -100,6 +109,10 @@ fn tool_memory_injection_strategy(tool: &str) -> Option<&'static str> {
             Some("codexDeveloperInstructions")
         }
         AIRuntimeMemoryInjectionDriver::AppendSystemPrompt => Some("appendSystemPrompt"),
+        AIRuntimeMemoryInjectionDriver::CodeWhaleInstructions => Some("codeWhaleInstructions"),
+        AIRuntimeMemoryInjectionDriver::KimiAgent => Some("kimiAgent"),
+        AIRuntimeMemoryInjectionDriver::AgyHook => Some("agyHook"),
+        AIRuntimeMemoryInjectionDriver::KiroHook => Some("kiroHook"),
         AIRuntimeMemoryInjectionDriver::OpenCodeSystemTransform => Some("opencodeSystemTransform"),
     }
 }
@@ -1786,8 +1799,13 @@ mod tests {
             tool_memory_injection_strategy("mimo"),
             Some("opencodeSystemTransform")
         );
-        assert_eq!(tool_memory_injection_strategy("codewhale"), None);
-        assert_eq!(tool_memory_injection_strategy("kimi-code"), None);
+        assert_eq!(
+            tool_memory_injection_strategy("codewhale"),
+            Some("codeWhaleInstructions")
+        );
+        assert_eq!(tool_memory_injection_strategy("kimi-code"), Some("kimiAgent"));
+        assert_eq!(tool_memory_injection_strategy("agy"), Some("agyHook"));
+        assert_eq!(tool_memory_injection_strategy("kiro-cli"), Some("kiroHook"));
         assert_eq!(tool_memory_injection_strategy("unknown"), None);
     }
 

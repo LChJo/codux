@@ -2,7 +2,7 @@
   "strings": {
     "de": {
       "favorite.section.title": "Häufige Befehle",
-      "favorite.section.empty": "Mit Shift+Ziehen Text auswählen, per Rechtsklick speichern und in eine Unterhaltung ziehen.",
+      "favorite.section.empty": "Keine gespeicherten Befehle",
       "favorite.action.new": "Neuer Befehl",
       "favorite.action.edit": "Befehl bearbeiten",
       "favorite.action.add": "Zu häufigen Befehlen hinzufügen",
@@ -27,7 +27,7 @@
     },
     "en": {
       "favorite.section.title": "Favorite Commands",
-      "favorite.section.empty": "Shift-drag to select text, then right-click to save. Drag a command into a conversation to use it.",
+      "favorite.section.empty": "No saved commands",
       "favorite.action.new": "New Command",
       "favorite.action.edit": "Edit Command",
       "favorite.action.add": "Add to Favorite Commands",
@@ -52,7 +52,7 @@
     },
     "es": {
       "favorite.section.title": "Comandos frecuentes",
-      "favorite.section.empty": "Selecciona texto arrastrando con Mayús y guárdalo con el botón derecho. Arrastra el comando a una conversación.",
+      "favorite.section.empty": "No hay comandos guardados",
       "favorite.action.new": "Nuevo comando",
       "favorite.action.edit": "Editar comando",
       "favorite.action.add": "Añadir a comandos frecuentes",
@@ -77,7 +77,7 @@
     },
     "fr": {
       "favorite.section.title": "Commandes favorites",
-      "favorite.section.empty": "Sélectionnez du texte avec Maj+glisser, puis enregistrez-le par clic droit. Glissez la commande dans une conversation.",
+      "favorite.section.empty": "Aucune commande enregistrée",
       "favorite.action.new": "Nouvelle commande",
       "favorite.action.edit": "Modifier la commande",
       "favorite.action.add": "Ajouter aux commandes favorites",
@@ -102,7 +102,7 @@
     },
     "ja": {
       "favorite.section.title": "よく使うコマンド",
-      "favorite.section.empty": "Shiftを押しながらドラッグしてテキストを選択し、右クリックで保存します。会話にドラッグして使用できます。",
+      "favorite.section.empty": "保存したコマンドはありません",
       "favorite.action.new": "コマンドを追加",
       "favorite.action.edit": "コマンドを編集",
       "favorite.action.add": "よく使うコマンドに追加",
@@ -127,7 +127,7 @@
     },
     "ko": {
       "favorite.section.title": "자주 쓰는 명령",
-      "favorite.section.empty": "Shift를 누르고 드래그하여 텍스트를 선택한 후 우클릭으로 저장하세요. 명령을 대화로 끌어 사용합니다.",
+      "favorite.section.empty": "저장된 명령 없음",
       "favorite.action.new": "명령 추가",
       "favorite.action.edit": "명령 편집",
       "favorite.action.add": "자주 쓰는 명령에 추가",
@@ -152,7 +152,7 @@
     },
     "pt-BR": {
       "favorite.section.title": "Comandos frequentes",
-      "favorite.section.empty": "Selecione texto com Shift e arraste. Salve com o botão direito e arraste o comando para uma conversa.",
+      "favorite.section.empty": "Nenhum comando salvo",
       "favorite.action.new": "Novo comando",
       "favorite.action.edit": "Editar comando",
       "favorite.action.add": "Adicionar aos comandos frequentes",
@@ -177,7 +177,7 @@
     },
     "ru": {
       "favorite.section.title": "Избранные команды",
-      "favorite.section.empty": "Выделите текст с Shift и сохраните через контекстное меню. Перетащите команду в диалог.",
+      "favorite.section.empty": "Нет сохранённых команд",
       "favorite.action.new": "Новая команда",
       "favorite.action.edit": "Изменить команду",
       "favorite.action.add": "Добавить в избранные команды",
@@ -202,7 +202,7 @@
     },
     "zh-Hans": {
       "favorite.section.title": "常用命令",
-      "favorite.section.empty": "按住 Shift 拖选文字，右键加入常用命令；拖入对话或双击即可使用。",
+      "favorite.section.empty": "暂无收藏命令",
       "favorite.action.new": "新建命令",
       "favorite.action.edit": "编辑命令",
       "favorite.action.add": "加入常用命令",
@@ -227,7 +227,7 @@
     },
     "zh-Hant": {
       "favorite.section.title": "常用命令",
-      "favorite.section.empty": "按住 Shift 拖曳選取文字，按右鍵加入常用命令；拖入對話或按兩下即可使用。",
+      "favorite.section.empty": "暫無收藏命令",
       "favorite.action.new": "新增命令",
       "favorite.action.edit": "編輯命令",
       "favorite.action.add": "加入常用命令",

@@ -1,5 +1,42 @@
 use super::*;
 
+#[test]
+fn terminal_process_and_runtime_binding_share_one_generated_instance_identity() {
+    let manager = TerminalManager::new();
+    let config = TerminalPtyConfig {
+        terminal_id: Some(format!("identity-{}", Uuid::new_v4())),
+        cwd: Some(std::env::temp_dir().to_string_lossy().into_owned()),
+        shell: Some(if cfg!(windows) { "powershell.exe" } else { "/bin/sh" }.into()),
+        command: Some(if cfg!(windows) {
+            "Write-Output ('INSTANCE=' + $env:DMUX_SESSION_INSTANCE_ID); Start-Sleep -Seconds 30"
+        } else {
+            "printf 'INSTANCE=%s\\n' \"$DMUX_SESSION_INSTANCE_ID\"; sleep 30"
+        }.into()),
+        ..Default::default()
+    };
+    let (session, output) = manager
+        .attach_or_create_with_context(config, None, Arc::new(|_| true))
+        .unwrap();
+    let expected = format!(
+        "INSTANCE={}",
+        session.ai_runtime_binding().terminal_instance_id.unwrap()
+    );
+    let deadline = Instant::now() + Duration::from_secs(8);
+    let mut text = String::new();
+    while Instant::now() < deadline && !text.contains(&expected) {
+        if let Ok(bytes) = output.recv_timeout(Duration::from_millis(100)) {
+            text.push_str(&String::from_utf8_lossy(&bytes));
+        }
+    }
+    manager
+        .kill_and_wait(session.id(), Duration::from_secs(3))
+        .unwrap();
+    assert!(
+        text.contains(&expected),
+        "runtime binding and actual process must use the same instance: expected={expected}; output={text:?}"
+    );
+}
+
 #[cfg(unix)]
 fn scoped_terminal_config(
     terminal_id: &str,

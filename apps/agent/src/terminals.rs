@@ -332,6 +332,16 @@ pub(crate) fn create_terminal(
     mut config: TerminalPtyConfig,
     project_id: Option<&str>,
 ) -> Result<codux_terminal_core::TerminalSessionSnapshot, String> {
+    let (owner_id, owner_path) = crate::projects::AgentProjectStore::new().resolve_target(
+        config.root_project_id.as_deref().unwrap_or_default(),
+        config.root_project_path.as_deref().unwrap_or_default(),
+    );
+    if !owner_id.is_empty() {
+        config.root_project_id = Some(owner_id);
+    }
+    if !owner_path.is_empty() {
+        config.root_project_path = Some(owner_path);
+    }
     let data_dir = crate::projects::agent_data_dir();
     let runtime_root = codux_runtime_live::runtime_paths::runtime_root_dir();
     config.support_dir = Some(data_dir.clone());

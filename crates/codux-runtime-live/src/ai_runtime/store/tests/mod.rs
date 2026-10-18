@@ -5,6 +5,7 @@ mod completion_notify;
 mod fixtures;
 mod hook_lifecycle;
 mod isolation;
+mod kimi;
 mod needs_input;
 mod reconcile_liveness;
 mod screen_signal_kiro;

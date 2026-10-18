@@ -1,4 +1,59 @@
 use super::*;
+use serde_json::json;
+
+#[test]
+fn blackboard_store_match_dispatch_queue_and_exited_target_work_together() {
+    use crate::blackboard::{
+        Actor, Component, Store,
+        conditions::{Matcher, Rule},
+    };
+    let root = std::env::temp_dir().join(format!("codux-board-trigger-{}", uuid::Uuid::new_v4()));
+    let store = Store::open(&root).unwrap();
+    let rule = Rule::notes_created();
+    let mut engine = TriggerEngine::default();
+    let d = definition("a", TriggerKind::Blackboard { rule: rule.clone() });
+    engine.upsert(d.clone(), 100).unwrap();
+    engine.set_terminal_state(&d.terminal_id, TerminalState::Idle);
+    let mut matcher = Matcher::default();
+    for i in 0..3 {
+        store
+            .write(
+                "a",
+                Component::Notes,
+                None,
+                "Handoff",
+                &format!("next task {i}"),
+                json!({}),
+                Actor::user(),
+            )
+            .unwrap();
+        let snapshot = store.snapshot("a").unwrap();
+        let hit = matcher
+            .push(&d.id, &rule, &snapshot.events[0], &snapshot)
+            .unwrap();
+        engine.fire_blackboard(&d.id, &hit, 101 + i);
+    }
+    let sent = engine.take_dispatches();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].cause, TriggerCause::Blackboard);
+    assert!(sent[0].message.contains("next task 0"));
+    assert!(engine.has_pending(&d.id));
+    assert_eq!(engine.definition(&d.id).unwrap().message, d.message);
+    engine.complete("a", &d.terminal_id, "done", false, 110);
+    let pending = engine.take_dispatches();
+    assert_eq!(pending.len(), 1);
+    assert!(pending[0].message.contains("next task 1"));
+    assert!(!engine.has_pending(&d.id));
+    engine.mark_exited(&d.id);
+    let snapshot = store.snapshot("a").unwrap();
+    let mut fresh = Matcher::default();
+    let hit = fresh
+        .push(&d.id, &rule, &snapshot.events[0], &snapshot)
+        .unwrap();
+    engine.fire_blackboard(&d.id, &hit, 111);
+    assert!(engine.take_dispatches().is_empty());
+    std::fs::remove_dir_all(root).unwrap();
+}
 
 #[test]
 fn triggers_live_shell_without_agent_is_not_started_and_never_receives_messages() {
