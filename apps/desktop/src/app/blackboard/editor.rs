@@ -399,6 +399,7 @@ impl CoduxApp {
                         if !app.blackboard.images.contains_key(&key) {
                             app.blackboard.image_errors.insert(key.clone());
                         }
+                        app.invalidate_blackboard_panel(&key.0, Component::Images, cx);
                         app.invalidate_ui(cx, [UiRegion::WorkspaceBody]);
                     }
                     Err(error) => {

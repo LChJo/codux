@@ -1,7 +1,7 @@
 #[cfg(windows)]
 #[test]
 #[ignore = "requires CODUX_TEST_CODEX_BINARY and Python; runs actual PTY/CLI against local Responses"]
-fn hosted_codex_completion_saves_full_blackboard_handoff() {
+fn hosted_codex_submits_full_blackboard_milestone() {
     let output = std::process::Command::new(
         std::env::var_os("CODUX_TEST_PYTHON").unwrap_or_else(|| "python.exe".into()),
     )
@@ -24,7 +24,7 @@ fn hosted_codex_completion_saves_full_blackboard_handoff() {
 
 #[test]
 #[ignore = "requires CODUX_TEST_NATIVE_KIMI_BINARY and Python; runs actual hosted Kimi against local OpenAI"]
-fn hosted_native_kimi_completion_saves_full_blackboard_handoff() {
+fn hosted_native_kimi_submits_full_blackboard_milestone() {
     for home in ["default", "custom", "terminal", "concurrent"] {
         let output = std::process::Command::new(
             std::env::var_os("CODUX_TEST_PYTHON").unwrap_or_else(|| "python.exe".into()),

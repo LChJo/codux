@@ -73,13 +73,18 @@ capabilities = []
 [watch]
 enabled = false
 ''', encoding='utf-8')
+(root / 'milestone.txt').write_text(handoff, encoding='utf-8', newline='\n')
+(root / 'milestone-second.txt').write_text(handoff + '\nSECOND-TERMINAL', encoding='utf-8', newline='\n')
 profile = root / 'kept agent.md'
 profile.write_text('---\nname: owned-user\ndescription: Keep the original agent\ntools: []\n---\nOriginal user agent sentinel.\n', encoding='utf-8')
 entry = root / ('entry.ps1' if os.name == 'nt' else 'entry.py')
 if os.name == 'nt':
     entry.write_text('''[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 kimi --agent-file $env:CODUX_QA_AGENT --prompt $env:CODUX_QA_TASK --output-format stream-json
-$result=@{exit=$LASTEXITCODE;label=$env:CODUX_TERMINAL_LABEL;instance=$env:DMUX_SESSION_INSTANCE_ID;context=$env:CODUX_BLACKBOARD_CONTEXT_FILE;source=(Get-Command kimi).Source}
+$toolExit=$LASTEXITCODE
+codux-blackboard summary add --title 'Verified milestone' --body ([IO.File]::ReadAllText($env:CODUX_QA_MILESTONE))
+if ($LASTEXITCODE -ne 0) { throw 'Milestone submission failed' }
+$result=@{exit=$toolExit;label=$env:CODUX_TERMINAL_LABEL;instance=$env:DMUX_SESSION_INSTANCE_ID;context=$env:CODUX_BLACKBOARD_CONTEXT_FILE;source=(Get-Command kimi).Source}
 [IO.File]::WriteAllText($env:CODUX_QA_RESULT,($result|ConvertTo-Json),[Text.UTF8Encoding]::new($false))
 ''', encoding='utf-8-sig')
     command = "& '" + str(entry).replace("'", "''") + "'"
@@ -91,6 +96,7 @@ assert source,'Managed Kimi wrapper is missing'
 wrapper=Path(source).parent.parent/'tool-wrapper.sh'
 args=['--agent-file',os.environ['CODUX_QA_AGENT'],'--prompt',os.environ['CODUX_QA_TASK'],'--output-format','stream-json']
 result=subprocess.run([os.environ['CODUX_TEST_ZSH'],'-f','-c','if [[ -n ${CODUX_TEST_ZSH_MODULE_DIR:-} ]]; then module_path=($CODUX_TEST_ZSH_MODULE_DIR $module_path); fi; source "$1" "${@:2}"','owned-kimi',str(wrapper),'kimi',*args],timeout=45)
+subprocess.run([shutil.which('codux-blackboard'),'summary','add','--title','Verified milestone','--body',Path(os.environ['CODUX_QA_MILESTONE']).read_text(encoding='utf-8')],check=True)
 report=dict(exit=result.returncode,label=os.environ['CODUX_TERMINAL_LABEL'],instance=os.environ['DMUX_SESSION_INSTANCE_ID'],context=os.environ['CODUX_BLACKBOARD_CONTEXT_FILE'],source=source)
 Path(os.environ['CODUX_QA_RESULT']).write_text(json.dumps(report),encoding='utf-8')
 ''', encoding='utf-8')
@@ -156,7 +162,7 @@ try:
     assert hello['kind'] == 'hello' and hello['platform'] == ('windows' if os.name == 'nt' else 'linux'), hello
     rpc('blackboard.write', projectId=project_id, component='rules', title='Carried rule', body=rules, metadata=dict(enabled=True))
     report = root / 'terminal-result.json'
-    terminal_env = dict(CODUX_QA_RESULT=str(report), CODUX_QA_AGENT=str(profile), CODUX_QA_TASK='Complete the isolated Kimi handoff task.')
+    terminal_env = dict(CODUX_QA_MILESTONE=str(root / 'milestone.txt'), CODUX_QA_RESULT=str(report), CODUX_QA_AGENT=str(profile), CODUX_QA_TASK='Complete the isolated Kimi handoff task.')
     if mode == 'terminal':
         terminal_env['KIMI_CODE_HOME'] = str(kimi_home)
     if os.name != 'nt':
@@ -165,7 +171,7 @@ try:
     if mode == 'concurrent':
         second_report = root / 'second-result.json'
         second_terminal = terminal + '-second'
-        second_env = dict(terminal_env, CODUX_QA_RESULT=str(second_report), CODUX_QA_TASK='Complete the secondary handoff task.')
+        second_env = dict(terminal_env, CODUX_QA_MILESTONE=str(root / 'milestone-second.txt'), CODUX_QA_RESULT=str(second_report), CODUX_QA_TASK='Complete the secondary handoff task.')
         second_created = rpc('terminal.create', cwd=str(project), shell='powershell.exe' if os.name == 'nt' else '/bin/bash', cols=100, rows=30, rootProjectId=project_id, rootProjectPath=str(project), projectId=project_id, projectName='Kimi handoff QA', terminalId=second_terminal, sessionKey='owned-kimi-pane-second', title='Second Kimi task', runtimeTarget=dict(kind='local'), command=command, env=second_env)
     deadline = time.monotonic() + 30
     snapshot = None
@@ -191,15 +197,13 @@ try:
     summary = next(row for row in summaries if row['terminalId'] == terminal)
     assert summary['body'] == handoff, (len(summary['body']), len(handoff), summary['body'][-150:])
     metadata = summary['metadata']
-    assert metadata['tool'] == 'kimi' and metadata['terminalInstanceId'] == result['instance'], metadata
-    assert metadata['sessionId'] and Path(metadata['transcriptPath']).is_relative_to(kimi_home), metadata
+    assert metadata['terminalInstanceId'] == result['instance'], metadata
     if mode == 'concurrent':
         second_result = json.loads(second_report.read_text(encoding='utf-8'))
         second_summary = next(row for row in summaries if row['terminalId'] == second_terminal)
         assert second_result['exit'] == 0 and second_result['label'].startswith('T02'), second_result
         assert second_summary['body'] == handoff + '\nSECOND-TERMINAL'
         assert second_summary['metadata']['terminalInstanceId'] == second_result['instance']
-        assert second_summary['metadata']['sessionId'] != metadata['sessionId']
     time.sleep(1)
     stable = rpc('blackboard.snapshot', projectId=project_id)
     assert [row for row in stable['entries'] if row['component'] == 'summary'] == summaries

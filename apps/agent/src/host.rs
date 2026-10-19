@@ -928,11 +928,19 @@ fn blackboard_payload(payload: &Value) -> Result<Value, String> {
         return Err("blackboard.project.required".into());
     }
     let support = crate::paths::data_dir();
-    if payload.get("op").and_then(Value::as_str) == Some("refresh") {
-        return serde_json::to_value(codux_runtime_live::blackboard::refresh_snapshot(
+    let operation = payload
+        .get("op")
+        .and_then(Value::as_str)
+        .unwrap_or("snapshot");
+    if matches!(operation, "refresh" | "poll") {
+        return serde_json::to_value(codux_runtime_live::blackboard::poll_snapshot(
             &support,
             &project,
             std::path::Path::new(&path),
+            payload
+                .get("knownRevision")
+                .and_then(Value::as_u64)
+                .filter(|_| operation == "poll"),
         )?)
         .map_err(|e| e.to_string());
     }

@@ -5,11 +5,17 @@ impl RuntimeService {
         operation: &str,
         mut payload: Value,
     ) -> Result<Value, String> {
-        if operation == "refresh" && matches!(project.runtime_target, ProjectRuntimeTarget::Local) {
-            return serde_json::to_value(codux_runtime_live::blackboard::refresh_snapshot(
+        if matches!(operation, "refresh" | "poll")
+            && matches!(project.runtime_target, ProjectRuntimeTarget::Local)
+        {
+            return serde_json::to_value(codux_runtime_live::blackboard::poll_snapshot(
                 &self.support_dir,
                 &project.id,
                 Path::new(&project.path),
+                payload
+                    .get("knownRevision")
+                    .and_then(Value::as_u64)
+                    .filter(|_| operation == "poll"),
             )?)
             .map_err(|e| e.to_string());
         }

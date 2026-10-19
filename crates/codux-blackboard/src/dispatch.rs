@@ -30,6 +30,10 @@ pub fn dispatch(
     )?;
     let value = match operation {
         "snapshot" => serde_json::to_value(store.snapshot(project)?),
+        "poll" => serde_json::to_value(store.snapshot_if_changed(
+            project,
+            payload.get("knownRevision").and_then(Value::as_u64),
+        )?),
         "list" => serde_json::to_value(store.list(project, component)?),
         "read" => serde_json::to_value(store.read(project, component, required(payload, "id")?)?),
         "write" => {
@@ -243,7 +247,7 @@ fn required<'a>(value: &'a Value, key: &str) -> Result<&'a str, String> {
         .ok_or_else(|| format!("blackboard.{key}.required"))
 }
 
-pub const CLI_HELP: &str = "codux-blackboard\n  list [notes|summary|recent|git|images|web|knowledge|rules]\n  read <component> <id>\n  add [--title <text>] --body <text>\n  edit <id> [--title <text>] [--body <text>]\n  remove <id>\n  image save <path> [--title <text>]\n  image read <id> [--output <path>]\n  web open <http(s)://url>\n  web read [id] [--refresh]\n  context\nResponses are JSON; context prints its file path. Uses the current Codux terminal project. Rules and knowledge are read-only.\n";
+pub const CLI_HELP: &str = "codux-blackboard\n  list [notes|summary|recent|git|images|web|knowledge|rules]\n  read <component> <id>\n  summary add [--title <text>] --body <text>\n  summary edit <id> [--title <text>] [--body <text>]\n  summary remove <id>\n  add [--title <text>] --body <text>\n  edit <id> [--title <text>] [--body <text>]\n  remove <id>\n  image save <path> [--title <text>]\n  image read <id> [--output <path>]\n  web open <http(s)://url>\n  web read [id] [--refresh]\n  context\nResponses are JSON; context prints its file path. Uses the current Codux terminal project. Summary commands record milestones; add/edit/remove change shared notes only when explicitly requested. Rules and knowledge are read-only.\n";
 
 #[derive(Default)]
 struct CliArguments<'a> {
@@ -290,6 +294,13 @@ fn parse_cli_arguments(args: &[String]) -> Result<CliArguments<'_>, String> {
 }
 
 pub fn run_cli(args: &[String]) -> Result<(), String> {
+    run_cli_with_summary_refresh(args, |_, _| Ok(()))
+}
+
+pub fn run_cli_with_summary_refresh(
+    args: &[String],
+    refresh: impl FnOnce(&std::path::Path, &str) -> Result<(), String>,
+) -> Result<(), String> {
     let arguments = parse_cli_arguments(args)?;
     if args.is_empty() || arguments.help || arguments.positional.first() == Some(&"help") {
         println!("{CLI_HELP}");
@@ -306,7 +317,7 @@ pub fn run_cli(args: &[String]) -> Result<(), String> {
         .or_else(|_| std::env::var("CODUX_PROJECT_ID"))
         .map_err(|_| "blackboard.project.required")?;
     let terminal = env("CODUX_TERMINAL_ID")?;
-    let store = Store::open(root)?;
+    let store = Store::open(&root)?;
     let binding = store.terminal(&project, &terminal)?;
     if !binding.active {
         return Err("blackboard.terminal.inactive".into());
@@ -320,7 +331,14 @@ pub fn run_cli(args: &[String]) -> Result<(), String> {
     };
     let flag =
         |key: &str| -> Result<Option<&str>, String> { Ok(arguments.values.get(key).copied()) };
-    let (operation, payload) = match arg(0)? {
+    let summary = arg(0)? == "summary";
+    let command = if summary { arg(1)? } else { arg(0)? };
+    if summary && !matches!(command, "add" | "edit" | "remove") {
+        return Err(CLI_HELP.into());
+    }
+    let component = if summary { "summary" } else { "notes" };
+    let id_index = if summary { 2 } else { 1 };
+    let (operation, payload) = match command {
         "list" => (
             "list",
             json!({"component":arguments.positional.get(1).copied().unwrap_or("notes")}),
@@ -330,11 +348,12 @@ pub fn run_cli(args: &[String]) -> Result<(), String> {
             let body = flag("--body")?.ok_or("blackboard.content.required")?;
             (
                 "write",
-                json!({"component":"notes","title":flag("--title")?.unwrap_or(""),"body":body}),
+                json!({"component":component,"title":flag("--title")?.unwrap_or(""),"body":body,
+                    "metadata": if summary { json!({"terminalInstanceId":std::env::var("DMUX_SESSION_INSTANCE_ID").ok()}) } else { json!({}) }}),
             )
         }
         "edit" => {
-            let mut value = json!({"component":"notes","id":arg(1)?});
+            let mut value = json!({"component":component,"id":arg(id_index)?});
             if let Some(v) = flag("--title")? {
                 value["title"] = v.into();
             }
@@ -343,7 +362,7 @@ pub fn run_cli(args: &[String]) -> Result<(), String> {
             }
             ("write", value)
         }
-        "remove" => ("remove", json!({"component":"notes","id":arg(1)?})),
+        "remove" => ("remove", json!({"component":component,"id":arg(id_index)?})),
         "image" => match arg(1)? {
             "save" => {
                 let path = std::path::Path::new(arg(2)?);
@@ -378,6 +397,9 @@ pub fn run_cli(args: &[String]) -> Result<(), String> {
         }
         _ => return Err(CLI_HELP.into()),
     };
+    if summary && command == "add" {
+        refresh(std::path::Path::new(&root), &project)?;
+    }
     let mut value = dispatch(
         &store,
         &project,

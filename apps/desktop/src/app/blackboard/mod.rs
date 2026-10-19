@@ -5,11 +5,13 @@ use codux_runtime::blackboard::{
 use gpui_component::WindowExt;
 use serde_json::{Value, json};
 mod editor;
+mod panel;
 mod view;
 mod web;
 
 pub(in crate::app) struct BlackboardWorkspace {
-    pub snapshots: HashMap<String, Snapshot>,
+    pub snapshots: HashMap<String, Arc<Snapshot>>,
+    panels: HashMap<(String, Component), gpui::Entity<panel::BlackboardPanelView>>,
     pub selected: Component,
     view_project: Option<String>,
     maximized: Option<Component>,
@@ -35,6 +37,7 @@ impl Default for BlackboardWorkspace {
     fn default() -> Self {
         Self {
             snapshots: HashMap::new(),
+            panels: HashMap::new(),
             selected: Component::Notes,
             view_project: None,
             maximized: None,
@@ -114,7 +117,13 @@ impl CoduxApp {
             .clone()
             .into_iter()
             .collect::<Vec<_>>();
-        for d in self.trigger_workspace.engine.definitions() {
+        for d in self.trigger_workspace.engine.definitions().filter(|d| {
+            d.enabled
+                && matches!(
+                    d.kind,
+                    codux_runtime::triggers::TriggerKind::Blackboard { .. }
+                )
+        }) {
             if !projects.iter().any(|p| p.id == d.project_id)
                 && let Some(p) = self.state.projects.iter().find(|p| p.id == d.project_id)
             {
@@ -127,15 +136,29 @@ impl CoduxApp {
         self.blackboard.in_flight = true;
         self.blackboard.last_poll = Some(Instant::now());
         let service = self.runtime_service.clone();
+        let revisions = projects
+            .iter()
+            .filter_map(|p| {
+                self.blackboard
+                    .snapshots
+                    .get(&p.id)
+                    .map(|s| (p.id.clone(), s.revision))
+            })
+            .collect::<HashMap<_, _>>();
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
             let results = codux_runtime::async_runtime::spawn_blocking(move || {
                 projects
                     .into_iter()
                     .map(|p| {
                         let result = service
-                            .blackboard_request(&p, "refresh", json!({}))
+                            .blackboard_request(
+                                &p,
+                                "poll",
+                                json!({"knownRevision":revisions.get(&p.id)}),
+                            )
                             .and_then(|value| {
-                                serde_json::from_value::<Snapshot>(value).map_err(|e| e.to_string())
+                                serde_json::from_value::<Option<Snapshot>>(value)
+                                    .map_err(|e| e.to_string())
                             });
                         (p.id, result)
                     })
@@ -147,13 +170,15 @@ impl CoduxApp {
                 app.blackboard.in_flight = false;
                 for (id, result) in results {
                     match result {
-                        Ok(mut snapshot) => {
+                        Ok(snapshot) => {
                             let recovered = app.blackboard.errors.remove(&id).is_some();
-                            snapshot.project_id = id.clone();
-                            for event in &mut snapshot.events {
-                                event.project_id = id.clone();
+                            if let Some(mut snapshot) = snapshot {
+                                snapshot.project_id = id.clone();
+                                for event in &mut snapshot.events {
+                                    event.project_id = id.clone();
+                                }
+                                app.apply_blackboard_snapshot(snapshot, cx);
                             }
-                            app.apply_blackboard_snapshot(snapshot, cx);
                             if recovered {
                                 app.invalidate_ui(cx, [UiRegion::WorkspaceBody]);
                             }
@@ -225,16 +250,22 @@ impl CoduxApp {
         if let Some(layout) = self.blackboard.layout_pending.get(&project_id) {
             snapshot.layout = layout.clone();
         }
-        self.blackboard.snapshots.insert(project_id, snapshot);
+        // Events have already been consumed by the matcher. Keep their cursor,
+        // but not duplicate full historical bodies in the native render model.
+        snapshot.events.clear();
+        let chrome_changed = self
+            .blackboard
+            .snapshots
+            .get(&project_id)
+            .is_none_or(|s| s.terminals != snapshot.terminals);
+        self.blackboard
+            .snapshots
+            .insert(project_id, Arc::new(snapshot));
         if changed {
-            self.invalidate_ui(
-                cx,
-                [
-                    UiRegion::WorkspaceBody,
-                    UiRegion::TaskColumn,
-                    UiRegion::WorkspaceChrome,
-                ],
-            );
+            self.invalidate_ui(cx, [UiRegion::WorkspaceBody]);
+            if chrome_changed {
+                self.invalidate_ui(cx, [UiRegion::TaskColumn, UiRegion::WorkspaceChrome]);
+            }
         }
     }
     fn blackboard_mutate(&mut self, operation: &str, payload: Value, cx: &mut Context<Self>) {
@@ -305,6 +336,9 @@ impl CoduxApp {
         layout: Layout,
         cx: &mut Context<Self>,
     ) {
+        if self.blackboard_layout() == layout {
+            return;
+        }
         if let Some(project) = &self.state.selected_project {
             self.blackboard
                 .layout_pending
@@ -313,7 +347,7 @@ impl CoduxApp {
         if let Some(project) = &self.state.selected_project
             && let Some(s) = self.blackboard.snapshots.get_mut(&project.id)
         {
-            s.layout = layout.clone();
+            Arc::make_mut(s).layout = layout.clone();
         }
         self.blackboard_mutate("layout", json!({"layout":layout}), cx);
         self.invalidate_ui(cx, [UiRegion::WorkspaceBody]);
@@ -375,7 +409,7 @@ impl CoduxApp {
         self.state
             .selected_project
             .as_ref()
-            .and_then(|p| self.blackboard.snapshots.get(&p.id))
+            .and_then(|p| self.blackboard.snapshots.get(&p.id).map(AsRef::as_ref))
     }
     fn board_terminal_label(&self, id: &str) -> String {
         self.board_snapshot()

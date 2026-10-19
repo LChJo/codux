@@ -26,7 +26,7 @@ impl Store {
             path: root.join("blackboard.sqlite3"),
             root,
         };
-        let conn = store.connect()?;
+        let mut conn = store.connect()?;
         conn.execute_batch("PRAGMA journal_mode=WAL;
     CREATE TABLE IF NOT EXISTS projects(project_id TEXT PRIMARY KEY,next_ordinal INTEGER NOT NULL DEFAULT 1,revision INTEGER NOT NULL DEFAULT 0,rules_revision INTEGER NOT NULL DEFAULT 0,layout TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS entries(sequence INTEGER PRIMARY KEY AUTOINCREMENT,project_id TEXT NOT NULL,component TEXT NOT NULL,id TEXT NOT NULL,title TEXT NOT NULL,body TEXT NOT NULL,metadata TEXT NOT NULL,terminal_id TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,UNIQUE(project_id,component,id));
@@ -65,7 +65,52 @@ impl Store {
                 }
             }
         }
+        Self::migrate_default_layouts(&mut conn)?;
         Ok(store)
+    }
+    fn migrate_default_layouts(conn: &mut Connection) -> R<()> {
+        if conn
+            .pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
+            .map_err(err)?
+            >= 1
+        {
+            return Ok(());
+        }
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(err)?;
+        if tx
+            .pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
+            .map_err(err)?
+            == 0
+        {
+            let legacy: SplitNode = serde_json::from_value(json!({"kind":"split","axis":"horizontal","ratio":0.45,"a":{"kind":"split","axis":"vertical","ratio":0.53,"a":{"kind":"leaf","component":"summary"},"b":{"kind":"leaf","component":"recent"}},"b":{"kind":"leaf","component":"notes"}})).map_err(err)?;
+            let layouts = {
+                let mut query = tx
+                    .prepare("SELECT project_id,layout FROM projects")
+                    .map_err(err)?;
+                query
+                    .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+                    .map_err(err)?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(err)?
+            };
+            for (project, raw) in layouts {
+                let Ok(mut layout) = serde_json::from_str::<Layout>(&raw) else {
+                    continue;
+                };
+                if layout.tree.as_ref() == Some(&legacy) {
+                    layout.tree = Layout::default().tree;
+                    tx.execute(
+                        "UPDATE projects SET layout=?2,revision=revision+1 WHERE project_id=?1",
+                        params![project, serde_json::to_string(&layout).map_err(err)?],
+                    )
+                    .map_err(err)?;
+                }
+            }
+            tx.pragma_update(None, "user_version", 1).map_err(err)?;
+        }
+        tx.commit().map_err(err)
     }
     pub(crate) fn connect(&self) -> R<Connection> {
         let conn = Connection::open(&self.path).map_err(err)?;
@@ -125,7 +170,7 @@ impl Store {
         conn.query_row("SELECT id,component,title,body,terminal_id,metadata,created_at,updated_at,sequence FROM entries WHERE project_id=?1 AND component=?2 AND id=?3",params![project,component.key(),id],Self::entry).optional().map_err(err)
     }
     fn list_conn(conn: &Connection, project: &str, component: Option<Component>) -> R<Vec<Entry>> {
-        let mut query=conn.prepare("SELECT id,component,title,body,terminal_id,metadata,created_at,updated_at,sequence FROM entries WHERE project_id=?1 AND (?2 IS NULL OR component=?2) ORDER BY CASE WHEN component IN ('recent','summary') THEN updated_at ELSE sequence END DESC,sequence DESC").map_err(err)?;
+        let mut query=conn.prepare("SELECT id,component,title,body,terminal_id,metadata,created_at,updated_at,sequence FROM entries WHERE project_id=?1 AND (?2 IS NULL OR component=?2) ORDER BY CASE WHEN component='recent' THEN updated_at ELSE sequence END DESC,sequence DESC").map_err(err)?;
         query
             .query_map(params![project, component.map(Component::key)], Self::entry)
             .map_err(err)?
@@ -182,7 +227,14 @@ impl Store {
         if actor.origin != Origin::Terminal {
             return Ok(actor.clone());
         }
-        if ![Component::Notes, Component::Images, Component::Web].contains(&component) {
+        if ![
+            Component::Summary,
+            Component::Notes,
+            Component::Images,
+            Component::Web,
+        ]
+        .contains(&component)
+        {
             return Err("blackboard.component.read_only".into());
         }
         let id = actor
@@ -269,8 +321,8 @@ impl Store {
         }
         let timestamp = now_ms();
         tx.execute("INSERT INTO entries(project_id,component,id,title,body,metadata,terminal_id,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?8) ON CONFLICT(project_id,component,id) DO UPDATE SET title=excluded.title,body=excluded.body,metadata=excluded.metadata,terminal_id=COALESCE(excluded.terminal_id,entries.terminal_id),updated_at=excluded.updated_at",params![project,component.key(),id,title.trim(),body,metadata.to_string(),actor.terminal_id,timestamp]).map_err(err)?;
-        if component == Component::Notes {
-            tx.execute("DELETE FROM entries WHERE project_id=?1 AND component='notes' AND sequence NOT IN (SELECT sequence FROM entries WHERE project_id=?1 AND component='notes' ORDER BY sequence DESC LIMIT 64)",[project]).map_err(err)?;
+        if [Component::Summary, Component::Notes].contains(&component) {
+            tx.execute("DELETE FROM entries WHERE project_id=?1 AND component=?2 AND sequence NOT IN (SELECT sequence FROM entries WHERE project_id=?1 AND component=?2 ORDER BY sequence DESC LIMIT 64)",params![project, component.key()]).map_err(err)?;
         }
         if component == Component::Rules {
             tx.execute(
@@ -281,7 +333,7 @@ impl Store {
         }
         let entry =
             Self::read_conn(&tx, project, component, &id)?.ok_or("blackboard.entry.not_found")?;
-        let operation = if component == Component::Summary {
+        let operation = if component == Component::Summary && old.is_none() {
             "generated"
         } else if old.is_some() {
             "updated"
@@ -376,6 +428,16 @@ impl Store {
         tx.commit().map_err(err)
     }
     pub fn snapshot(&self, project: &str) -> R<Snapshot> {
+        self.snapshot_if_changed(project, None)?
+            .ok_or_else(|| "blackboard.snapshot.required".into())
+    }
+    /// Check the revision in the same read transaction as the snapshot. An
+    /// unchanged poll never loads or deserializes entry bodies and events.
+    pub fn snapshot_if_changed(
+        &self,
+        project: &str,
+        known_revision: Option<u64>,
+    ) -> R<Option<Snapshot>> {
         let mut conn = self.connect()?;
         let tx = conn.transaction().map_err(err)?;
         let state: Option<(u64, u64, String)> = tx
@@ -391,6 +453,9 @@ impl Store {
             0,
             serde_json::to_string(&Layout::default()).map_err(err)?,
         ));
+        if known_revision == Some(revision) {
+            return Ok(None);
+        }
         let entries = Self::list_conn(&tx, project, None)?;
         let terminals = {
             let mut q=tx.prepare("SELECT binding_key,terminal_id,ordinal,title,active,automatic,rules_revision,carried_rules,automatic_generation FROM terminals WHERE project_id=?1 ORDER BY ordinal").map_err(err)?;
@@ -414,7 +479,7 @@ impl Store {
             .collect::<R<Vec<_>>>()?
         };
         let cursor = events.first().map_or(0, |e| e.sequence);
-        Ok(Snapshot {
+        Ok(Some(Snapshot {
             project_id: project.into(),
             revision,
             rules_revision,
@@ -423,7 +488,7 @@ impl Store {
             entries,
             terminals,
             events,
-        })
+        }))
     }
     pub fn register_terminal(
         &self,
@@ -479,11 +544,6 @@ impl Store {
         {
             tx.execute(
                 "UPDATE entries SET terminal_id=?3 WHERE project_id=?1 AND terminal_id=?2",
-                params![project, old_id, id],
-            )
-            .map_err(err)?;
-            tx.execute(
-                "UPDATE entries SET id=?3 WHERE project_id=?1 AND component='summary' AND id=?2",
                 params![project, old_id, id],
             )
             .map_err(err)?;
@@ -564,7 +624,7 @@ impl Store {
         let mut text = source
             .and_then(|p| std::fs::read_to_string(p).ok())
             .unwrap_or_default();
-        text.push_str("\n\n# Codux Blackboard\nUse `codux-blackboard list notes` to read this project's shared context. Write progress with `codux-blackboard add --title <title> --body <text>`. Read images, webpages, knowledge and project rules with `codux-blackboard --help`. Terminal summaries and file/Git activity update automatically.\n");
+        text.push_str("\n\n# Codux Blackboard\nRead relevant shared context with `codux-blackboard list summary` and `codux-blackboard list notes`. After completing the user's task or an independently verifiable milestone, proactively record the outcome with `codux-blackboard summary add --title <title> --body <text>`. Include useful verification and remaining work. Skip ordinary Q&A, tool calls, attempts and progress updates; do not duplicate an existing milestone. Shared notes are separate: use `codux-blackboard add`, `edit` or `remove` only when the user explicitly requests a note change or their explicitly configured project rules require it. Do not write task completion or progress into notes by default. Read images, webpages, knowledge and project rules with `codux-blackboard --help`. File/Git activity updates automatically.\n");
         if !binding.carried_rules.is_empty() {
             text.push_str("\n# Project hard rules\n");
             for rule in binding.carried_rules {

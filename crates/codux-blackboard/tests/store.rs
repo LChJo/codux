@@ -7,7 +7,7 @@ fn store() -> (Store, std::path::PathBuf) {
 }
 
 #[test]
-fn terminal_rebind_keeps_one_summary_sources_and_stable_event_filter() {
+fn terminal_rebind_keeps_summary_ids_sources_and_stable_event_filter() {
     use codux_blackboard::conditions::{EventNode, Matcher, Rule, StateNode};
     let (store, dir) = store();
     let old = store
@@ -35,13 +35,37 @@ fn terminal_rebind_keeps_one_summary_sources_and_stable_event_filter() {
             Actor::terminal("old"),
         )
         .unwrap();
+    store
+        .write(
+            "p",
+            Component::Summary,
+            Some("milestone-2"),
+            "Second milestone",
+            "Verified",
+            json!({}),
+            Actor::terminal("old"),
+        )
+        .unwrap();
     let new = store
         .register_terminal("p", "pane", "new", "Renamed")
         .unwrap();
     assert_eq!(old.ordinal, new.ordinal);
     let summaries = store.list("p", Component::Summary).unwrap();
-    assert_eq!(summaries.len(), 1);
-    assert_eq!(summaries[0].id, "new");
+    assert_eq!(summaries.len(), 2);
+    assert!(summaries.iter().any(|s| s.id == "old"));
+    assert!(summaries.iter().any(|s| s.id == "milestone-2"));
+    assert!(
+        summaries
+            .iter()
+            .all(|s| s.terminal_id.as_deref() == Some("new"))
+    );
+    assert_eq!(
+        Store::open(&dir)
+            .unwrap()
+            .list("p", Component::Summary)
+            .unwrap(),
+        summaries
+    );
     assert_eq!(
         store
             .read("p", Component::Notes, &note.id)
@@ -281,6 +305,17 @@ fn concurrent_writers_do_not_lose_notes_or_reuse_ordinals() {
                     store
                         .write(
                             "p",
+                            Component::Summary,
+                            None,
+                            "parallel milestone",
+                            &format!("{i}-{n}"),
+                            json!({}),
+                            Actor::terminal(&format!("t-{i}")),
+                        )
+                        .unwrap();
+                    store
+                        .write(
+                            "p",
                             Component::Notes,
                             None,
                             "parallel",
@@ -297,6 +332,14 @@ fn concurrent_writers_do_not_lose_notes_or_reuse_ordinals() {
         handle.join().unwrap();
     }
     let snapshot = store.snapshot("p").unwrap();
+    assert_eq!(
+        snapshot
+            .entries
+            .iter()
+            .filter(|e| e.component == Component::Summary)
+            .count(),
+        64
+    );
     assert_eq!(
         snapshot
             .entries

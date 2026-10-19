@@ -9,15 +9,23 @@ impl RemoteHostRuntime {
             let result = crate::async_runtime::spawn_blocking(move || {
                 let project = super::memory::host_project_id(&worker.support_dir, &payload)
                     .ok_or("blackboard.project.required")?;
-                if payload.get("op").and_then(Value::as_str) == Some("refresh") {
+                let operation = payload
+                    .get("op")
+                    .and_then(Value::as_str)
+                    .unwrap_or("snapshot");
+                if matches!(operation, "refresh" | "poll") {
                     let path = payload
                         .get("projectPath")
                         .and_then(Value::as_str)
                         .ok_or("blackboard.path.required")?;
-                    return serde_json::to_value(codux_runtime_live::blackboard::refresh_snapshot(
+                    return serde_json::to_value(codux_runtime_live::blackboard::poll_snapshot(
                         &worker.support_dir,
                         &project,
                         Path::new(path),
+                        payload
+                            .get("knownRevision")
+                            .and_then(Value::as_u64)
+                            .filter(|_| operation == "poll"),
                     )?)
                     .map_err(|e| e.to_string());
                 }

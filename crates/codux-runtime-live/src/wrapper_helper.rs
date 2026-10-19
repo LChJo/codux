@@ -83,7 +83,19 @@ pub fn handle_args(args: &[String]) -> Result<bool, String> {
         "db-list-profiles" => print_db_profiles(),
         "db-query" => print_db_query(),
         "agent-worktree" => run_agent_worktree_command(&args[2..]),
-        "blackboard" => codux_blackboard::dispatch::run_cli(&args[2..]),
+        "blackboard" => codux_blackboard::dispatch::run_cli_with_summary_refresh(
+            &args[2..],
+            |support, project| {
+                if let Ok(path) = std::env::var("CODUX_PROJECT_PATH") {
+                    crate::blackboard::refresh_project(
+                        support,
+                        project,
+                        std::path::Path::new(&path),
+                    )?;
+                }
+                Ok(())
+            },
+        ),
         "agent-worktree-launch" => launch_agent_worktree_prompt(),
         _ => return Err(format!("unknown wrapper helper subcommand: {subcommand}")),
     }?;
@@ -1803,7 +1815,10 @@ mod tests {
             tool_memory_injection_strategy("codewhale"),
             Some("codeWhaleInstructions")
         );
-        assert_eq!(tool_memory_injection_strategy("kimi-code"), Some("kimiAgent"));
+        assert_eq!(
+            tool_memory_injection_strategy("kimi-code"),
+            Some("kimiAgent")
+        );
         assert_eq!(tool_memory_injection_strategy("agy"), Some("agyHook"));
         assert_eq!(tool_memory_injection_strategy("kiro-cli"), Some("kiroHook"));
         assert_eq!(tool_memory_injection_strategy("unknown"), None);

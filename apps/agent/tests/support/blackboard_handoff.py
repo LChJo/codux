@@ -12,6 +12,7 @@ temp=root/'temp'
 for path in [codex_home,project/'.codex',temp,root/'roaming',root/'local']:path.mkdir(parents=True)
 rules='Preserve this project rule 中文.\n'*3000
 handoff='## Completed\nCodux-hosted CLI completed this task.\n\n## Handoff\n'+('Keep complete handoff 中文 beyond preview limits.\n'*100)+'HANDOFF-END-'+token
+(root/'milestone.txt').write_text(handoff,encoding='utf-8',newline='\n')
 requests=[]
 class Server(http.server.BaseHTTPRequestHandler):
     def log_message(self,*args):pass
@@ -32,7 +33,10 @@ config='model="qa-handoff-model"\nmodel_provider="qa"\n[features]\nplugins=false
 entry=root/'entry.ps1'
 entry.write_text("""[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 codex --profile work exec --skip-git-repo-check --sandbox read-only --json 'Complete the isolated handoff fixture.'
-$result=@{exit=$LASTEXITCODE;label=$env:CODUX_TERMINAL_LABEL;instance=$env:DMUX_SESSION_INSTANCE_ID;context=$env:CODUX_BLACKBOARD_CONTEXT_FILE;source=(Get-Command codex).Source;events=$env:DMUX_RUNTIME_EVENT_DIR;bindings=$env:DMUX_AI_RUNTIME_BINDING_DIR;claudeMap=$env:DMUX_CLAUDE_SESSION_MAP_DIR;opencodeMap=$env:DMUX_OPENCODE_SESSION_MAP_DIR}
+$toolExit=$LASTEXITCODE
+codux-blackboard summary add --title 'Verified milestone' --body ([IO.File]::ReadAllText($env:CODUX_QA_MILESTONE))
+if ($LASTEXITCODE -ne 0) { throw 'Milestone submission failed' }
+$result=@{exit=$toolExit;label=$env:CODUX_TERMINAL_LABEL;instance=$env:DMUX_SESSION_INSTANCE_ID;context=$env:CODUX_BLACKBOARD_CONTEXT_FILE;source=(Get-Command codex).Source;events=$env:DMUX_RUNTIME_EVENT_DIR;bindings=$env:DMUX_AI_RUNTIME_BINDING_DIR;claudeMap=$env:DMUX_CLAUDE_SESSION_MAP_DIR;opencodeMap=$env:DMUX_OPENCODE_SESSION_MAP_DIR}
 [IO.File]::WriteAllText($env:CODUX_QA_RESULT,($result|ConvertTo-Json),[Text.UTF8Encoding]::new($false))
 """,encoding='utf-8-sig')
 env=dict(os.environ,HOME=str(home),USERPROFILE=str(home),APPDATA=str(root/'roaming'),LOCALAPPDATA=str(root/'local'),TEMP=str(temp),TMP=str(temp),CODEX_HOME=str(codex_home),OTEL_SDK_DISABLED='true')
@@ -72,7 +76,7 @@ try:
     hello=receive();assert hello['kind']=='hello' and hello['platform']=='windows',hello
     rule=rpc('blackboard.write',projectId=project_id,component='rules',title='Required rule',body=rules,metadata=dict(enabled=True))
     report=root/'terminal-result.json'
-    created=rpc('terminal.create',cwd=str(project),shell='powershell.exe',cols=100,rows=30,rootProjectId=project_id,rootProjectPath=str(project),projectId=project_id,projectName='Handoff QA',terminalId=terminal,sessionKey='qa-handoff-pane',title='Handoff task',runtimeTarget=dict(kind='local'),command="& '"+str(entry).replace("'","''")+"'",env=dict(CODUX_QA_RESULT=str(report)))
+    created=rpc('terminal.create',cwd=str(project),shell='powershell.exe',cols=100,rows=30,rootProjectId=project_id,rootProjectPath=str(project),projectId=project_id,projectName='Handoff QA',terminalId=terminal,sessionKey='qa-handoff-pane',title='Handoff task',runtimeTarget=dict(kind='local'),command="& '"+str(entry).replace("'","''")+"'",env=dict(CODUX_QA_RESULT=str(report),CODUX_QA_MILESTONE=str(root/'milestone.txt')))
     deadline=time.monotonic()+75
     snapshot=None
     while time.monotonic()<deadline:
@@ -91,13 +95,12 @@ try:
     assert len(requests)==1,len(requests)
     texts=[part['text'] for row in requests[0]['input'] if row.get('role')=='developer' for part in row.get('content',[]) if part.get('type')=='input_text']
     assert any(rules in text for text in texts),'Rules missing in actual PTY model request'
+    assert any('codux-blackboard summary add' in text and 'only when the user explicitly' in text for text in texts)
     assert sum('Original project instructions' in text for text in texts)==1
     assert requests[0]['model']=='qa-selected-profile'
     assert len(summaries)==1 and summaries[0]['terminalId']==terminal,summaries
     assert summaries[0]['body']==handoff,(len(summaries[0]['body']),len(handoff),summaries[0]['body'][-200:])
-    assert summaries[0]['metadata']['tool']=='codex'
     assert summaries[0]['metadata']['terminalInstanceId']==result['instance']
-    assert summaries[0]['metadata']['sessionId']
     saved_cursor=snapshot['cursor']
     time.sleep(1)
     stable=rpc('blackboard.snapshot',projectId=project_id)

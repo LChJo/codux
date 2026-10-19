@@ -52,11 +52,15 @@ impl RuntimeStdioService {
 
     pub(super) fn dispatch(&self, method: &str, params: &Value) -> Result<Value, String> {
         if let Some(operation) = method.strip_prefix("blackboard.") {
-            if operation == "refresh" {
-                return serde_json::to_value(codux_runtime_live::blackboard::refresh_snapshot(
+            if matches!(operation, "refresh" | "poll") {
+                return serde_json::to_value(codux_runtime_live::blackboard::poll_snapshot(
                     &self.blackboard_support_dir,
                     required_str(params, "projectId")?,
                     std::path::Path::new(required_str(params, "projectPath")?),
+                    params
+                        .get("knownRevision")
+                        .and_then(Value::as_u64)
+                        .filter(|_| operation == "poll"),
                 )?)
                 .map_err(|e| e.to_string());
             }

@@ -1,3 +1,64 @@
+#[test]
+fn local_blackboard_poll_skips_unchanged_snapshots_and_returns_new_history() {
+    let support =
+        std::env::temp_dir().join(format!("codux-local-board-poll-{}", uuid::Uuid::new_v4()));
+    let service = RuntimeService::new(support.clone());
+    let project = ProjectInfo {
+        id: "poll-project".into(),
+        name: "Polling QA".into(),
+        path: support.join("not-present").to_string_lossy().into_owned(),
+        exists: false,
+        badge: String::new(),
+        badge_symbol: None,
+        badge_color_hex: None,
+        git_default_push_remote_name: None,
+        environment_variables: Default::default(),
+        runtime_target: ProjectRuntimeTarget::Local,
+    };
+    let initial = service
+        .blackboard_request(&project, "poll", json!({}))
+        .unwrap();
+    assert_eq!(initial["entries"], json!([]));
+    assert!(
+        service
+            .blackboard_request(
+                &project,
+                "poll",
+                json!({"knownRevision":initial["revision"]})
+            )
+            .unwrap()
+            .is_null()
+    );
+    service
+        .blackboard_request(
+            &project,
+            "write",
+            json!({"component":"summary","title":"Milestone","body":"Verified"}),
+        )
+        .unwrap();
+    let changed = service
+        .blackboard_request(
+            &project,
+            "poll",
+            json!({"knownRevision":initial["revision"]}),
+        )
+        .unwrap();
+    assert_eq!(changed["entries"][0]["body"], "Verified");
+    assert_eq!(changed["events"][0]["operation"], "generated");
+    assert!(
+        service
+            .blackboard_request(
+                &project,
+                "poll",
+                json!({"knownRevision":changed["revision"]})
+            )
+            .unwrap()
+            .is_null()
+    );
+    drop(service);
+    std::fs::remove_dir_all(support).unwrap();
+}
+
 #[cfg(target_os = "windows")]
 #[test]
 #[ignore = "Requires Ubuntu WSL and CODUX_TEST_WSL_AGENT_PATH pointing to the native agent"]
@@ -39,6 +100,18 @@ fn actual_wsl_blackboard_requests_use_owner_store_and_controller_project_scope()
         "component":"notes","title":"Controller write","body":"跨 WSL \"quoted\"\n$() remains literal"
     })).unwrap();
     let snapshot = service.blackboard_snapshot(&project).unwrap();
+    let polled = service
+        .blackboard_request(&project, "poll", json!({}))
+        .unwrap();
+    assert!(polled["entries"].is_array());
+    let unchanged = service
+        .blackboard_request(
+            &project,
+            "poll",
+            json!({"knownRevision":polled["revision"]}),
+        )
+        .unwrap();
+    assert!(unchanged.is_null());
     assert_eq!(snapshot.project_id, project.id);
     let note = snapshot
         .entries

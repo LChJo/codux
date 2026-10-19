@@ -266,6 +266,10 @@ try {{
         assert!(owner.list("controller-worktree",Component::Notes).unwrap().is_empty());
         assert!(Store::open(&controller_data).unwrap().list("host-project-id",Component::Notes).unwrap().is_empty());
         drop(owner);
+        let first_poll = client.board(&project,"poll",json!({})).await;
+        assert!(first_poll["entries"].is_array());
+        let second_poll = client.board(&project,"poll",json!({"knownRevision":first_poll["revision"]})).await;
+        assert!(second_poll.is_null(), "unchanged remote poll must not transfer the snapshot: {second_poll}");
         for ordinal in 0..65 {
             let row = client.board(&project,"write",json!({"component":"notes","title":format!("Note {ordinal}"),"body":format!("Body {ordinal}")})).await;
             assert!(row["id"].is_string());

@@ -67,7 +67,7 @@ impl CoduxApp {
                 .maximized
                 .filter(|c| layout.tree.as_ref().is_some_and(|n| n.leaves().contains(c)))
             {
-                self.blackboard_panel(c, &snapshot, window, cx)
+                self.blackboard_component(c, &snapshot, cx)
             } else if let Some(tree) = &layout.tree {
                 if self.blackboard.canvas_size.width < px(620.0) {
                     let panels = tree
@@ -77,7 +77,7 @@ impl CoduxApp {
                             div()
                                 .h(px(320.0))
                                 .flex_none()
-                                .child(self.blackboard_panel(c, &snapshot, window, cx))
+                                .child(self.blackboard_component(c, &snapshot, cx))
                         })
                         .collect::<Vec<_>>();
                     div()
@@ -175,9 +175,7 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         match node {
-            SplitNode::Leaf { component } => {
-                self.blackboard_panel(*component, snapshot, window, cx)
-            }
+            SplitNode::Leaf { component } => self.blackboard_component(*component, snapshot, cx),
             SplitNode::Split { axis, ratio, a, b } => {
                 let horizontal = *axis == Axis::Horizontal;
                 let sizes = if horizontal {
@@ -259,16 +257,22 @@ impl CoduxApp {
             }
         }
     }
-    fn blackboard_panel(
+    pub(super) fn blackboard_panel(
         &mut self,
         c: Component,
         snapshot: &Snapshot,
+        cache: &mut panel::PanelRows,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        self.record_ui_performance_dynamic_event("blackboard-panel", c.key());
         let title = component_name(&self.state.settings.language, c);
-        let all = snapshot.list(c);
-        let count = if c == Component::Notes {
+        let all = snapshot
+            .entries
+            .iter()
+            .filter(|e| e.component == c)
+            .collect::<Vec<_>>();
+        let count = if [Component::Summary, Component::Notes].contains(&c) {
             format!("{}/64", all.len())
         } else if c == Component::Git {
             all.iter()
@@ -485,7 +489,14 @@ impl CoduxApp {
                     }),
             );
         }
-        if [Component::Notes, Component::Rules, Component::Web].contains(&c) {
+        if [
+            Component::Summary,
+            Component::Notes,
+            Component::Rules,
+            Component::Web,
+        ]
+        .contains(&c)
+        {
             tools = tools.child(
                 Button::new(SharedString::from(format!("board-new-{}", c.key())))
                     .small()
@@ -612,7 +623,7 @@ impl CoduxApp {
             if let Some(library) = all
                 .iter()
                 .find(|entry| entry.id == current && entry.metadata["kind"] == "library")
-                .cloned()
+                .map(|entry| (*entry).clone())
             {
                 wrapper = wrapper.child(self.blackboard_row(library, snapshot, cx));
             }
@@ -622,87 +633,120 @@ impl CoduxApp {
                 .child(self.blackboard_web_body(snapshot, window, cx))
                 .into_any_element();
         }
-        let entries = if c == Component::Git {
-            all.iter()
-                .flat_map(|source| {
-                    source.metadata["files"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .map(|file| Entry {
-                            id: format!("{}#{}", source.id, file["path"].as_str().unwrap_or("")),
-                            component: c,
-                            title: file["path"]
-                                .as_str()
-                                .unwrap_or("")
-                                .rsplit('/')
-                                .next()
-                                .unwrap_or("")
-                                .into(),
-                            body: file["path"].as_str().unwrap_or("").into(),
-                            metadata: file.clone(),
-                            ..source.clone()
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>()
-        } else {
-            all
-        };
-        let source = snapshot
-            .layout
-            .filters
-            .get(&format!("{}.terminal", c.key()))
-            .cloned()
-            .unwrap_or_default();
-        let rows = entries
-            .into_iter()
-            .filter(|e| {
-                ![Component::Summary, Component::Recent].contains(&c)
-                    || source.is_empty()
-                    || e.terminal_id.as_deref() == Some(source.as_str())
-                    || snapshot.terminals.iter().any(|t| {
-                        t.key == source && e.terminal_id.as_deref() == Some(t.terminal_id.as_str())
+        if cache.dirty {
+            self.record_ui_performance_dynamic_event("blackboard-rows-rebuild", c.key());
+            let entries = if c == Component::Git {
+                all.iter()
+                    .flat_map(|source| {
+                        source.metadata["files"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .map(|file| Entry {
+                                id: format!(
+                                    "{}#{}",
+                                    source.id,
+                                    file["path"].as_str().unwrap_or("")
+                                ),
+                                component: c,
+                                title: file["path"]
+                                    .as_str()
+                                    .unwrap_or("")
+                                    .rsplit('/')
+                                    .next()
+                                    .unwrap_or("")
+                                    .into(),
+                                body: file["path"].as_str().unwrap_or("").into(),
+                                metadata: file.clone(),
+                                terminal_id: source.terminal_id.clone(),
+                                created_at: source.created_at,
+                                updated_at: source.updated_at,
+                                sequence: source.sequence,
+                            })
+                            .collect::<Vec<_>>()
                     })
+                    .collect::<Vec<_>>()
+            } else {
+                all.into_iter().cloned().collect::<Vec<_>>()
+            };
+            let source = snapshot
+                .layout
+                .filters
+                .get(&format!("{}.terminal", c.key()))
+                .map(String::as_str)
+                .unwrap_or("");
+            let rows = entries
+                .into_iter()
+                .filter(|e| {
+                    ![Component::Summary, Component::Recent].contains(&c)
+                        || source.is_empty()
+                        || e.terminal_id.as_deref() == Some(source)
+                        || snapshot.terminals.iter().any(|t| {
+                            t.key == source
+                                && e.terminal_id.as_deref() == Some(t.terminal_id.as_str())
+                        })
+                })
+                .filter(|e| {
+                    c != Component::Knowledge
+                        || (e.metadata["kind"] != "library"
+                            && e.metadata
+                                .get("library")
+                                .and_then(Value::as_str)
+                                .unwrap_or("default")
+                                == snapshot.layout.active_library)
+                })
+                .filter(|e| {
+                    query.is_empty()
+                        || format!("{} {} {}", e.title, e.body, e.metadata)
+                            .to_lowercase()
+                            .contains(&query)
+                })
+                .map(|e| {
+                    let source = e
+                        .terminal_id
+                        .as_deref()
+                        .map(|id| self.board_terminal_label(id))
+                        .unwrap_or_default();
+                    panel::CachedRow::new(e, source)
+                })
+                .collect::<Vec<_>>();
+            cache.replace(rows);
+        }
+        let body = if cache.rows.is_empty() {
+            div()
+                .flex_1()
+                .p_4()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(self.text("blackboard.no_items", "No items"))
+                .into_any_element()
+        } else {
+            let rows = cache.rows.clone();
+            let snapshot = self
+                .blackboard
+                .snapshots
+                .get(&snapshot.project_id)
+                .unwrap()
+                .clone();
+            let app = cx.entity().downgrade();
+            let list = gpui::list(cache.list.clone(), move |index, _, cx| {
+                let Some(row) = rows.get(index).cloned() else {
+                    return div().into_any_element();
+                };
+                app.update(cx, |app, cx| app.blackboard_cached_row(row, &snapshot, cx))
+                    .unwrap_or_else(|_| div().into_any_element())
             })
-            .filter(|e| {
-                c != Component::Knowledge
-                    || (e.metadata["kind"] != "library"
-                        && e.metadata
-                            .get("library")
-                            .and_then(Value::as_str)
-                            .unwrap_or("default")
-                            == snapshot.layout.active_library)
-            })
-            .filter(|e| {
-                query.is_empty()
-                    || format!("{} {} {}", e.title, e.body, e.metadata)
-                        .to_lowercase()
-                        .contains(&query)
-            })
-            .map(|e| self.blackboard_row(e, snapshot, cx))
-            .collect::<Vec<_>>();
-        let empty = rows.is_empty();
-        let body = div()
-            .id(SharedString::from(format!(
-                "board-list-{}-{}",
-                snapshot.project_id,
-                c.key()
-            )))
-            .flex_1()
-            .min_h_0()
-            .min_w_0()
-            .overflow_y_scroll()
-            .children(rows)
-            .when(empty, |el| {
-                el.child(
-                    div()
-                        .p_4()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(self.text("blackboard.no_items", "No items")),
-                )
-            });
+            .size_full();
+            div()
+                .relative()
+                .flex_1()
+                .min_h_0()
+                .min_w_0()
+                .overflow_hidden()
+                .child(list)
+                .vertical_scrollbar(&cache.list)
+                .into_any_element()
+        };
         wrapper.child(body).into_any_element()
     }
     pub(super) fn blackboard_row(
@@ -711,22 +755,30 @@ impl CoduxApp {
         snapshot: &Snapshot,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let source = entry
+            .terminal_id
+            .as_deref()
+            .map(|id| self.board_terminal_label(id))
+            .unwrap_or_default();
+        self.blackboard_cached_row(panel::CachedRow::new(entry, source), snapshot, cx)
+    }
+    pub(super) fn blackboard_cached_row(
+        &mut self,
+        cached: panel::CachedRow,
+        snapshot: &Snapshot,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let panel::CachedRow {
+            entry,
+            source,
+            when,
+            preview,
+        } = cached;
         let c = entry.component;
+        self.record_ui_performance_dynamic_event("blackboard-visible-row", c.key());
         let app = cx.entity();
         let details = entry.clone();
         let language = self.state.settings.language.clone();
-        let source = entry
-            .terminal_id
-            .as_ref()
-            .map(|id| self.board_terminal_label(id))
-            .unwrap_or_default();
-        let when = chrono::DateTime::from_timestamp_millis(entry.updated_at)
-            .map(|t| {
-                t.with_timezone(&chrono::Local)
-                    .format("%m/%d %H:%M")
-                    .to_string()
-            })
-            .unwrap_or_default();
         let mut row = div()
             .id(SharedString::from(format!(
                 "board-row-{}-{}",
@@ -746,7 +798,7 @@ impl CoduxApp {
             .on_click(move |event, window, cx| {
                 if event.click_count() == 2 {
                     app.update(cx, |app, cx| {
-                        app.show_blackboard_entry(details.clone(), window, cx)
+                        app.show_blackboard_entry(details.as_ref().clone(), window, cx)
                     });
                 }
             })
@@ -798,17 +850,7 @@ impl CoduxApp {
                 div()
                     .text_size(px(12.0))
                     .text_color(cx.theme().muted_foreground)
-                    .child(
-                        entry
-                            .body
-                            .lines()
-                            .take(3)
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                            .chars()
-                            .take(220)
-                            .collect::<String>(),
-                    ),
+                    .child(preview),
             );
         if c == Component::Rules {
             let enabled = entry
@@ -835,18 +877,22 @@ impl CoduxApp {
             );
         }
         let app = cx.entity();
-        let terminals = snapshot
-            .terminals
-            .iter()
-            .filter(|t| t.active && self.terminal_pane_registry.contains_key(&t.terminal_id))
-            .cloned()
-            .map(|mut terminal| {
-                terminal.title =
-                    self.terminal_current_title(&terminal.terminal_id, &terminal.title);
-                terminal
-            })
-            .collect::<Vec<_>>();
         row.context_menu(move |menu, window, cx| {
+            // Resolve live targets only when the menu opens. Never clone carried
+            // rules and the entire terminal registry once per visible row.
+            let state = app.read(cx);
+            let terminals = state
+                .board_snapshot()
+                .into_iter()
+                .flat_map(|s| &s.terminals)
+                .filter(|t| t.active && state.terminal_pane_registry.contains_key(&t.terminal_id))
+                .map(|t| {
+                    (
+                        t.terminal_id.clone(),
+                        state.terminal_numbered_label(&t.terminal_id, &t.title),
+                    )
+                })
+                .collect::<Vec<_>>();
             let send_app = app.clone();
             let send_entry = entry.clone();
             let send_terminals = terminals.clone();
@@ -858,13 +904,18 @@ impl CoduxApp {
                     for terminal in &send_terminals {
                         let app = send_app.clone();
                         let e = send_entry.clone();
-                        let id = terminal.terminal_id.clone();
+                        let id = terminal.0.clone();
                         menu = menu.item(
-                            PopupMenuItem::new(terminal.label())
+                            PopupMenuItem::new(terminal.1.clone())
                                 .icon(HeroIconName::CommandLine)
                                 .on_click(move |_, window, cx| {
                                     app.update(cx, |app, cx| {
-                                        app.send_blackboard_entry(e.clone(), &id, window, cx)
+                                        app.send_blackboard_entry(
+                                            e.as_ref().clone(),
+                                            &id,
+                                            window,
+                                            cx,
+                                        )
                                     })
                                 }),
                         );
@@ -889,18 +940,25 @@ impl CoduxApp {
                     .icon(HeroIconName::DocumentText)
                     .on_click(move |_, window, cx| {
                         details_app.update(cx, |app, cx| {
-                            app.show_blackboard_entry(detail.clone(), window, cx)
+                            app.show_blackboard_entry(detail.as_ref().clone(), window, cx)
                         })
                     }),
             );
-            if [Component::Notes, Component::Rules, Component::Knowledge].contains(&c) {
+            if [
+                Component::Summary,
+                Component::Notes,
+                Component::Rules,
+                Component::Knowledge,
+            ]
+            .contains(&c)
+            {
                 let app = app.clone();
                 let e = entry.clone();
                 menu = menu.item(
                     PopupMenuItem::new(board_text(&language, "common.edit", "Edit")).on_click(
                         move |_, window, cx| {
                             app.update(cx, |app, cx| {
-                                app.edit_blackboard_entry(c, Some(e.clone()), window, cx)
+                                app.edit_blackboard_entry(c, Some(e.as_ref().clone()), window, cx)
                             })
                         },
                     ),
@@ -957,12 +1015,13 @@ impl CoduxApp {
                         PopupMenuItem::new(board_text(&language, "common.save_as", "Save as"))
                             .on_click(move |_, window, cx| {
                                 save_app.update(cx, |app, cx| {
-                                    app.save_blackboard_image(image.clone(), window, cx)
+                                    app.save_blackboard_image(image.as_ref().clone(), window, cx)
                                 })
                             }),
                     );
             }
             if [
+                Component::Summary,
                 Component::Notes,
                 Component::Images,
                 Component::Knowledge,
@@ -977,7 +1036,7 @@ impl CoduxApp {
                     PopupMenuItem::new(board_text(&language, "common.delete", "Delete")).on_click(
                         move |_, window, cx| {
                             app.update(cx, |app, cx| {
-                                app.delete_blackboard_entry(entry.clone(), window, cx)
+                                app.delete_blackboard_entry(entry.as_ref().clone(), window, cx)
                             })
                         },
                     ),

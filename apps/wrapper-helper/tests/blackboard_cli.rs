@@ -3,6 +3,49 @@ use serde_json::{Value, json};
 use std::process::Command;
 
 #[test]
+fn summary_cli_appends_milestones_and_keeps_notes_separate() {
+    let root = std::env::temp_dir().join(format!("codux-summary-cli-{}", uuid::Uuid::new_v4()));
+    let store = Store::open(&root).unwrap();
+    store.register_terminal("p", "pane", "t", "Agent").unwrap();
+    let cli = |args: &[&str]| {
+        let output = Command::new(env!("CARGO_BIN_EXE_codux-wrapper-helper"))
+            .args(["--codux-wrapper-helper", "blackboard"])
+            .args(args)
+            .env("DMUX_APP_SUPPORT_ROOT", &root)
+            .env("CODUX_BLACKBOARD_PROJECT_ID", "p")
+            .env("CODUX_TERMINAL_ID", "t")
+            .env_remove("CODUX_PROJECT_PATH")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice::<Value>(&output.stdout).unwrap()
+    };
+    let first = cli(&[
+        "summary",
+        "add",
+        "--title",
+        "阶段完成",
+        "--body",
+        "已验证\n保留 --help $()",
+    ]);
+    let second = cli(&["summary", "add", "--title", "Next", "--body", "Done"]);
+    assert_ne!(first["id"], second["id"]);
+    assert_eq!(first["terminalId"], "t");
+    assert_eq!(cli(&["list", "summary"]).as_array().unwrap().len(), 2);
+    assert!(cli(&["list", "notes"]).as_array().unwrap().is_empty());
+    let id = first["id"].as_str().unwrap();
+    cli(&["summary", "edit", id, "--body", "corrected"]);
+    assert_eq!(cli(&["read", "summary", id])["body"], "corrected");
+    cli(&["summary", "remove", id]);
+    assert_eq!(cli(&["list", "summary"]).as_array().unwrap().len(), 1);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn blackboard_cli_treats_option_like_titles_and_bodies_as_literal_values() {
     let root = std::env::temp_dir().join(format!("codux-board-literal-{}", uuid::Uuid::new_v4()));
     let store = Store::open(&root).unwrap();

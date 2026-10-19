@@ -217,16 +217,9 @@ impl Default for Layout {
         Self {
             tree: Some(SplitNode::Split {
                 axis: Axis::Horizontal,
-                ratio: 0.45,
-                a: Box::new(SplitNode::Split {
-                    axis: Axis::Vertical,
-                    ratio: 0.53,
-                    a: Box::new(SplitNode::Leaf {
-                        component: Component::Summary,
-                    }),
-                    b: Box::new(SplitNode::Leaf {
-                        component: Component::Recent,
-                    }),
+                ratio: 0.5,
+                a: Box::new(SplitNode::Leaf {
+                    component: Component::Summary,
                 }),
                 b: Box::new(SplitNode::Leaf {
                     component: Component::Notes,
