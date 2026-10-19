@@ -4,16 +4,6 @@ use serde::{Deserialize, Serialize};
 pub const AGENT_WORKTREE_CONTROL_ADDRESS_ENV: &str = "CODUX_WORKTREE_CONTROL_ADDRESS";
 pub const AGENT_WORKTREE_CONTROL_CAPABILITY_ENV: &str = "CODUX_WORKTREE_CONTROL_CAPABILITY";
 
-pub fn agent_worktree_ai_directive() -> &'static str {
-    "## Agent Worktrees\n\
-- To delegate independent work, run `codux-worktree create --name <branch> --agent <tool> --prompt <task> --json`.\n\
-- You own the delegated task end to end. Give the child explicit acceptance criteria and require it to test and commit its intended changes before finishing. The command creates a managed worktree and terminal, waits for the child agent to complete, then returns its worktree path and stable IDs.\n\
-- After completion, inspect the returned worktree's commits and diff against `baseBranch`, confirm `sourceBranch` is still the intended integration target, and run the relevant tests yourself. If review fails, keep the worktree and continue the child or fix it there; do not merge or remove it.\n\
-- Only after review passes, run `codux-worktree merge --operation <operationId> --json`, followed by `codux-worktree remove --operation <operationId> --json`. Merge requires a completed task, a clean child worktree, and no tracked changes in the source worktree; unrelated untracked source files are preserved. Never stash, delete, or modify the user's source-worktree files to make delivery pass. If tracked changes or a path conflict block merging, preserve both worktrees and report the blocker. Remove requires the reviewed commits to be merged and closes the child terminal before safe cleanup. Perform routine delivery steps yourself instead of asking the user.\n\
-- For normal delegated delivery, never pass `--detach`: keep the same `create` invocation blocked until OSC reports completion, then review, merge, and remove. If that invocation is still running, continue waiting for it and never issue a second `create` for the same task. Use `--detach` only when the user explicitly asks to start background work; never poll the interactive child process, because its TUI remains open after a turn completes.\n\
-- Do not use raw `git worktree add`, `git worktree remove`, or manual branch deletion for delegated work; they bypass Codux orchestration and status tracking."
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentWorktreeCreateRequest {
@@ -300,23 +290,6 @@ mod tests {
             request.validate().unwrap_err().message,
             "name cannot have leading or trailing whitespace"
         );
-    }
-
-    #[test]
-    fn ai_directive_describes_the_closed_loop_contract() {
-        let directive = agent_worktree_ai_directive();
-        assert!(directive.contains("codux-worktree create"));
-        assert!(directive.contains("waits for the child agent to complete"));
-        assert!(directive.contains("commits and diff against `baseBranch`"));
-        assert!(directive.contains("`sourceBranch`"));
-        assert!(directive.contains("codux-worktree merge"));
-        assert!(directive.contains("codux-worktree remove"));
-        assert!(directive.contains("Never stash"));
-        assert!(directive.contains("unrelated untracked source files are preserved"));
-        assert!(directive.contains("instead of asking the user"));
-        assert!(directive.contains("never pass `--detach`"));
-        assert!(directive.contains("never issue a second `create`"));
-        assert!(directive.contains("never poll the interactive child process"));
     }
 
     #[test]

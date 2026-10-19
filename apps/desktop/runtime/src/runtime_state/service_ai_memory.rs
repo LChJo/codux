@@ -588,15 +588,12 @@ impl RuntimeService {
 }
 
 fn codux_environment_directive() -> String {
-    format!(
-        "# Codux Environment Directive\n\n\
+    "# Codux Environment Directive\n\n\
 You are running inside a Codux-managed terminal.\n\n\
 ## Saved Connections\n\
 - SSH: use `codux-ssh list` first to discover saved hosts, then `codux-ssh <profile-id> -- '<remote-command>'` for one-off remote commands, or `codux-ssh scp <profile-id> <src> <dst>` (mark the remote path with a leading ':') to transfer files.\n\
 - Database: use `codux-db list` first to discover saved databases for the current root project, then run `codux-db <profile-id> -- '<SQL>'`.\n\
 - Do not grep the repository to discover saved SSH or database connections.\n\
-- Do not ask the user for saved credentials. Codux injects credentials into the wrappers; you cannot see them and must not print, infer, or hardcode them.\n\n\
-{}",
-        codux_runtime_core::agent_worktree::agent_worktree_ai_directive()
-    )
+- Do not ask the user for saved credentials. Codux injects credentials into the wrappers; you cannot see them and must not print, infer, or hardcode them."
+        .to_string()
 }

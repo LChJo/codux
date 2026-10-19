@@ -60,8 +60,12 @@ pub(crate) fn prepare_terminal_launch_context(
                 project_name: project_name.to_string(),
                 workspace_path: Some(workspace_path.to_string()),
                 settings,
+                // Keep launch artifacts available when memory is disabled,
+                // independently of optional tool-specific instructions.
                 extra_context: Some(
-                    codux_runtime_core::agent_worktree::agent_worktree_ai_directive().to_string(),
+                    "# Codux Environment Directive\n\n\
+You are running inside a Codux-managed terminal."
+                        .to_string(),
                 ),
             },
         )
@@ -98,7 +102,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_launch_context_writes_closed_loop_directive_per_worktree() {
+    fn terminal_launch_context_preserves_identity_without_delegation_instructions() {
         let data_dir = temp_dir("data");
         let runtime_root = temp_dir("runtime");
         let mut first = terminal_config("worktree-a", "/repo/worktree-a");
@@ -114,13 +118,81 @@ mod tests {
         assert!(second_root.ends_with("worktree-b"));
 
         let prompt = fs::read_to_string(first.memory_prompt_file.as_ref().unwrap()).unwrap();
-        assert!(prompt.contains("codux-worktree create"));
-        assert!(prompt.contains("waits for the child agent to complete"));
-        assert!(prompt.contains("--detach"));
+        assert!(prompt.starts_with("# Codux Environment Directive"));
+        assert!(prompt.contains("You are running inside a Codux-managed terminal."));
         assert!(prompt.contains("Project ID: project-root"));
         assert!(prompt.contains("Workspace: /repo/worktree-a"));
         assert!(first.memory_index_file.as_ref().unwrap().is_file());
+        for config in [&first, &second] {
+            let prompt = fs::read_to_string(config.memory_prompt_file.as_ref().unwrap()).unwrap();
+            for instruction in [
+                "## Agent Worktrees",
+                "codux-worktree",
+                "child agent",
+                "child terminal",
+            ] {
+                assert!(
+                    !prompt.contains(instruction),
+                    "unexpected instruction: {instruction}"
+                );
+            }
+            for filename in ["AGENTS.md", "CLAUDE.md", "GEMINI.md", "MEMORY.md"] {
+                let content = fs::read_to_string(
+                    config
+                        .memory_workspace_root
+                        .as_ref()
+                        .unwrap()
+                        .join(filename),
+                )
+                .unwrap();
+                assert_eq!(
+                    content, prompt,
+                    "{filename} should carry the current context"
+                );
+            }
+        }
         assert!(!data_dir.join("memory.sqlite3").exists());
+
+        fs::remove_dir_all(data_dir).ok();
+        fs::remove_dir_all(runtime_root).ok();
+    }
+
+    #[test]
+    fn terminal_launch_context_keeps_blackboard_and_project_rules() {
+        let data_dir = temp_dir("blackboard-data");
+        let runtime_root = temp_dir("blackboard-runtime");
+        let mut config = terminal_config("workspace-a", "/repo/workspace-a");
+        prepare_terminal_launch_context(&mut config, &data_dir, &runtime_root).unwrap();
+        let board = codux_blackboard::Store::open(&data_dir).unwrap();
+        board
+            .write(
+                "project-root",
+                codux_blackboard::Component::Rules,
+                None,
+                "Validation",
+                "Run cargo check before delivery.",
+                json!({}),
+                codux_blackboard::Actor::user(),
+            )
+            .unwrap();
+        board
+            .register_terminal("project-root", "pane", "terminal-a", "Agent")
+            .unwrap();
+        let context = board
+            .write_context(
+                "project-root",
+                "terminal-a",
+                config.memory_prompt_file.as_deref(),
+            )
+            .unwrap();
+        let prompt = fs::read_to_string(context).unwrap();
+        assert!(prompt.contains("Project ID: project-root"));
+        assert!(prompt.contains("Workspace: /repo/workspace-a"));
+        assert!(prompt.contains("codux-blackboard list notes"));
+        assert!(prompt.contains("codux-blackboard add --title"));
+        assert!(prompt.contains("# Project hard rules"));
+        assert!(prompt.contains("Run cargo check before delivery."));
+        assert!(!prompt.contains("codux-worktree"));
 
         fs::remove_dir_all(data_dir).ok();
         fs::remove_dir_all(runtime_root).ok();

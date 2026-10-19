@@ -78,8 +78,9 @@ fn launch_artifacts_include_tool_context_when_memory_is_disabled() {
     assert!(!agents.contains("secret-passphrase"));
     assert!(agents.contains("codux-db list"));
     assert!(agents.contains("codux-db <profile-id> -- '<SQL>'"));
-    assert!(agents.contains("codux-worktree create"));
-    assert!(agents.contains("waits for the child agent to complete"));
+    assert!(!agents.contains("codux-worktree"));
+    assert!(!agents.contains("## Agent Worktrees"));
+    assert!(!agents.contains("child agent"));
     assert!(agents.contains("cast them to text"));
     assert!(!agents.contains("db-1"));
     assert!(!agents.contains("db.example.com:5432 / app"));
@@ -128,7 +129,8 @@ fn launch_artifacts_include_environment_directive_without_profiles() {
     assert!(agents.starts_with("# Codux Environment Directive"));
     assert!(agents.contains("codux-ssh list"));
     assert!(agents.contains("codux-db list"));
-    assert!(agents.contains("codux-worktree create"));
+    assert!(!agents.contains("codux-worktree"));
+    assert!(!agents.contains("## Agent Worktrees"));
     assert!(agents.contains("# Codux Memory"));
     assert!(!agents.contains("project active entry"));
 
