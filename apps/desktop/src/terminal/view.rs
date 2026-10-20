@@ -368,21 +368,32 @@ impl TerminalView {
         self.model.read(cx).exited
     }
 
-    /// Submit automation without stealing keyboard focus or the viewport from
+    /// Paste automation without stealing keyboard focus or the viewport from
     /// another controller. Use the same paste checks as user-inserted prompts.
-    pub fn send_trigger_message(
+    pub fn paste_trigger_message(
         &mut self,
         text: &str,
         cx: &mut Context<Self>,
     ) -> Result<(), FavoriteCommandPasteError> {
         let writable = self.session.local_viewport_owns();
         self.model.update(cx, |model, cx| {
-            model.write_automation_input(text, writable, true)?;
+            model.write_automation_input(text, writable)?;
             model.prepare_input_viewport(cx);
             Ok(())
         })?;
         self.clear_pending_view_scroll();
         Ok(())
+    }
+
+    /// Submit only after the caller has allowed the CLI's paste burst to settle
+    /// and rechecked the target. Never replay the prompt when sending Enter.
+    pub fn submit_trigger_message(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Result<(), FavoriteCommandPasteError> {
+        let writable = self.session.local_viewport_owns();
+        self.model
+            .update(cx, |model, _| model.submit_automation_input(writable))
     }
 
     pub fn set_title_observer<F>(&mut self, observer: F)

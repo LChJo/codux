@@ -12,6 +12,10 @@ mod view;
 use editor::TriggerEditor;
 use presence::TriggerAgentPresence;
 
+// Windows TUIs can receive pasted text as rapid key events and treat an
+// immediately following Enter as another pasted newline (Codex: 120 ms).
+const TRIGGER_SUBMIT_DELAY: Duration = Duration::from_millis(250);
+
 #[cfg(test)]
 mod tests;
 
@@ -725,36 +729,102 @@ impl CoduxApp {
         job: codux_runtime::triggers::TriggerDispatch,
         cx: &mut Context<Self>,
     ) {
-        let result = self
+        let Some(pane) = self.trigger_workspace.panes.get(&job.terminal_id) else {
+            self.finish_trigger_delivery(
+                &job,
+                Err(crate::terminal::FavoriteCommandPasteError::Unavailable),
+                cx,
+            );
+            return;
+        };
+        let view = pane.view.clone();
+        let instance = pane.terminal_instance_id();
+        let presence_version = self
             .trigger_workspace
-            .panes
-            .get(&job.terminal_id)
-            .ok_or_else(|| {
-                self.text(
-                    "trigger.error.unavailable",
-                    "The terminal is unavailable or controlled by another device.",
-                )
-            })
-            .and_then(|p| {
-                p.view
-                    .update(cx, |view, cx| view.send_trigger_message(&job.message, cx))
-                    .map_err(|e| match e {
-                        crate::terminal::FavoriteCommandPasteError::Unavailable => self.text(
-                            "trigger.error.unavailable",
-                            "The terminal is unavailable or controlled by another device.",
-                        ),
-                        crate::terminal::FavoriteCommandPasteError::MultilineUnsupported => self
-                            .text(
-                                "trigger.error.multiline",
-                                "This terminal does not support multiline messages.",
-                            ),
+            .agent_presence
+            .version(&job.terminal_id);
+        if let Err(error) = view.update(cx, |view, cx| view.paste_trigger_message(&job.message, cx))
+        {
+            self.finish_trigger_delivery(&job, Err(error), cx);
+            return;
+        }
+        let timer = cx.background_executor().clone();
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            timer.timer(TRIGGER_SUBMIT_DELAY).await;
+            let _ = this.update(cx, |app, cx| {
+                let Some(definition) = app
+                    .trigger_workspace
+                    .engine
+                    .definition(&job.trigger_id)
+                    .cloned()
+                else {
+                    return;
+                };
+                let current = app.trigger_workspace.panes.get(&job.terminal_id);
+                if definition.terminal_id != job.terminal_id
+                    || current.is_none_or(|pane| {
+                        pane.view != view || pane.terminal_instance_id() != instance
                     })
+                {
+                    // A restarted/rebound terminal has its own dispatch state.
+                    return;
+                }
+                if !definition.enabled {
+                    app.trigger_workspace.engine.cancel_dispatch(&job);
+                    app.clear_blackboard_automatic(&definition.project_id, &job.terminal_id, cx);
+                } else if definition.exited
+                    || !app
+                        .trigger_workspace
+                        .agent_presence
+                        .contains(&job.terminal_id)
+                    || app
+                        .trigger_workspace
+                        .agent_presence
+                        .version(&job.terminal_id)
+                        != presence_version
+                {
+                    let outcome = if definition.exited {
+                        TriggerOutcome::Exited
+                    } else {
+                        TriggerOutcome::NotStarted
+                    };
+                    app.trigger_workspace.engine.delivery_skipped(
+                        &job,
+                        outcome,
+                        app_now_seconds() as i64,
+                    );
+                    app.clear_blackboard_automatic(&definition.project_id, &job.terminal_id, cx);
+                } else {
+                    let result = view.update(cx, |view, cx| view.submit_trigger_message(cx));
+                    app.finish_trigger_delivery(&job, result, cx);
+                }
+                app.flush_trigger_changes(cx);
             });
+        })
+        .detach();
+    }
+
+    fn finish_trigger_delivery(
+        &mut self,
+        job: &codux_runtime::triggers::TriggerDispatch,
+        result: Result<(), crate::terminal::FavoriteCommandPasteError>,
+        cx: &mut Context<Self>,
+    ) {
+        let result = result.map_err(|e| match e {
+            crate::terminal::FavoriteCommandPasteError::Unavailable => self.text(
+                "trigger.error.unavailable",
+                "The terminal is unavailable or controlled by another device.",
+            ),
+            crate::terminal::FavoriteCommandPasteError::MultilineUnsupported => self.text(
+                "trigger.error.multiline",
+                "This terminal does not support multiline messages.",
+            ),
+        });
         match result {
             Ok(()) => self
                 .trigger_workspace
                 .engine
-                .delivery_succeeded(&job, app_now_seconds() as i64),
+                .delivery_succeeded(job, app_now_seconds() as i64),
             Err(error) => {
                 self.trigger_workspace.engine.delivery_failed(
                     &job.trigger_id,
@@ -772,6 +842,7 @@ impl CoduxApp {
             }
         }
     }
+
     fn clear_blackboard_automatic(
         &mut self,
         project: &str,
