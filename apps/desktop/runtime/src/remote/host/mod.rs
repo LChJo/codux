@@ -149,6 +149,8 @@ pub struct RemoteHostRuntime {
     // Arc so protocol dispatch, output fan-out, and the viewport-owner resolver
     // all use one authoritative subscription state.
     pub(crate) resource_subscriptions: Arc<RuntimeSubscriptionRouter>,
+    terminal_inputs: terminal_input::TerminalInputLedger,
+    incoming_messages: transport::IncomingMessages,
     pub(crate) terminal_output_seq_by_session: Mutex<HashMap<String, TerminalSequence>>,
     pub(crate) terminal_output_ack_by_viewer: Mutex<HashMap<(String, String), TerminalSequence>>,
     pub(crate) terminal_output_batches: Mutex<HashMap<String, RemoteTerminalOutputBatch>>,
@@ -188,6 +190,7 @@ mod send;
 mod ssh;
 mod terminal_buffer;
 mod terminal_dispatch;
+mod terminal_input;
 mod terminal_state;
 #[cfg(test)]
 mod tests;
@@ -289,6 +292,8 @@ impl RemoteHostRuntime {
             agent_worktree_host: Mutex::new(None),
             authorization,
             resource_subscriptions,
+            terminal_inputs: terminal_input::TerminalInputLedger::default(),
+            incoming_messages: transport::IncomingMessages::default(),
             terminal_output_seq_by_session: Mutex::new(HashMap::new()),
             terminal_output_ack_by_viewer: Mutex::new(HashMap::new()),
             terminal_output_batches: Mutex::new(HashMap::new()),
@@ -635,25 +640,25 @@ impl RemoteHostRuntime {
 
     fn send_host_info(self: &Arc<Self>, envelope: &RemoteEnvelope) {
         let transports = self.transport_candidates_snapshot();
-        self.reply(
-            envelope,
-            REMOTE_HOST_INFO,
-            runtime_host::host_info_payload(runtime_host::HostInfoPayload {
-                host_id: self.snapshot().host_id,
-                runtime_instance_id: self.runtime_instance_id.clone(),
-                name: remote_host_name(),
-                platform: std::env::consts::OS.to_string(),
-                app: "Codux".to_string(),
-                resource_subscriptions: vec![
-                    REMOTE_RESOURCE_PROJECTS.to_string(),
-                    REMOTE_RESOURCE_TERMINALS.to_string(),
-                    REMOTE_RESOURCE_WORKTREES.to_string(),
-                    REMOTE_RESOURCE_GIT_STATUS.to_string(),
-                    REMOTE_RESOURCE_AI_STATS.to_string(),
-                ],
-                transports,
-            }),
-        );
+        let mut payload = runtime_host::host_info_payload(runtime_host::HostInfoPayload {
+            host_id: self.snapshot().host_id,
+            runtime_instance_id: self.runtime_instance_id.clone(),
+            name: remote_host_name(),
+            platform: std::env::consts::OS.to_string(),
+            app: "Codux".to_string(),
+            resource_subscriptions: vec![
+                REMOTE_RESOURCE_PROJECTS.to_string(),
+                REMOTE_RESOURCE_TERMINALS.to_string(),
+                REMOTE_RESOURCE_WORKTREES.to_string(),
+                REMOTE_RESOURCE_GIT_STATUS.to_string(),
+                REMOTE_RESOURCE_AI_STATS.to_string(),
+            ],
+            transports,
+        });
+        payload["capabilities"]["terminalInput"] = json!({
+            "idempotent": true, "ordered": true, "ackAfterWrite": true,
+        });
+        self.reply(envelope, REMOTE_HOST_INFO, payload);
     }
 
     fn handle_host_metrics(self: &Arc<Self>, envelope: &RemoteEnvelope) {

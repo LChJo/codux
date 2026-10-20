@@ -1,6 +1,108 @@
 use super::*;
 
 #[test]
+fn baseline_restores_parsed_history_after_many_in_place_redraws() {
+    let manager = TerminalManager::new();
+    let (session, _) = manager
+        .attach_or_create_with_context(
+            TerminalPtyConfig {
+                shell: Some(
+                    if cfg!(windows) {
+                        "powershell.exe"
+                    } else {
+                        "/bin/sh"
+                    }
+                    .into(),
+                ),
+                command: Some(
+                    if cfg!(windows) {
+                        "Start-Sleep -Seconds 30"
+                    } else {
+                        "sleep 30"
+                    }
+                    .into(),
+                ),
+                ..Default::default()
+            },
+            None,
+            Arc::new(|_| true),
+        )
+        .unwrap();
+    manager
+        .kill_and_wait(session.id(), Duration::from_secs(5))
+        .unwrap();
+    {
+        let _commit = session.output_commit.lock();
+        *session.history.lock() = RingHistory::new(128 * 1024);
+        *session.screen.lock() = HeadlessTerminalScreen::new(40, 8, 200);
+        let history: String = (0..80)
+            .map(|index| format!("history-{index:03}\r\n"))
+            .collect();
+        session.history.lock().push_text(&history);
+        session.screen.lock().process(history.as_bytes());
+        for index in 0..500 {
+            let redraw = format!("\x1b[1;1Hprogress-{index:03}");
+            session.history.lock().push_text(&redraw);
+            session.screen.lock().process(redraw.as_bytes());
+        }
+    }
+    let baseline = session.baseline_snapshot(2048, Some(8));
+    assert!(baseline.data.chars().count() <= 2048);
+    assert!(
+        baseline.data.contains("history-005"),
+        "baseline must export parsed history instead of a redraw-only raw tail"
+    );
+    let mut restored = codux_terminal_core::RemotePtySession::<String>::new(2048);
+    restored.resize_screen(40, 8);
+    restored.replace_from_baseline(
+        &baseline.data,
+        Some(&baseline.screen.data),
+        Some(&baseline.screen.wrapped_rows),
+        Some(baseline.buffer_length),
+        Some(baseline.buffer_end),
+        Some(1),
+    );
+    assert!(restored.screen_snapshot().total_lines > 70);
+    restored.scroll_screen_pixels(80.0 * 10.0, 10.0);
+    assert!(restored.screen_snapshot().data.contains("history-005"));
+    restored.scroll_screen_pixels(-800.0, 10.0);
+    let current = restored.screen_snapshot();
+    restored.append_live(
+        "\x1b[1;1Hprogress-499",
+        None,
+        Some(baseline.buffer_end),
+        Some(2),
+    );
+    assert_eq!(
+        current,
+        restored.screen_snapshot(),
+        "raw overlap is covered by the compact baseline watermark"
+    );
+    restored.append_live(
+        "prefixNEW",
+        Some(baseline.buffer_length + 3),
+        Some(baseline.buffer_end + 3),
+        Some(3),
+    );
+    assert!(restored.content().ends_with("NEW"));
+    assert!(restored.screen_snapshot().data.contains("progress-499NEW"));
+
+    // Alternate-screen replay remains the legacy raw tail plus its current
+    // screen keyframe; exporting must never temporarily swap the host buffers.
+    {
+        let _commit = session.output_commit.lock();
+        let alternate = "\x1b[?1049h\x1b[HALT_UI";
+        session.history.lock().push_text(alternate);
+        session.screen.lock().process(alternate.as_bytes());
+    }
+    let before = session.screen_snapshot();
+    let alternate = session.baseline_snapshot(2048, Some(8));
+    assert!(alternate.screen.input_mode.alternate_screen);
+    assert_eq!(alternate.data, session.history.lock().snapshot_tail(2048).0);
+    assert_eq!(before, session.screen_snapshot());
+}
+
+#[test]
 fn terminal_process_and_runtime_binding_share_one_generated_instance_identity() {
     let manager = TerminalManager::new();
     let config = TerminalPtyConfig {

@@ -14,9 +14,155 @@ import 'package:codux_flutter/services/remote_protocol_service.dart';
 import 'package:codux_flutter/services/remote_transport.dart';
 import 'package:codux_flutter/theme/app_theme.dart';
 import 'package:codux_flutter/widgets/components/device_home_screen.dart';
+import 'package:codux_flutter/widgets/pad/pad_workspace_view.dart';
 import 'package:uuid/uuid.dart';
 
 void main() {
+  for (final reply in [
+    'matching',
+    'wrong request',
+    'after switch',
+    'legacy',
+    'unsolicited',
+  ]) {
+    testWidgets('AI restore input isolates $reply reply', (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final sent = <Map<String, dynamic>>[];
+      final device = await _fakeDevice();
+      final fake = _FakeRemoteTransport(
+        device: device,
+        onSent: (transport, envelope) {
+          sent.add(envelope);
+          if (envelope['type'] == 'host.info') {
+            transport.emitEncrypted(
+              const RelayEnvelope(
+                type: 'project.list',
+                payload: {
+                  'selectedProjectId': 'project-1',
+                  'projects': [
+                    {'id': 'project-1', 'name': 'Project 1', 'path': '/tmp/p1'},
+                  ],
+                },
+              ),
+            );
+            transport.emitEncrypted(
+              const RelayEnvelope(
+                type: 'terminal.list',
+                payload: {
+                  'terminals': [
+                    {
+                      'id': 'session-1',
+                      'title': 'One',
+                      'projectId': 'project-1',
+                    },
+                    {
+                      'id': 'session-2',
+                      'title': 'Two',
+                      'projectId': 'project-1',
+                    },
+                  ],
+                },
+              ),
+            );
+            transport.emitEncrypted(
+              RelayEnvelope(type: 'host.info', payload: _hostInfoPayload()),
+            );
+          }
+          if (envelope['type'] == 'terminal.buffer' ||
+              _isTerminalSubscribe(envelope)) {
+            transport.emitEncrypted(
+              RelayEnvelope(
+                type: 'terminal.output',
+                sessionId: '${envelope['sessionId'] ?? 'session-1'}',
+                payload: const {
+                  'data': 'ready',
+                  'buffer': true,
+                  'offset': 0,
+                  'bufferLength': 5,
+                  'outputSeq': 1,
+                },
+              ),
+            );
+          }
+        },
+      );
+      await tester.pumpWidget(
+        CoduxFlutterApp(
+          initialDevices: [device],
+          transportFactory: (_) => fake,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mac').first);
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
+      var workspace = tester
+          .widget<PadWorkspaceView>(find.byType(PadWorkspaceView))
+          .controller;
+      expect(workspace.activeTerminalId, 'session-1');
+      if (reply != 'unsolicited') {
+        workspace.onOpenSession(
+          const AISessionRecord(
+            id: 'history-1',
+            title: 'Old',
+            tool: 'claude',
+            model: null,
+            time: 0,
+            size: 1,
+          ),
+        );
+        await tester.pump();
+      }
+      final requests = sent.where(
+        (message) =>
+            message['type'] == 'ai.session' &&
+            (message['payload'] as Map)['op'] == 'restore',
+      );
+      final requestId = requests.isEmpty
+          ? 'unsolicited'
+          : requests.single['requestId'];
+      if (reply == 'after switch') {
+        workspace.onSelectTerminal(
+          workspace.terminals.singleWhere(
+            (terminal) => terminal.id == 'session-2',
+          ),
+        );
+        await tester.pumpAndSettle();
+        workspace = tester
+            .widget<PadWorkspaceView>(find.byType(PadWorkspaceView))
+            .controller;
+        expect(workspace.activeTerminalId, 'session-2');
+      }
+      final response = {
+        'type': 'ai.session.result',
+        if (reply != 'legacy')
+          'requestId': reply == 'wrong request' ? 'another-request' : requestId,
+        'payload': {
+          'op': 'restore',
+          'result': {'command': 'claude --resume history-1'},
+        },
+      };
+      fake.emit(RelayEnvelope.fromJson(response));
+      await tester.pump();
+      // A duplicated result must not execute the resume command twice.
+      fake.emit(RelayEnvelope.fromJson(response));
+      await tester.pump();
+      final inputs = sent
+          .where((message) => message['type'] == 'terminal.input')
+          .map((message) => (message['payload'] as Map)['data'])
+          .toList();
+      expect(
+        inputs,
+        reply == 'matching' ? ['claude --resume history-1', '\r'] : isEmpty,
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+  }
+
   testWidgets('Codux app boots', (WidgetTester tester) async {
     await tester.pumpWidget(const CoduxFlutterApp());
     await tester.pump();

@@ -287,7 +287,7 @@ extension _HomePageTerminal on HomeController {
       final mode = payload['mode']?.toString();
       final tool = payload['tool']?.toString();
       final kind = payload['kind']?.toString();
-      if (!inserted) {
+      if (!inserted && message.sessionId == _sessionId) {
         final path = '${payload['path']}';
         _insertTerminalText('$path ');
       }
@@ -580,12 +580,7 @@ extension _HomePageTerminal on HomeController {
   }
 
   void _insertTerminalText(String text) {
-    if (text.isEmpty) return;
-    _terminalInputBatcher.flush();
-    _sendInputNow(
-      codux_terminal_core.terminalInsertInput(text),
-      source: 'insert',
-    );
+    _terminalEditing.insert(text);
   }
 
   void _sendInputNow(String data, {required String source}) {

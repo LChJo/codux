@@ -2,6 +2,52 @@ import 'package:codux_flutter/services/remote_capabilities.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('reliable input requires every host delivery guarantee', () {
+    expect(
+      TerminalInputCapability.fromHostInfo(null).supportsReliableRetry,
+      isFalse,
+    );
+    expect(
+      TerminalInputCapability.fromHostInfo({
+        'capabilities': {},
+      }).supportsReliableRetry,
+      isFalse,
+    );
+    for (final missing in ['idempotent', 'ordered', 'ackAfterWrite']) {
+      final flags = {'idempotent': true, 'ordered': true, 'ackAfterWrite': true}
+        ..remove(missing);
+      expect(
+        TerminalInputCapability.fromHostInfo({
+          'capabilities': {'terminalInput': flags},
+        }).supportsReliableRetry,
+        isFalse,
+      );
+    }
+    expect(
+      TerminalInputCapability.fromHostInfo({
+        'capabilities': {
+          'terminalInput': {
+            'idempotent': true,
+            'ordered': true,
+            'ackAfterWrite': true,
+          },
+        },
+      }).supportsReliableRetry,
+      isTrue,
+    );
+    expect(
+      TerminalInputCapability.fromHostInfo({
+        'capabilities': {
+          'terminalInput': {
+            'idempotent': 'true',
+            'ordered': true,
+            'ackAfterWrite': true,
+          },
+        },
+      }).supportsReliableRetry,
+      isFalse,
+    );
+  });
   test('mobile default terminal buffer window matches host default', () {
     expect(TerminalBufferCapability.mobileMaxChars, 200000);
     expect(TerminalBufferCapability.fallback.maxChars, 200000);

@@ -161,7 +161,11 @@ extension _HomePageActions on HomeController {
   }
 
   Future<void> _pasteToTerminal() async {
+    final epoch = _terminalEditing.connectionEpoch;
     final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted || _disposing || epoch != _terminalEditing.connectionEpoch) {
+      return;
+    }
     if (data?.text?.isNotEmpty == true) {
       _insertTerminalText(data!.text!);
     }
@@ -189,6 +193,7 @@ extension _HomePageActions on HomeController {
 
   Future<void> _startVoiceInput() async {
     if (_showVoiceOverlay) return;
+    _voiceInputEpoch = _terminalEditing.connectionEpoch;
     _applyState(() => _showVoiceOverlay = true);
   }
 

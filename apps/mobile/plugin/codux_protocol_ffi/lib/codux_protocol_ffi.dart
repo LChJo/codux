@@ -821,7 +821,8 @@ String terminalTextInput(String text) {
   }
 }
 
-String terminalInsertInput(String text) {
+String terminalInsertInput(String text, {bool bracketedPaste = true}) {
+  if (!bracketedPaste) return text;
   final textPtr = text.toNativeUtf8();
   try {
     return _terminalInputFromJson(_terminalInsertInputJson(textPtr));
@@ -979,6 +980,7 @@ class TerminalScreenSnapshot {
 class TerminalScreenInputMode {
   const TerminalScreenInputMode({
     this.applicationCursor = false,
+    this.bracketedPaste = false,
     this.alternateScreen = false,
     this.alternateScroll = false,
     this.mouseTracking = false,
@@ -990,6 +992,7 @@ class TerminalScreenInputMode {
   });
 
   final bool applicationCursor;
+  final bool bracketedPaste;
   final bool alternateScreen;
   final bool alternateScroll;
   final bool mouseTracking;
@@ -1004,6 +1007,7 @@ class TerminalScreenInputMode {
   factory TerminalScreenInputMode.fromJson(Map<String, dynamic> json) {
     return TerminalScreenInputMode(
       applicationCursor: json['applicationCursor'] == true,
+      bracketedPaste: json['bracketedPaste'] == true,
       alternateScreen: json['alternateScreen'] == true,
       alternateScroll: json['alternateScroll'] == true,
       mouseTracking: json['mouseTracking'] == true,

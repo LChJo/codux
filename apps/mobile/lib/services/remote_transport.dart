@@ -136,12 +136,18 @@ class RustControllerTransport implements RemoteTransport {
   RustControllerTransport({
     ControllerTransportHandleFactory? handleFactory,
     RemoteTransportPollTimerFactory? pollTimerFactory,
+    DateTime Function()? now,
   }) : _handleFactory = handleFactory ?? _connectFfiTransport,
-       _pollTimerFactory = pollTimerFactory ?? Timer.new;
+       _pollTimerFactory = pollTimerFactory ?? Timer.new,
+       _now = now ?? DateTime.now;
 
   final ControllerTransportHandleFactory _handleFactory;
   final RemoteTransportPollTimerFactory _pollTimerFactory;
+  final DateTime Function() _now;
+  final Map<String, DateTime> _inputAckDeadlines = {};
+  DateTime? _inputBusyUntil;
   ControllerTransportEventHandle? _handle;
+  Completer<void>? _connecting;
   Timer? _pollTimer;
   RemoteTransportStateHandler? _onState;
   RemoteTransportEnvelopeHandler? _onEnvelope;
@@ -161,6 +167,7 @@ class RustControllerTransport implements RemoteTransport {
   Future<void> connect(StoredDevice device) async {
     await close();
     final connected = Completer<void>();
+    _connecting = connected;
     final config = _controllerTransportConfig(device);
     final summary = codux_protocol_ffi.controllerTransportConfigSummary(config);
     _kind = '${summary['transportKind'] ?? RemoteTransportKind.iroh}';
@@ -190,12 +197,16 @@ class RustControllerTransport implements RemoteTransport {
 
   @override
   Future<bool> send(Map<String, dynamic> envelope) async {
-    return _handle?.send(envelope) ?? false;
+    final sent = _handle?.send(envelope) ?? false;
+    if (sent) _noteTerminalInput(envelope);
+    return sent;
   }
 
   @override
   Future<bool> sendTerminal(Map<String, dynamic> envelope) async {
-    return _handle?.sendTerminal(envelope) ?? false;
+    final sent = _handle?.sendTerminal(envelope) ?? false;
+    if (sent) _noteTerminalInput(envelope);
+    return sent;
   }
 
   @override
@@ -222,16 +233,55 @@ class RustControllerTransport implements RemoteTransport {
   Future<void> close() async {
     _pollTimer?.cancel();
     _pollTimer = null;
+    _inputAckDeadlines.clear();
+    _inputBusyUntil = null;
+    _connecting = null;
     final handle = _handle;
     _handle = null;
     handle?.close();
   }
 
+  void _noteTerminalInput(Map<String, dynamic> envelope) {
+    if (envelope['type'] != 'terminal.input') return;
+    final now = _now();
+    _inputBusyUntil = now.add(const Duration(seconds: 1));
+    final payload = envelope['payload'];
+    final inputId = payload is Map ? payload['inputId']?.toString() : null;
+    if (inputId != null && inputId.isNotEmpty) {
+      // Sender retries finish within seven seconds by default. Bound tracking
+      // independently so a legacy host without ACKs cannot keep polling hot.
+      if (_inputAckDeadlines.length >= 512 &&
+          !_inputAckDeadlines.containsKey(inputId)) {
+        _inputAckDeadlines.remove(_inputAckDeadlines.keys.first);
+      }
+      _inputAckDeadlines[inputId] = now.add(const Duration(seconds: 10));
+    }
+    _schedulePoll(Duration.zero);
+  }
+
+  void _noteTerminalAck(Map<String, dynamic> envelope) {
+    if (envelope['type'] != 'terminal.input.ack') return;
+    final payload = envelope['payload'];
+    if (payload is! Map) return;
+    final removed = _inputAckDeadlines.remove(payload['inputId']?.toString());
+    if (removed != null) {
+      _inputBusyUntil = _now().add(const Duration(seconds: 1));
+    }
+  }
+
+  bool get _hasActiveInput {
+    final now = _now();
+    _inputAckDeadlines.removeWhere((_, deadline) => !deadline.isAfter(now));
+    return _inputAckDeadlines.isNotEmpty ||
+        (_inputBusyUntil?.isAfter(now) ?? false);
+  }
+
   void _schedulePoll(Duration delay, {Completer<void>? connected}) {
     _pollTimer?.cancel();
+    final connectWaiter = connected ?? _connecting;
     _pollTimer = _pollTimerFactory(delay, () {
       _pollTimer = null;
-      _drainEvents(connected: connected);
+      _drainEvents(connected: connectWaiter);
     });
   }
 
@@ -269,9 +319,12 @@ class RustControllerTransport implements RemoteTransport {
         final data = '${event['data'] ?? ''}';
         final decoded = jsonDecode(data);
         if (decoded is Map<String, dynamic>) {
+          _noteTerminalAck(decoded);
           _onEnvelope?.call(decoded, data);
         } else if (decoded is Map) {
-          _onEnvelope?.call(Map<String, dynamic>.from(decoded), data);
+          final envelope = Map<String, dynamic>.from(decoded);
+          _noteTerminalAck(envelope);
+          _onEnvelope?.call(envelope, data);
         }
       } else if (kind == 'log') {
         CoduxLog.info('[codux-flutter-transport] ${event['message'] ?? ''}');
@@ -280,7 +333,7 @@ class RustControllerTransport implements RemoteTransport {
     if (!identical(_handle, handle) || handle.isClosed) return;
     final delay = drained == _remoteTransportPollBatchSize
         ? Duration.zero
-        : drained > 0
+        : drained > 0 || _hasActiveInput
         ? _remoteTransportBusyPollDelay
         : _remoteTransportIdlePollDelay;
     _schedulePoll(delay, connected: connected);

@@ -50,6 +50,7 @@ import '../../services/storage_service.dart';
 import '../../services/terminal_buffer_retry.dart';
 import '../../services/terminal_input_batcher.dart';
 import '../../services/terminal_input_reliable_sender.dart';
+import '../../services/terminal_editing_controller.dart';
 import '../../services/terminal_upload_metadata.dart';
 import '../../services/update_check_service.dart';
 import '../../services/terminal_viewport_controller.dart';
@@ -237,7 +238,10 @@ class _CoduxHomePageState extends State<CoduxHomePage>
               onCloseVoice: () =>
                   c._applyState(() => c._showVoiceOverlay = false),
               onSendVoiceText: (text) {
-                c._insertTerminalText(text);
+                if (c._voiceInputEpoch == c._terminalEditing.connectionEpoch) {
+                  c._insertTerminalText(text);
+                }
+                c._voiceInputEpoch = null;
                 c._applyState(() => c._showVoiceOverlay = false);
               },
               onCloseFileEditor: () =>
@@ -368,6 +372,7 @@ class _CoduxHomePageState extends State<CoduxHomePage>
               c._editingFilePath == null)
         : (c._workspaceMode == WorkspaceMode.terminal);
     final terminalBody = RemoteTerminalPane(
+      inputController: c._terminalEditing,
       connected: c._isConnected,
       showTerminal: c._hasShownTerminal,
       hasDevice: c._activeDevice != null,

@@ -44,6 +44,11 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   late final TerminalBufferRetryCoordinator _terminalBufferRetry;
   late final TerminalInputBatcher _terminalInputBatcher;
   late final TerminalInputReliableSender _terminalInputSender;
+  late final TerminalEditingController _terminalEditing;
+  bool _inputInitialized = false;
+  Object? _inputBinding;
+  Object? _inputHostBinding;
+  bool _inputAckWarningShown = false;
   late final RemoteNetworkRouteRefreshController _networkRouteRefreshController;
   late final LocalVoiceRecognitionService _voiceService;
   RemoteTransport? _activeTransport;
@@ -133,6 +138,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   bool _showProjectForm = false;
   bool _showFilePicker = false;
   bool _showVoiceOverlay = false;
+  int? _voiceInputEpoch;
   bool _filePickerLoading = false;
   ProjectFormMode _projectFormMode = ProjectFormMode.add;
   String _filePickerMode = 'projectForm';
@@ -148,12 +154,15 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   RemoteGitDiff? _gitDiff;
   String? _gitDiffPath;
   RemoteGitReviewSummary? _gitReview;
+
   /// Transport error text for an in-flight review diff — the host answers a
   /// failed git.read with REMOTE_ERROR (not git.read), so without this the
   /// phone diff pane would spin forever on failure.
   String? _gitDiffError;
   List<AISessionRecord> _aiSessions = const [];
   String? _aiSessionsProjectId;
+  ({String requestId, int inputEpoch, String projectId, String? sessionId})?
+  _pendingSessionRestore;
   List<RemoteSshProfile> _sshProfiles = const [];
   String? _toastMessage;
   String? _blockingLoadingMessage;
@@ -400,6 +409,48 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       send: _sendTerminalEnvelope,
       activeSessionId: () => _sessionId,
     );
+    _terminalEditing = TerminalEditingController(
+      onText: _queueTerminalTyping,
+      onKeyBytes: _sendTerminalKey,
+      onInsertBytes: (data) {
+        _terminalInputBatcher.flush();
+        _sendInputNow(data, source: 'insert');
+      },
+      inputMode: () => _sessionId == null
+          ? const codux_terminal_core.TerminalScreenInputMode()
+          : _terminalOutputController.screenSnapshot(_sessionId!)?.inputMode ??
+                const codux_terminal_core.TerminalScreenInputMode(),
+    );
+    _inputInitialized = true;
+    _syncInputBinding();
+    _terminalInputSender.onResult = (result) {
+      if (result.status == TerminalInputDeliveryStatus.succeeded ||
+          !mounted ||
+          _disposing ||
+          result.sessionId != _sessionId) {
+        return;
+      }
+      // A legacy host may never send ACKs. Report uncertainty once, without
+      // interrupting a newer composing edit or replaying any expired input.
+      if (result.reason == 'ack-timeout') {
+        if (!_inputAckWarningShown) {
+          _inputAckWarningShown = true;
+          _showToast(_t('terminal.inputUncertain'));
+        }
+        return;
+      }
+      _terminalInputBatcher.reset();
+      _terminalInputSender.clear(sessionId: result.sessionId, unblock: false);
+      _terminalEditing.reset();
+      _showToast(
+        _t(
+          result.status == TerminalInputDeliveryStatus.rejected
+              ? 'terminal.inputRejected'
+              : 'terminal.inputUncertain',
+        ),
+      );
+      _resubscribeVisibleTerminal(reason: 'input-${result.status.name}');
+    };
     _terminalBindingCoordinator = RemoteTerminalBindingCoordinator(
       outputController: _terminalOutputController,
       send: _send,
@@ -467,6 +518,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     _terminalBufferRetry.dispose();
     _terminalInputBatcher.dispose();
     _terminalInputSender.dispose();
+    _terminalEditing.dispose();
     _terminalUploadCompletion?.completeError(
       StateError('Terminal upload cancelled'),
     );
@@ -487,6 +539,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     CoduxLog.info('[codux-flutter-lifecycle] state=${state.name}');
     if (state == AppLifecycleState.resumed) {
       _appInForeground = true;
+      _syncInputBinding();
       _appSuspended = false;
       final device = _activeDevice;
       if (device == null) return;
@@ -512,6 +565,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     }
     if (state == AppLifecycleState.detached) {
       _appInForeground = false;
+      _syncInputBinding();
       _appSuspended = true;
       _disconnectTransport(
         status: _t('app.disconnected'),
@@ -529,6 +583,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       _appInForeground = false;
+      _syncInputBinding();
       _appSuspended = true;
       _pauseLatencyProbe();
       // Hand the viewport straight back: the host flips the owner to the
@@ -548,7 +603,45 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
 
   void _applyState(VoidCallback fn) {
     fn();
+    _syncInputBinding();
     notifyListeners();
+  }
+
+  void _syncInputBinding() {
+    if (!_inputInitialized || _disposing) return;
+    final hostBinding = (
+      _activeDevice?.deviceId,
+      _transportGeneration,
+      _remoteRuntimeEpoch,
+    );
+    if (_inputHostBinding != hostBinding) {
+      _inputHostBinding = hostBinding;
+      _terminalInputSender.setIdempotentSupport(false);
+    }
+    final binding = (
+      _activeDevice?.deviceId,
+      _transportGeneration,
+      _remoteRuntimeEpoch,
+      _sessionId,
+      _remoteHandedAway,
+      _transportConnected,
+      _remoteProtocolReady,
+      _appInForeground,
+    );
+    if (_inputBinding == binding) return;
+    _inputBinding = binding;
+    _pendingSessionRestore = null;
+    _inputAckWarningShown = false;
+    _terminalInputBatcher.reset();
+    _terminalInputSender.clear();
+    _terminalEditing.bind(
+      binding,
+      enabled:
+          _transportConnected &&
+          _remoteProtocolReady &&
+          !_remoteHandedAway &&
+          _appInForeground,
+    );
   }
 
   HomeTerminalActions get _terminalActions {
@@ -627,6 +720,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
         _remoteHandedAway = false;
         _lastViewportClaimAt = null;
         _lastViewportClaimSession = null;
+        _syncInputBinding();
       },
     );
   }

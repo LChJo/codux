@@ -311,13 +311,43 @@ impl RemoteHostRuntime {
     }
 
     pub(super) fn handle_terminal_input(self: &Arc<Self>, envelope: &RemoteEnvelope) {
+        let input_id = envelope.payload.get("inputId").and_then(Value::as_str);
+        let process = || self.write_terminal_input(envelope);
+        let mut result = match input_id {
+            Some(id) if !id.is_empty() && id.len() <= 256 => {
+                let Some(device) = envelope.device_id.as_deref().filter(|id| !id.is_empty()) else {
+                    self.send_error(envelope, "Authenticated input device is required.");
+                    return;
+                };
+                self.terminal_inputs.execute(
+                    device,
+                    envelope.session_id.as_deref().unwrap_or_default(),
+                    id,
+                    process,
+                )
+            }
+            Some(_) => terminal_input::rejected("Input id must contain 1 to 256 bytes."),
+            None => process(), // Legacy send-once clients remain supported.
+        };
+        if let Some(input_id) = input_id {
+            result["inputId"] = json!(input_id);
+            self.send_terminal_data(
+                REMOTE_TERMINAL_INPUT_ACK,
+                envelope.device_id.as_deref(),
+                envelope.session_id.as_deref(),
+                result,
+            );
+        } else if let Some(error) = result.get("error").and_then(Value::as_str) {
+            self.send_error(envelope, error);
+        }
+    }
+
+    fn write_terminal_input(self: &Arc<Self>, envelope: &RemoteEnvelope) -> Value {
         let Some(session_id) = envelope.session_id.as_deref() else {
-            self.send_error(envelope, "Terminal session is required.");
-            return;
+            return terminal_input::rejected("Terminal session is required.");
         };
         let Some(data) = envelope.payload.get("data").and_then(Value::as_str) else {
-            self.send_error(envelope, "Terminal input is required.");
-            return;
+            return terminal_input::rejected("Terminal input is required.");
         };
         self.register_terminal_viewer(session_id, envelope.device_id.as_deref());
         let owner = self.remote_viewport_owner(envelope);
@@ -332,32 +362,18 @@ impl RemoteHostRuntime {
             Err(_) => true,
         };
         if !is_owner {
-            if let Some(input_id) = envelope.payload.get("inputId").and_then(Value::as_str) {
-                self.send_terminal_data(
-                    REMOTE_TERMINAL_INPUT_ACK,
-                    envelope.device_id.as_deref(),
-                    Some(session_id),
-                    json!({ "inputId": input_id, "ok": false, "accepted": false }),
-                );
-            }
-            return;
+            return terminal_input::rejected("Terminal control belongs to another viewer.");
         }
         self.terminals.touch_viewport_lease(session_id, &owner);
-        if let Some(input_id) = envelope.payload.get("inputId").and_then(Value::as_str) {
-            self.send_terminal_data(
-                REMOTE_TERMINAL_INPUT_ACK,
-                envelope.device_id.as_deref(),
-                Some(session_id),
-                json!({ "inputId": input_id, "ok": true, "accepted": true }),
-            );
-        }
         if let Err(error) = self.ensure_remote_terminal_started(session_id, envelope) {
-            self.send_error(envelope, &error);
-            return;
+            return terminal_input::rejected(&error);
         }
         if let Err(error) = self.terminals.write(session_id, data.as_bytes()) {
-            self.send_error(envelope, &error.to_string());
+            // write_all or flush may fail after a prefix reached the PTY. Keep
+            // this result in the ledger so a retry cannot replay that prefix.
+            return terminal_input::uncertain(&error.to_string());
         }
+        json!({"ok": true, "accepted": true, "status": "written"})
     }
 
     pub(super) fn handle_terminal_resize(self: &Arc<Self>, envelope: &RemoteEnvelope) {

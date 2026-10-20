@@ -902,18 +902,24 @@ impl RemoteTerminalOutputRouter {
     ) -> Vec<String> {
         let buffer_len = buffer_length.and_then(|value| usize::try_from(value).ok());
         let awaiting = self.session(session_id).is_restoring_baseline();
-        // Fold a screen keyframe in as the baseline when either: we are still
-        // awaiting a restore (the keyframe completes it), OR the frame carries
-        // no incremental bytes (`data` empty) -- a pure keyframe. The latter is
-        // the host's authoritative current screen and the ONLY message that can
-        // reconcile a grid that drifted from a torn snapshot (e.g. a viewport
-        // resize captured mid-repaint): plain live frames merely append deltas
-        // and never re-sync the grid, so without this a once-torn screen never
-        // self-heals even though the host keeps sending a fresh keyframe. Empty
-        // `data` is unique to the viewport keyframe -- flushed live batches
-        // always carry bytes -- so this does not disturb normal streaming, and
-        // re-processing the kept scrollback below preserves history.
-        if screen_data.is_some() && (awaiting || data.is_empty()) {
+        if let Some(screen_data) = screen_data
+            && !awaiting
+            && data.is_empty()
+        {
+            self.session(session_id).reconcile_live_keyframe(
+                screen_data,
+                screen_wrapped_rows,
+                buffer_len,
+                buffer_end.and_then(|value| usize::try_from(value).ok()),
+                output_seq,
+            );
+            self.bump_render(session_id);
+            return Vec::new();
+        }
+        // While awaiting a baseline, a keyframe can complete the restore.
+        // An already initialized session instead updates only its visible
+        // grid above, preserving history independently of the raw cache cap.
+        if screen_data.is_some() && awaiting {
             let existing = self
                 .content(session_id)
                 .map(str::to_string)
@@ -1327,6 +1333,168 @@ mod tests {
         assert_eq!(kinds(&effects), ["loading", "sessionUpdated", "ack"]);
         assert_eq!(router.content("session-1"), Some("raw-history"));
         assert_eq!(router.content("session-1"), Some("raw-history"));
+    }
+
+    #[test]
+    fn live_keyframe_preserves_parsed_history_after_raw_cache_trim() {
+        let mut router = RemoteTerminalOutputRouter::new(65536, 512);
+        router.bind_session("session-1", false);
+        router.resize_screen("session-1", 40, 8);
+        let history = (0..120)
+            .map(|index| format!("retained {index:03}\r\n"))
+            .collect::<String>();
+        router.accept(
+            &json!({
+                "type": "terminal.output", "sessionId": "session-1",
+                "payload": {"data": history, "outputSeq": 1},
+            }),
+            Some("session-1"),
+        );
+        assert!(
+            !router
+                .content("session-1")
+                .unwrap()
+                .contains("retained 000")
+        );
+        let before: Value =
+            serde_json::from_str(&router.screen_snapshot_json("session-1").unwrap()).unwrap();
+        assert!(before["totalLines"].as_u64().unwrap() > 100);
+        router.scroll_screen_pixels("session-1", 80.0, 1.0);
+        let scrolled: Value =
+            serde_json::from_str(&router.screen_snapshot_json("session-1").unwrap()).unwrap();
+
+        for output_seq in 2..=4 {
+            router.accept(
+                &json!({
+                    "type": "terminal.output", "sessionId": "session-1",
+                    "payload": {
+                        "data": "", "screenData": "\x1b[2J\x1b[Hfresh-prompt",
+                        "screenWrappedRows": [true, true, true, true, true, true, true, true],
+                        "outputSeq": output_seq,
+                    },
+                }),
+                Some("session-1"),
+            );
+        }
+        let after: Value =
+            serde_json::from_str(&router.screen_snapshot_json("session-1").unwrap()).unwrap();
+        assert_eq!(after["totalLines"], before["totalLines"]);
+        assert_eq!(after["displayOffset"], scrolled["displayOffset"]);
+        assert_eq!(
+            after["data"], scrolled["data"],
+            "reading history stays stable"
+        );
+        assert_eq!(after["wrappedRows"], scrolled["wrappedRows"]);
+        router.scroll_screen_pixels("session-1", -1000.0, 1.0);
+        assert!(
+            router
+                .screen_snapshot_json("session-1")
+                .unwrap()
+                .contains("fresh-prompt")
+        );
+    }
+
+    #[test]
+    fn live_keyframe_after_repaints_keeps_more_than_one_screen() {
+        let mut router = RemoteTerminalOutputRouter::new(200_000, 262_144);
+        router.bind_session("session-1", false);
+        router.resize_screen("session-1", 40, 8);
+        let history = (0..120)
+            .map(|index| format!("retained {index:03}\r\n"))
+            .collect::<String>();
+        let repaint = format!("\x1b[H{}", vec!["repainted row"; 8].join("\r\n"));
+        router.accept(
+            &json!({
+                "type": "terminal.output", "sessionId": "session-1",
+                "payload": {"data": history, "outputSeq": 1},
+            }),
+            Some("session-1"),
+        );
+        for output_seq in 2..=101 {
+            router.accept(
+                &json!({
+                    "type": "terminal.output", "sessionId": "session-1",
+                    "payload": {"data": repaint, "outputSeq": output_seq},
+                }),
+                Some("session-1"),
+            );
+        }
+        assert!(
+            !router
+                .content("session-1")
+                .unwrap()
+                .contains("retained 000")
+        );
+        let before: Value =
+            serde_json::from_str(&router.screen_snapshot_json("session-1").unwrap()).unwrap();
+        assert!(before["totalLines"].as_u64().unwrap() > 100);
+        router.accept(
+            &json!({
+                "type": "terminal.output", "sessionId": "session-1",
+                "payload": {"data": "", "screenData": "\x1b[2J\x1b[Hfresh-prompt", "outputSeq": 102},
+            }),
+            Some("session-1"),
+        );
+        let after: Value =
+            serde_json::from_str(&router.screen_snapshot_json("session-1").unwrap()).unwrap();
+        assert_eq!(after["totalLines"], before["totalLines"]);
+        router.scroll_screen_pixels("session-1", 1000.0, 1.0);
+        assert!(
+            router
+                .screen_snapshot_json("session-1")
+                .unwrap()
+                .contains("retained 000")
+        );
+    }
+
+    #[test]
+    fn live_keyframes_keep_primary_history_across_alternate_screen_roundtrip() {
+        let mut router = RemoteTerminalOutputRouter::new(65536, 512);
+        router.bind_session("session-1", false);
+        router.resize_screen("session-1", 40, 8);
+        let history = (0..120)
+            .map(|index| format!("retained {index:03}\r\n"))
+            .collect::<String>();
+        let buffer_end = history.chars().count();
+        router.accept(
+            &json!({
+                "type": "terminal.output", "sessionId": "session-1",
+                "payload": {"data": history, "bufferEnd": buffer_end, "outputSeq": 1},
+            }),
+            Some("session-1"),
+        );
+        for (output_seq, screen_data) in [
+            (2, "\x1b[?1049h\x1b[H\x1b[2Jalternate"),
+            (3, "\x1b[?1049l\x1b[H\x1b[2Jprimary fresh"),
+        ] {
+            router.accept(
+                &json!({
+                    "type": "terminal.output", "sessionId": "session-1",
+                    "payload": {"data": "", "screenData": screen_data,
+                        "bufferEnd": buffer_end, "outputSeq": output_seq},
+                }),
+                Some("session-1"),
+            );
+            let snapshot: Value =
+                serde_json::from_str(&router.screen_snapshot_json("session-1").unwrap()).unwrap();
+            assert_eq!(snapshot["inputMode"]["alternateScreen"], output_seq == 2);
+            assert_eq!(
+                snapshot["totalLines"],
+                if output_seq == 2 { 8 } else { 121 }
+            );
+        }
+        router.scroll_screen_pixels("session-1", 1000.0, 1.0);
+        assert!(
+            router
+                .screen_snapshot_json("session-1")
+                .unwrap()
+                .contains("retained 000")
+        );
+        assert_eq!(
+            router.session_ref("session-1").unwrap().buffer_end(),
+            Some(buffer_end)
+        );
+        assert_eq!(router.output_sequence("session-1"), 3);
     }
 
     #[test]

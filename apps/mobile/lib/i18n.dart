@@ -362,6 +362,8 @@ const Map<String, String> _zhCN = {
   'connection.relay': '中继',
   'terminal.creating': '正在创建终端，请稍后再输入',
   'terminal.createOrSelectFirst': '请先创建或选择终端',
+  'terminal.inputRejected': '输入未被接受，请确认终端控制权后重试',
+  'terminal.inputUncertain': '输入结果未确认，已停止重试，请检查终端后重新连接',
   'terminal.handoff.takenOver': '终端已在桌面端接管',
   'terminal.handoff.takeBack': '接力到此设备',
   'terminal.loadingHistory': '正在加载终端历史...',
@@ -690,6 +692,8 @@ const Map<String, String> _zhTW = {
   'connection.relay': '中繼',
   'terminal.creating': '正在建立終端機，請稍後再輸入',
   'terminal.createOrSelectFirst': '請先建立或選擇終端機',
+  'terminal.inputRejected': '輸入未被接受，請確認終端機控制權後重試',
+  'terminal.inputUncertain': '輸入結果未確認，已停止重試，請檢查終端機後重新連線',
   'terminal.handoff.takenOver': '終端機已在桌面端接管',
   'terminal.handoff.takeBack': '接力到此裝置',
   'terminal.loadingHistory': '正在載入終端機記錄...',
@@ -1000,6 +1004,10 @@ const Map<String, String> _en = {
   'connection.relay': 'Relay',
   'terminal.creating': 'Creating terminal, please wait before typing',
   'terminal.createOrSelectFirst': 'Create or select a terminal first',
+  'terminal.inputRejected':
+      'Input was rejected. Check terminal control before retrying.',
+  'terminal.inputUncertain':
+      'Input delivery is unconfirmed. Retrying stopped; check the terminal and reconnect.',
   'terminal.handoff.takenOver': 'In use on desktop',
   'terminal.handoff.takeBack': 'Take over here',
   'terminal.loadingHistory': 'Loading terminal history...',

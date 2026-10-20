@@ -1,11 +1,13 @@
 import 'dart:math' as math;
 
+import 'package:codux_protocol_ffi/codux_protocol_ffi.dart';
 import 'package:flutter/material.dart';
 
 import '../../i18n.dart';
 import '../../models/workspace_mode.dart';
 import '../../services/remote_terminal_output_controller.dart';
 import '../../services/terminal_repaint_signal.dart';
+import '../../services/terminal_editing_controller.dart';
 import '../../theme/app_theme.dart';
 import 'connect_hint.dart';
 import 'self_drawn_terminal_view.dart';
@@ -47,6 +49,7 @@ class RemoteTerminalPane extends StatefulWidget {
     required this.onVoiceInput,
     required this.handedAway,
     required this.onTakeOver,
+    this.inputController,
   });
 
   final bool connected;
@@ -84,6 +87,7 @@ class RemoteTerminalPane extends StatefulWidget {
   // placeholder instead of the live terminal; onTakeOver reclaims it to here.
   final bool handedAway;
   final VoidCallback onTakeOver;
+  final TerminalEditingController? inputController;
 
   @override
   State<RemoteTerminalPane> createState() => _RemoteTerminalPaneState();
@@ -91,10 +95,46 @@ class RemoteTerminalPane extends StatefulWidget {
 
 class _RemoteTerminalPaneState extends State<RemoteTerminalPane> {
   TerminalCursorMetrics? _cursorMetrics;
+  TerminalEditingController? _ownedEditing;
+
+  TerminalEditingController get _editing =>
+      widget.inputController ??
+      (_ownedEditing ??= TerminalEditingController(
+        onText: (text) => widget.onInput(text),
+        onKeyBytes: (bytes) => widget.onSendKey(bytes),
+        inputMode: () => widget.sessionId == null
+            ? const TerminalScreenInputMode()
+            : widget.outputController
+                      .screenSnapshot(widget.sessionId!)
+                      ?.inputMode ??
+                  const TerminalScreenInputMode(),
+      ));
+
+  @override
+  void initState() {
+    super.initState();
+    _bindEditing();
+  }
+
+  void _bindEditing() {
+    if (widget.inputController != null) return;
+    _editing.bind(
+      (widget.sessionId, widget.connected, widget.handedAway),
+      enabled:
+          widget.connected && widget.sessionId != null && !widget.handedAway,
+    );
+  }
+
+  @override
+  void dispose() {
+    _ownedEditing?.dispose();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(covariant RemoteTerminalPane oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _bindEditing();
     if (widget.sessionId != oldWidget.sessionId) {
       _cursorMetrics = null;
     }
@@ -223,6 +263,7 @@ class _RemoteTerminalPaneState extends State<RemoteTerminalPane> {
                               // only this subtree, not the whole page (toolbar,
                               // overlays, keyboard inset / layout recompute).
                               SelfDrawnTerminalView(
+                                inputController: _editing,
                                 sessionId: widget.sessionId,
                                 controller: widget.outputController,
                                 repaintSignal: widget.repaintSignal,
@@ -277,8 +318,7 @@ class _RemoteTerminalPaneState extends State<RemoteTerminalPane> {
                     right: 0,
                     bottom: toolbarBottom,
                     child: Toolbar(
-                      onSendKey: widget.onSendKey,
-                      applicationCursor: false,
+                      onKeyIntent: _editing.sendKey,
                       keyboardVisible: widget.keyboardVisible,
                       bottomInset: 0,
                       onToggleKeyboard: widget.onToggleKeyboard,

@@ -209,6 +209,18 @@ impl HeadlessTerminalSnapshotRequest {
     }
 }
 
+pub struct HeadlessTerminalBaselineRequest {
+    rx: mpsc::Receiver<(Option<String>, TerminalScreenSnapshot)>,
+}
+
+impl HeadlessTerminalBaselineRequest {
+    /// None preserves raw replay for alternate screens, whose primary grid is
+    /// intentionally not exposed by the engine.
+    pub fn snapshot(self) -> (Option<String>, TerminalScreenSnapshot) {
+        self.rx.recv().unwrap_or_default()
+    }
+}
+
 impl HeadlessTerminalScreen {
     pub fn new(cols: usize, rows: usize, scrollback: usize) -> Self {
         Self::new_with_responder(cols, rows, scrollback, None)
@@ -404,6 +416,25 @@ impl HeadlessTerminalScreen {
             .snapshot_request(self.pending_scroll_pixels, include_data)
     }
 
+    /// Atomically export compact parsed history and the current visible screen.
+    /// Raw repaint traffic never consumes this history budget. The host's
+    /// cursor, display offset and terminal modes are unchanged.
+    pub fn baseline_snapshot_request(
+        &self,
+        max_chars: usize,
+        max_lines: usize,
+        viewport_max_lines: Option<usize>,
+    ) -> HeadlessTerminalBaselineRequest {
+        let (tx, rx) = mpsc::channel();
+        self.engine.send(TerminalScreenCommand::BaselineSnapshot {
+            max_chars,
+            max_lines,
+            viewport_max_lines,
+            reply: tx,
+        });
+        HeadlessTerminalBaselineRequest { rx }
+    }
+
     /// Build a read-only viewport snapshot for a remote observer. The
     /// requested offset and reported total are clamped to the trailing
     /// `max_lines` window so mobile scrollback cannot expose an unbounded
@@ -580,6 +611,12 @@ enum TerminalScreenCommand {
         scroll_pixel_offset: f64,
         include_data: bool,
         reply: mpsc::Sender<TerminalScreenSnapshot>,
+    },
+    BaselineSnapshot {
+        max_chars: usize,
+        max_lines: usize,
+        viewport_max_lines: Option<usize>,
+        reply: mpsc::Sender<(Option<String>, TerminalScreenSnapshot)>,
     },
     // Atomic peek at another history offset: scrolls, snapshots, restores.
     // Atomicity inside one command keeps concurrent snapshot consumers from
@@ -1111,6 +1148,25 @@ impl TerminalScreenWorker {
                     self.scroll_to_offset(saved);
                     let _ = reply.send(snapshot);
                 }
+                TerminalScreenCommand::BaselineSnapshot {
+                    max_chars,
+                    max_lines,
+                    viewport_max_lines,
+                    reply,
+                } => {
+                    let saved = self.display_offset();
+                    let history = (!self.term.mode().contains(TermMode::ALT_SCREEN))
+                        .then(|| self.parsed_history_data(max_chars, max_lines));
+                    let snapshot = match viewport_max_lines {
+                        Some(max_lines) => self.remote_viewport_snapshot(0, 0, max_lines),
+                        None => {
+                            self.scroll_to_offset(0);
+                            self.snapshot(0.0, true)
+                        }
+                    };
+                    self.scroll_to_offset(saved);
+                    let _ = reply.send((history, snapshot));
+                }
                 TerminalScreenCommand::RemoteViewportSnapshot {
                     display_offset,
                     overscan_rows,
@@ -1300,6 +1356,43 @@ impl TerminalScreenWorker {
 
     fn total_lines(&self) -> usize {
         self.term.grid().total_lines().max(self.rows)
+    }
+
+    fn parsed_history_data(&self, max_chars: usize, max_lines: usize) -> String {
+        const PREFIX: &str = "\x1b[?1049l\x1b[0m\x1b[H";
+        if max_chars < PREFIX.len() || max_lines == 0 {
+            return String::new();
+        }
+        let grid = self.term.grid();
+        let first = grid
+            .topmost_line()
+            .0
+            .max(self.rows as i32 - max_lines as i32);
+        let mut retained = Vec::new();
+        let mut chars = PREFIX.len();
+        // Keep whole encoded rows, each with independent style/link state, so
+        // the budget never cuts a UTF-8 character or an ANSI/OSC sequence.
+        for row in (first..self.rows as i32).rev() {
+            let line = Line(row);
+            let cells = &grid[line];
+            let wrapped = cells[Column(self.cols - 1)].flags.contains(Flags::WRAPLINE);
+            let mut encoded = history_row_data(self.cols, |col| &cells[Column(col)], wrapped);
+            if row + 1 < self.rows as i32 && !wrapped {
+                encoded.push_str("\r\n");
+            }
+            let len = encoded.chars().count();
+            if chars.saturating_add(len) > max_chars {
+                break;
+            }
+            chars += len;
+            retained.push(encoded);
+        }
+        let mut data = String::with_capacity(chars);
+        data.push_str(PREFIX);
+        for row in retained.iter().rev() {
+            data.push_str(row);
+        }
+        data
     }
 
     // Word/line selection via alacritty's own semantic + line search (the
@@ -1781,6 +1874,76 @@ struct SnapshotScreenCell {
     text: String,
     width: usize,
     style: SnapshotCellStyle,
+}
+
+impl From<&Cell> for SnapshotCellStyle {
+    fn from(cell: &Cell) -> Self {
+        Self {
+            fg: terminal_screen_color(cell.fg),
+            bg: terminal_screen_color(cell.bg),
+            bold: cell.flags.contains(Flags::BOLD),
+            dim: cell.flags.contains(Flags::DIM),
+            italic: cell.flags.contains(Flags::ITALIC),
+            underline: terminal_screen_underline(cell.flags),
+            underline_color: cell
+                .underline_color()
+                .map(terminal_screen_color)
+                .filter(|color| *color != TerminalScreenColor::Default),
+            link: cell.hyperlink().map(|link| link.uri().to_string()),
+            inverse: cell.flags.contains(Flags::INVERSE),
+            hidden: cell.flags.contains(Flags::HIDDEN),
+            strikeout: cell.flags.contains(Flags::STRIKEOUT),
+        }
+    }
+}
+
+fn history_row_data<'a>(cols: usize, cell_at: impl Fn(usize) -> &'a Cell, wrapped: bool) -> String {
+    let last = if wrapped {
+        Some(cols - 1)
+    } else {
+        (0..cols).rev().find(|&col| {
+            let cell = cell_at(col);
+            (!cell.c.is_whitespace() && cell.c != '\0')
+                || SnapshotCellStyle::from(cell) != SnapshotCellStyle::default()
+                || cell.zerowidth().is_some_and(|chars| !chars.is_empty())
+        })
+    };
+    let mut output = String::new();
+    let mut style = SnapshotCellStyle::default();
+    for col in 0..last.map_or(0, |last| last + 1) {
+        let cell = cell_at(col);
+        if cell
+            .flags
+            .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
+        {
+            continue;
+        }
+        let next = SnapshotCellStyle::from(cell);
+        if next != style {
+            if next.link != style.link {
+                output.push_str(&snapshot_link_osc(next.link.as_deref()));
+            }
+            output.push_str(&snapshot_style_sgr(next.clone()));
+            style = next;
+        }
+        if cell.c == '\0' || cell.c.is_control() {
+            output.push(' ');
+        } else {
+            output.push(cell.c);
+        }
+        if let Some(zerowidth) = cell.zerowidth() {
+            for ch in zerowidth.iter().filter(|ch| !ch.is_control()) {
+                output.push(*ch);
+            }
+        }
+    }
+    if style.link.is_some() {
+        output.push_str(&snapshot_link_osc(None));
+    }
+    if style != SnapshotCellStyle::default() {
+        output.push_str("\x1b[0m");
+    }
+    output
 }
 
 fn terminal_snapshot_data(
@@ -2740,6 +2903,101 @@ mod tests {
 
         let snapshot = screen.remote_viewport_snapshot_request(0, 0, 0).snapshot();
         assert_eq!(snapshot.total_lines, 6);
+    }
+
+    #[test]
+    fn parsed_baseline_preserves_styles_wraps_and_host_viewport() {
+        let mut screen = HeadlessTerminalScreen::new(8, 4, 100);
+        screen.process(
+            "\x1b[31;1mstyled\x1b[0m\r\nabcdefghijklmnopQRST\r\n中文e\u{301}\r\n1234567中Z\r\n"
+                .as_bytes(),
+        );
+        for index in 0..12 {
+            screen.process(format!("line-{index}\r\n").as_bytes());
+        }
+        screen.scroll_to_offset(14);
+        let before = screen.snapshot();
+        let (history, current) = screen
+            .baseline_snapshot_request(8192, 2000, Some(4))
+            .snapshot();
+        let after = screen.snapshot();
+        assert_eq!(
+            before, after,
+            "export must not move the host's viewport or cursor"
+        );
+        let history = history.unwrap();
+        assert!(history.contains("styled"));
+        let mut replay = HeadlessTerminalScreen::new(8, 4, 100);
+        replay.process_replay(history.as_bytes());
+        replay.replace_visible_with_keyframe(current.data.as_bytes());
+        replay.restore_visible_wrapped_rows(&current.wrapped_rows);
+        replay.scroll_to_offset(before.display_offset);
+        let restored = replay.snapshot();
+        assert_eq!(restored.total_lines, before.total_lines);
+        assert_eq!(restored.cells, before.cells);
+        assert_eq!(restored.wrapped_rows, before.wrapped_rows);
+        for offset in 0..before.total_lines.saturating_sub(4) {
+            screen.scroll_to_offset(offset);
+            replay.scroll_to_offset(offset);
+            let original = screen.snapshot();
+            let restored = replay.snapshot();
+            assert_eq!(restored.cells, original.cells, "cells at offset {offset}");
+            assert_eq!(
+                restored.wrapped_rows, original.wrapped_rows,
+                "wraps at offset {offset}"
+            );
+        }
+    }
+
+    #[test]
+    fn parsed_baseline_budgets_keep_whole_ansi_rows_and_tail() {
+        let mut screen = HeadlessTerminalScreen::new(20, 4, 100);
+        for index in 0..50 {
+            screen.process(
+                format!(
+                    "\x1b]8;;https://example.com\x1b\\\x1b[31m中文-{index}\x1b]8;;\x1b\\\x1b[0m\r\n"
+                )
+                .as_bytes(),
+            );
+        }
+        for budget in [0, 3, 20, 96, 4096] {
+            let (data, _) = screen
+                .baseline_snapshot_request(budget, 12, None)
+                .snapshot();
+            let data = data.unwrap();
+            assert!(data.chars().count() <= budget);
+            let mut replay = HeadlessTerminalScreen::new(20, 4, 100);
+            replay.process_replay(data.as_bytes());
+            replay.process(b"SAFE_MARKER");
+            let snapshot = replay.snapshot();
+            assert!(
+                snapshot.data.contains("SAFE_MARKER"),
+                "export cannot leave a torn control sequence"
+            );
+            assert!(snapshot.total_lines <= 13);
+            if budget == 4096 {
+                assert!(data.contains("49"));
+                assert!(!data.contains("30"));
+            }
+        }
+    }
+
+    #[test]
+    fn parsed_baseline_does_not_swap_or_clear_the_alternate_screen() {
+        let mut screen = HeadlessTerminalScreen::new(20, 4, 100);
+        screen.process(b"primary\r\n\x1b[?1049h\x1b[HALT_UI");
+        let before = screen.snapshot();
+        let (data, current) = screen
+            .baseline_snapshot_request(2048, 2000, None)
+            .snapshot();
+        assert!(
+            data.is_none(),
+            "alternate screens keep their existing raw replay semantics"
+        );
+        assert!(current.input_mode.alternate_screen);
+        assert_eq!(before, screen.snapshot());
+        screen.process(b"\x1b[?1049l");
+        assert!(screen.snapshot().data.contains("primary"));
     }
 
     #[test]

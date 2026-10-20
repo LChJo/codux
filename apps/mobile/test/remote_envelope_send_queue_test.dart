@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:codux_flutter/models/remote_models.dart';
@@ -6,6 +7,63 @@ import 'package:codux_flutter/services/remote_transport.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('binding changes cancel queued input before native dispatch', () async {
+    final queue = RemoteEnvelopeSendQueue();
+    final barrier = Completer<bool>();
+    final transport = _FakeTransport(sendBarrier: barrier);
+    var binding = 'old';
+    final first = queue.send(
+      message: const RelayEnvelope(type: 'blocking'),
+      transport: transport,
+      connected: () => true,
+    );
+    final oldInput = queue.send(
+      message: const RelayEnvelope(type: 'terminal.input', sessionId: 'old'),
+      transport: transport,
+      connected: () => true,
+      terminalStream: true,
+      stillValid: () => binding == 'old',
+    );
+    await Future<void>.delayed(Duration.zero);
+    binding = 'new';
+    barrier.complete(true);
+    await Future.wait([first, oldInput]);
+    expect(transport.terminalSent, isEmpty);
+    await queue.send(
+      message: const RelayEnvelope(type: 'terminal.input', sessionId: 'new'),
+      transport: transport,
+      connected: () => true,
+      terminalStream: true,
+      stillValid: () => binding == 'new',
+    );
+    expect(transport.terminalSent.single['sessionId'], 'new');
+  });
+
+  test('reset cancels waiting envelopes from a previous connection', () async {
+    final queue = RemoteEnvelopeSendQueue();
+    final barrier = Completer<bool>();
+    final transport = _FakeTransport(sendBarrier: barrier);
+    final first = queue.send(
+      message: const RelayEnvelope(type: 'blocking'),
+      transport: transport,
+      connected: () => true,
+    );
+    final results = <RemoteEnvelopeSendResult>[];
+    final oldInput = queue.send(
+      message: const RelayEnvelope(type: 'terminal.input', sessionId: 'old'),
+      transport: transport,
+      connected: () => true,
+      terminalStream: true,
+      onResult: (_, result) => results.add(result),
+    );
+    await Future<void>.delayed(Duration.zero);
+    queue.reset();
+    barrier.complete(true);
+    await Future.wait([first, oldInput]);
+    expect(transport.terminalSent, isEmpty);
+    expect(results, [RemoteEnvelopeSendResult.droppedWhileDisconnected]);
+  });
+
   test('sends plain envelopes when no active device is available', () async {
     final queue = RemoteEnvelopeSendQueue();
     final transport = _FakeTransport();
@@ -169,10 +227,11 @@ Future<StoredDevice> _fakeDevice() async {
 }
 
 class _FakeTransport implements RemoteTransport {
-  _FakeTransport({this.sendResult = true, this.sendError});
+  _FakeTransport({this.sendResult = true, this.sendError, this.sendBarrier});
 
   final bool sendResult;
   final Object? sendError;
+  final Completer<bool>? sendBarrier;
   final sent = <Map<String, dynamic>>[];
   final terminalSent = <Map<String, dynamic>>[];
 
@@ -195,6 +254,7 @@ class _FakeTransport implements RemoteTransport {
   Future<bool> send(Map<String, dynamic> envelope) async {
     sent.add(envelope);
     if (sendError case final error?) throw error;
+    if (sendBarrier != null) return sendBarrier!.future;
     return sendResult;
   }
 

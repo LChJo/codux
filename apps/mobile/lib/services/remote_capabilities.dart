@@ -1,3 +1,32 @@
+/// Retries are safe only when the host advertises all delivery guarantees.
+class TerminalInputCapability {
+  const TerminalInputCapability({
+    this.idempotent = false,
+    this.ordered = false,
+    this.ackAfterWrite = false,
+  });
+
+  final bool idempotent;
+  final bool ordered;
+  final bool ackAfterWrite;
+  bool get supportsReliableRetry => idempotent && ordered && ackAfterWrite;
+
+  static const fallback = TerminalInputCapability();
+
+  factory TerminalInputCapability.fromHostInfo(Object? payload) {
+    if (payload is! Map) return fallback;
+    final capabilities = payload['capabilities'];
+    if (capabilities is! Map) return fallback;
+    final input = capabilities['terminalInput'];
+    if (input is! Map) return fallback;
+    return TerminalInputCapability(
+      idempotent: input['idempotent'] == true,
+      ordered: input['ordered'] == true,
+      ackAfterWrite: input['ackAfterWrite'] == true,
+    );
+  }
+}
+
 class TerminalBufferCapability {
   const TerminalBufferCapability({
     this.chunking = false,

@@ -27,7 +27,7 @@ fn remote_project_select_keeps_desktop_selected_project() {
 }
 
 #[test]
-fn secure_project_select_keeps_decrypted_device_id_for_scope_and_replies() {
+fn transport_identity_overrides_envelope_device_for_scope_and_replies() {
     let support_dir = temp_support_dir("codux-remote-secure-scope-select");
     write_paired_remote_settings(&support_dir);
     write_two_project_state(&support_dir);
@@ -36,41 +36,44 @@ fn secure_project_select_keeps_decrypted_device_id_for_scope_and_replies() {
     if let Ok(mut current) = runtime.transport.lock() {
         *current = Some(transport.clone());
     }
-    let encrypted = {
+    let message = {
         let mut send_seq = HashMap::new();
         runtime
             .service()
             .outgoing_transport_text(
                 "project.select",
-                Some("device-1"),
+                Some("spoofed-device"),
                 None,
                 None,
                 json!({ "projectId": "project-b" }),
                 &mut send_seq,
             )
-            .expect("secure envelope")
+            .expect("envelope")
             .into_bytes()
     };
 
-    Arc::clone(&runtime).handle_transport_message("relay-device".to_string(), encrypted);
+    Arc::clone(&runtime).handle_transport_message("device-1".to_string(), message);
 
     assert_eq!(
         runtime.remote_project_scope_id(Some("device-1")).as_deref(),
         Some("project-b")
     );
-    assert_eq!(runtime.remote_project_scope_id(Some("relay-device")), None);
+    assert_eq!(
+        runtime.remote_project_scope_id(Some("spoofed-device")),
+        None
+    );
     let replies = transport.take_messages();
     assert!(
         replies
             .iter()
             .any(|(device_id, _)| device_id.as_deref() == Some("device-1")),
-        "expected reply to decrypted device id"
+        "expected reply to authenticated transport device"
     );
     assert!(
         replies
             .iter()
-            .all(|(device_id, _)| device_id.as_deref() != Some("relay-device")),
-        "must not reply to transport device id"
+            .all(|(device_id, _)| device_id.as_deref() != Some("spoofed-device")),
+        "must not reply to envelope-provided device id"
     );
 
     fs::remove_dir_all(support_dir).ok();

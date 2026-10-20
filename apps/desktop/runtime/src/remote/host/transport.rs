@@ -1,7 +1,109 @@
 use super::terminal_dispatch::sanitized_remote_upload_name;
 use super::*;
 
+// Only terminal operations share a FIFO. Git, files and other synchronous
+// control handlers must not block terminal input or transport.ping.
+#[derive(Default)]
+pub(super) struct IncomingMessages {
+    state: Mutex<IncomingState>,
+}
+
+#[derive(Default)]
+struct IncomingState {
+    queues: HashMap<(u64, String, u64), VecDeque<RemoteEnvelope>>,
+    device_epochs: HashMap<String, u64>,
+}
+
+impl IncomingMessages {
+    fn epoch(&self, device: &str) -> u64 {
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .device_epochs
+            .get(device)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    fn current(&self, device: &str, epoch: u64) -> bool {
+        self.epoch(device) == epoch
+    }
+
+    fn push(&self, generation: u64, device: &str, epoch: u64, envelope: RemoteEnvelope) -> bool {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        if state.device_epochs.get(device).copied().unwrap_or_default() != epoch {
+            return false;
+        }
+        let key = (generation, device.to_owned(), epoch);
+        let start = !state.queues.contains_key(&key);
+        state.queues.entry(key).or_default().push_back(envelope);
+        start
+    }
+
+    fn pop(&self, generation: u64, device: &str, epoch: u64) -> Option<RemoteEnvelope> {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        let key = (generation, device.to_owned(), epoch);
+        let value = state.queues.get_mut(&key).and_then(VecDeque::pop_front);
+        if value.is_none() {
+            state.queues.remove(&key);
+        }
+        value
+    }
+
+    fn discard_device(&self, device: &str) {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        let epoch = state.device_epochs.entry(device.to_owned()).or_default();
+        *epoch = epoch.wrapping_add(1);
+        state
+            .queues
+            .retain(|(_, queued_device, _), _| queued_device != device);
+    }
+}
+
 impl RemoteHostRuntime {
+    pub(super) fn enqueue_transport_message(
+        self: &Arc<Self>,
+        generation: u64,
+        device: String,
+        data: Vec<u8>,
+    ) {
+        if generation != self.connection_generation.load(Ordering::SeqCst) {
+            return;
+        }
+        let epoch = self.incoming_messages.epoch(&device);
+        // Apply the receive guard before independent handlers can overtake one
+        // another. Terminal frames are then enqueued before any task is spawned.
+        let Some(envelope) = self.prepare_transport_message(&device, &data) else {
+            return;
+        };
+        let runtime = Arc::clone(self);
+        if !is_terminal_kind(&envelope.kind) {
+            crate::async_runtime::spawn_blocking(move || {
+                if generation == runtime.connection_generation.load(Ordering::SeqCst)
+                    && runtime.incoming_messages.current(&device, epoch)
+                {
+                    runtime.dispatch_transport_envelope(&device, envelope);
+                }
+            });
+            return;
+        }
+        if !self
+            .incoming_messages
+            .push(generation, &device, epoch, envelope)
+        {
+            return;
+        }
+        crate::async_runtime::spawn_blocking(move || {
+            while let Some(envelope) = runtime.incoming_messages.pop(generation, &device, epoch) {
+                if generation == runtime.connection_generation.load(Ordering::SeqCst)
+                    && runtime.incoming_messages.current(&device, epoch)
+                {
+                    runtime.dispatch_transport_envelope(&device, envelope);
+                }
+            }
+        });
+    }
+
     pub fn send_transport(
         &self,
         kind: &str,
@@ -168,6 +270,7 @@ impl RemoteHostRuntime {
             if state == "connected" {
                 self.update_device_online(Some(&device_id), true);
             } else if matches!(state.as_str(), "closed" | "failed" | "disconnected") {
+                self.incoming_messages.discard_device(&device_id);
                 self.update_device_online(Some(&device_id), false);
                 self.clear_remote_project_scope(Some(&device_id));
                 self.remove_terminal_viewer(Some(&device_id));
@@ -293,9 +396,7 @@ impl RemoteHostRuntime {
             &settings,
             Arc::new(move |device_id, data| {
                 if let Some(runtime) = weak_for_message.upgrade() {
-                    crate::async_runtime::spawn(async move {
-                        runtime.handle_transport_message(device_id, data);
-                    });
+                    runtime.enqueue_transport_message(generation, device_id, data);
                 }
             }),
             Arc::new(move |upload| {
@@ -349,7 +450,14 @@ impl RemoteHostRuntime {
     }
 
     pub(super) fn handle_transport_message(self: Arc<Self>, device_id: String, data: Vec<u8>) {
-        let Ok(mut raw) = serde_json::from_slice::<RemoteEnvelope>(&data) else {
+        let Some(envelope) = self.prepare_transport_message(&device_id, &data) else {
+            return;
+        };
+        self.dispatch_transport_envelope(&device_id, envelope);
+    }
+
+    fn prepare_transport_message(&self, device_id: &str, data: &[u8]) -> Option<RemoteEnvelope> {
+        let Ok(mut raw) = serde_json::from_slice::<RemoteEnvelope>(data) else {
             crate::runtime_trace::runtime_trace(
                 "remote",
                 &format!(
@@ -357,17 +465,12 @@ impl RemoteHostRuntime {
                     data.len()
                 ),
             );
-            return;
+            return None;
         };
-        if raw
-            .device_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .is_none()
-            && !device_id.trim().is_empty()
-        {
-            raw.device_id = Some(device_id.clone());
+        // The transport has authenticated this identity. Never let an envelope
+        // choose another device's input ledger, ownership lease, or reply route.
+        if !device_id.trim().is_empty() {
+            raw.device_id = Some(device_id.to_owned());
         }
         let envelope = {
             if let Some(seq) = raw.seq {
@@ -379,10 +482,10 @@ impl RemoteHostRuntime {
                             raw.kind
                         ),
                     );
-                    return;
+                    return None;
                 };
                 let guard = received
-                    .entry(device_id.clone())
+                    .entry(device_id.to_owned())
                     .or_insert_with(|| RemoteSequenceGuard::new(128));
                 if !guard.accept(&raw.kind, raw.session_id.as_deref(), Some(seq)) {
                     crate::runtime_trace::runtime_trace(
@@ -392,11 +495,15 @@ impl RemoteHostRuntime {
                             raw.kind
                         ),
                     );
-                    return;
+                    return None;
                 }
             }
             raw
         };
+        Some(envelope)
+    }
+
+    fn dispatch_transport_envelope(self: &Arc<Self>, device_id: &str, envelope: RemoteEnvelope) {
         crate::runtime_trace::runtime_trace(
             "remote",
             &format!(
@@ -461,5 +568,37 @@ impl RemoteHostRuntime {
         } else {
             Err("device is not authorized".to_string())
         }
+    }
+}
+
+#[cfg(test)]
+mod incoming_tests {
+    use super::*;
+
+    fn message(kind: &str) -> RemoteEnvelope {
+        serde_json::from_value(json!({"type": kind, "payload": {}})).unwrap()
+    }
+
+    #[test]
+    fn terminal_input_ingress_is_fifo_with_one_worker_per_device() {
+        let queues = IncomingMessages::default();
+        assert!(queues.push(1, "phone", 0, message("text")));
+        assert!(!queues.push(1, "phone", 0, message("left")));
+        assert!(!queues.push(1, "phone", 0, message("text-after-left")));
+        assert!(queues.push(1, "other", 0, message("independent")));
+        for kind in ["text", "left", "text-after-left"] {
+            assert_eq!(queues.pop(1, "phone", 0).unwrap().kind, kind);
+        }
+        assert!(queues.pop(1, "phone", 0).is_none());
+        assert!(queues.push(1, "phone", 0, message("old-queued")));
+        queues.discard_device("phone");
+        assert!(!queues.current("phone", 0));
+        assert!(queues.pop(1, "phone", 0).is_none());
+        assert!(!queues.push(1, "phone", 0, message("old-worker")));
+        assert!(queues.push(1, "phone", 1, message("new-worker")));
+        // Completion of the old worker cannot remove or drain the new queue.
+        assert!(queues.pop(1, "phone", 0).is_none());
+        assert_eq!(queues.pop(1, "phone", 1).unwrap().kind, "new-worker");
+        assert_eq!(queues.pop(1, "other", 0).unwrap().kind, "independent");
     }
 }

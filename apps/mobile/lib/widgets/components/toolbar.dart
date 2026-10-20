@@ -1,32 +1,30 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:codux_protocol_ffi/codux_protocol_ffi.dart';
 
 import '../../i18n.dart';
 import '../../theme/app_theme.dart';
+import '../../services/terminal_editing_controller.dart';
 
 class Toolbar extends StatefulWidget {
   const Toolbar({
     super.key,
-    required this.onSendKey,
+    required this.onKeyIntent,
     required this.onPaste,
     required this.onCopy,
     required this.onUpload,
     required this.onVoiceInput,
-    required this.applicationCursor,
     required this.keyboardVisible,
     required this.uploading,
     required this.bottomInset,
     required this.onToggleKeyboard,
   });
 
-  final ValueChanged<String> onSendKey;
+  final ValueChanged<TerminalKeyIntent> onKeyIntent;
   final VoidCallback onPaste;
   final VoidCallback onCopy;
   final VoidCallback onUpload;
   final VoidCallback onVoiceInput;
-  final bool applicationCursor;
   final bool keyboardVisible;
   final bool uploading;
   final double bottomInset;
@@ -51,17 +49,15 @@ class _ToolbarState extends State<Toolbar> {
   }
 
   void _send(String key, {String keyChar = ''}) {
-    final input = keyChar.isNotEmpty && !_ctrl && !_shift && !_alt
-        ? terminalTextInput(keyChar)
-        : terminalKeyInput(
-            key: key,
-            keyChar: keyChar,
-            shift: _shift,
-            alt: _alt,
-            control: _ctrl,
-            applicationCursor: widget.applicationCursor,
-          );
-    widget.onSendKey(input);
+    widget.onKeyIntent(
+      TerminalKeyIntent(
+        key,
+        keyChar: keyChar,
+        shift: _shift,
+        alt: _alt,
+        control: _ctrl,
+      ),
+    );
     _clearModifiers();
   }
 
@@ -130,7 +126,7 @@ class _ToolbarState extends State<Toolbar> {
         label: '^C',
         kind: _ToolKind.danger,
         onTap: () {
-          widget.onSendKey('\u0003');
+          widget.onKeyIntent(const TerminalKeyIntent.interrupt());
           _clearModifiers();
         },
       ),

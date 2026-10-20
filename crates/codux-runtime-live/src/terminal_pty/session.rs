@@ -417,23 +417,34 @@ impl TerminalPtySession {
         max_chars: usize,
         viewport_max_lines: Option<usize>,
     ) -> TerminalBaselineSnapshot {
-        let (data, offset, buffer_length, buffer_end, request) = {
+        let (raw_data, raw_offset, raw_buffer_length, buffer_end, request) = {
             let _commit = self.output_commit.lock();
             let (data, offset, buffer_length, buffer_end) =
                 self.history.lock().snapshot_tail(max_chars);
             let screen = self.screen.lock();
-            let request = match viewport_max_lines {
-                Some(max_lines) => screen.remote_viewport_snapshot_request(0, 0, max_lines),
-                None => screen.snapshot_request(true),
-            };
+            let request = screen.baseline_snapshot_request(
+                max_chars,
+                REMOTE_SCREEN_SCROLLBACK_CAP,
+                viewport_max_lines,
+            );
             (data, offset, buffer_length, buffer_end, request)
+        };
+        let (parsed_history, screen) = request.snapshot();
+        // Tail snapshot offsets describe the compact transfer; buffer_end is
+        // still the atomic raw PTY watermark used to trim overlapping live data.
+        let (data, offset, buffer_length) = match parsed_history {
+            Some(data) => {
+                let len = data.chars().count();
+                (data, 0, len)
+            }
+            None => (raw_data, raw_offset, raw_buffer_length),
         };
         TerminalBaselineSnapshot {
             data,
             offset,
             buffer_length,
             buffer_end,
-            screen: request.snapshot(),
+            screen,
         }
     }
 

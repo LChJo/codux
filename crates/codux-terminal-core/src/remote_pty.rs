@@ -205,6 +205,31 @@ impl<T> RemotePtySession<T> {
         replay
     }
 
+    pub(crate) fn reconcile_live_keyframe(
+        &mut self,
+        screen_data: &str,
+        screen_wrapped_rows: Option<&[bool]>,
+        buffer_length: Option<usize>,
+        buffer_end: Option<usize>,
+        sequence: Option<TerminalSequence>,
+    ) {
+        // A screen refresh is not a history replacement. The raw ANSI cache
+        // can contain only recent repaints while the parsed screen still owns
+        // thousands of older lines. Replaying that cache would discard them.
+        let offset = self.history_screen.display_offset();
+        self.history_screen.scroll_to_bottom();
+        self.history_screen
+            .replace_visible_with_keyframe(screen_data.as_bytes());
+        if let Some(wrapped_rows) = screen_wrapped_rows {
+            self.history_screen
+                .restore_visible_wrapped_rows(wrapped_rows);
+        }
+        if offset > 0 {
+            self.history_screen.scroll_to_offset(offset);
+        }
+        self.append_live("", buffer_length, buffer_end, sequence);
+    }
+
     pub fn append_live(
         &mut self,
         data: &str,
@@ -274,14 +299,10 @@ impl<T> RemotePtySession<T> {
     }
 }
 
-/// Trailing line budget for the cached raw history and native ANSI replay.
-///
-/// The native terminal emulator (iOS SwiftTerm / Android) keeps its own
-/// ~500-line scrollback, so caching far more than it can hold only makes the
-/// full re-feed on a session switch needlessly large (the emulator parses it
-/// all and then discards everything past its scrollback). Bounding the cache
-/// a little above that scrollback keeps a switch's `replace` small while still
-/// fully repopulating the emulator.
+/// Trailing line budget for the raw ANSI cache. This is a transport/replay
+/// cache, not the screen's history budget: repeated TUI repaints can consume
+/// many raw newlines without adding any scrollback. An initialized screen
+/// must therefore retain its parsed history independently of this cache.
 const MAX_CACHED_LINES: usize = 600;
 
 /// Append `data` to `buffer`, then trim the front to the cache budget. Appends
@@ -294,8 +315,7 @@ fn push_cache_buffer(buffer: &mut String, data: &str, max_chars: usize) {
 /// Trim the front of `buffer` in place so it keeps at most [`MAX_CACHED_LINES`]
 /// trailing newline-delimited lines and at most `max_chars` characters.
 ///
-/// The line budget is the primary bound -- it matches the native emulator's
-/// scrollback so a restore re-feeds only what the emulator can hold.
+/// The line budget bounds cached wire output independently of parsed history.
 /// `max_chars` is a safety ceiling that also bounds pathologically long lines.
 /// Both scans are bounded by the size of the retained window (~600 lines), not
 /// the whole buffer, so the steady-state live path stays amortized O(appended

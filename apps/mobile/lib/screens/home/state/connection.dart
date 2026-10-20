@@ -149,6 +149,7 @@ extension _HomePageConnection on HomeController {
 
   void _markRemoteProtocolReady({bool force = false}) {
     if (!_remoteSyncController.markProtocolReady(force: force)) return;
+    _syncInputBinding();
     CoduxLog.info('[codux-flutter-remote] protocol ready force=$force');
     _sendInitialTransportRequests(force: force);
     _ensureTerminalForSelectedProject();
@@ -752,14 +753,39 @@ extension _HomePageConnection on HomeController {
     CoduxLog.debug(
       '[codux-flutter-remote] send type=${message.type} session=${message.sessionId ?? ''}',
     );
+    final generation = _transportGeneration;
+    final runtimeEpoch = _remoteRuntimeEpoch;
+    final inputEpoch = _terminalEditing.connectionEpoch;
+    bool sameTransport() =>
+        identical(_activeTransport, transport) &&
+        generation == _transportGeneration &&
+        runtimeEpoch == _remoteRuntimeEpoch;
+    bool validInput() =>
+        message.type != RemoteMessageType.terminalInput ||
+        (inputEpoch == _terminalEditing.connectionEpoch &&
+            message.sessionId == _sessionId &&
+            !_remoteHandedAway &&
+            _appInForeground);
     unawaited(
       _sendQueue.send(
         message: message,
         transport: transport,
         connected: () => _transportConnected,
+        stillValid: () => sameTransport() && validInput(),
         activeDevice: _activeDevice,
         terminalStream: sendTerminal,
         onResult: (sentMessage, result) {
+          if (!sameTransport() || !validInput()) return;
+          if (sentMessage.type == RemoteMessageType.terminalInput &&
+              result != RemoteEnvelopeSendResult.delivered) {
+            final payload = sentMessage.payload;
+            if (payload is Map && payload['inputId'] is String) {
+              _terminalInputSender.markSendFailed(
+                payload['inputId'] as String,
+                reason: result.name,
+              );
+            }
+          }
           if (sentMessage.type == RemoteMessageType.hostInfo ||
               sentMessage.type == RemoteMessageType.projectSelect ||
               result != RemoteEnvelopeSendResult.delivered) {

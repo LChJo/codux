@@ -159,6 +159,7 @@ mod memory;
 mod projects;
 mod resources;
 mod terminal_buffer;
+mod terminal_input;
 mod terminal_lifecycle;
 mod terminal_viewport;
 mod transport;

@@ -56,11 +56,9 @@ class RemoteTerminalOutputEffect {
 class RemoteTerminalOutputController {
   RemoteTerminalOutputController({
     int maxBufferChars = 200000,
-    // Byte safety ceiling only. The cache is primarily bounded by a trailing
-    // line budget in the Rust core (matching the native emulator's ~500-line
-    // scrollback); this ceiling just caps pathologically long lines and is
-    // kept above the host baseline window (maxBufferChars) so a full baseline
-    // is never truncated by bytes.
+    // The raw wire cache and the parsed screen history have separate budgets.
+    // Repeated TUI repaints must not turn the wire-cache cap into a history
+    // limit. Keep this ceiling above the host baseline transfer window.
     int maxCachedChars = 262144,
   }) : _router = RemoteOutputRouter(
          maxBufferChars: maxBufferChars,

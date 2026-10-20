@@ -149,7 +149,7 @@ fn remote_terminal_buffer_window_freezes_pages_for_request_id() {
 
 #[cfg(unix)]
 #[test]
-fn remote_terminal_buffer_window_tail_returns_history_tail() {
+fn remote_terminal_buffer_window_tail_returns_bounded_replay_and_raw_watermark() {
     let support_dir = temp_support_dir("codux-remote-terminal-buffer-tail-window");
     let terminals = Arc::new(TerminalManager::new());
     let runtime = RemoteHostRuntime::new_with_ai_history_and_terminals(
@@ -174,7 +174,11 @@ fn remote_terminal_buffer_window_tail_returns_history_tail() {
         let current = runtime
             .terminal_buffer_window(&session_id, 0, buffer_options(3, Some("request-1"), true))
             .expect("terminal buffer window");
-        if current.data.contains("def") {
+        if current
+            .screen_data
+            .as_deref()
+            .is_some_and(|screen| screen.contains("abcdef"))
+        {
             window = Some(current);
             break;
         }
@@ -182,13 +186,14 @@ fn remote_terminal_buffer_window_tail_returns_history_tail() {
     }
     let window = window.expect("terminal output");
 
-    assert!(window.data.contains("def"));
-    assert_eq!(window.offset, 3);
-    assert_eq!(window.total_characters, 6);
+    assert!(window.data.chars().count() <= 3);
+    assert_eq!(window.offset, 0);
+    assert_eq!(window.total_characters, window.data.chars().count());
+    assert_eq!(window.buffer_end, Some(6));
     assert!(!window.truncated);
     assert_eq!(window.request_id.as_deref(), Some("request-1"));
     assert!(window.tail);
-    assert!(window.has_previous);
+    assert!(!window.has_previous);
 
     fs::remove_dir_all(support_dir).ok();
 }
@@ -226,7 +231,11 @@ fn remote_terminal_buffer_window_tail_ships_keyframe_for_normal_screen() {
         let current = runtime
             .terminal_buffer_window(&session_id, 0, buffer_options(64, Some("request-1"), true))
             .expect("terminal buffer window");
-        if current.data.contains("visible tui") {
+        if current
+            .screen_data
+            .as_deref()
+            .is_some_and(|screen| screen.contains("visible tui"))
+        {
             window = Some(current);
             break;
         }
@@ -234,7 +243,7 @@ fn remote_terminal_buffer_window_tail_ships_keyframe_for_normal_screen() {
     }
     let window = window.expect("terminal buffer window");
 
-    assert!(window.data.contains("visible tui"));
+    assert!(window.data.chars().count() <= 64);
     let screen_data = window
         .screen_data
         .as_deref()
@@ -243,6 +252,10 @@ fn remote_terminal_buffer_window_tail_ships_keyframe_for_normal_screen() {
         screen_data.contains("visible tui"),
         "keyframe must carry the current screen: {screen_data:?}"
     );
+    let mut restored = codux_terminal_core::HeadlessTerminalScreen::new(80, 24, 2000);
+    restored.process_replay(window.data.as_bytes());
+    restored.replace_visible_with_keyframe(screen_data.as_bytes());
+    assert!(restored.snapshot().data.contains("visible tui"));
     assert!(window.tail);
 
     fs::remove_dir_all(support_dir).ok();

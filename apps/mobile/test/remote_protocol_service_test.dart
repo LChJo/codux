@@ -4,6 +4,21 @@ import 'package:codux_flutter/services/remote_protocol_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('envelope request correlation survives parsing and device scoping', () {
+    final envelope = RelayEnvelope.fromJson({
+      'type': 'ai.session.result',
+      'id': 'message-id',
+      'requestId': 'restore-request',
+      'payload': {'op': 'restore'},
+    });
+    final scoped = envelope.copyWith(deviceId: 'phone', seq: 7);
+    expect(scoped.requestId, 'restore-request');
+    expect(scoped.id, 'message-id');
+    expect(scoped.toJson()['requestId'], 'restore-request');
+    expect(scoped.toJson()['id'], 'message-id');
+    expect(scoped.copyWith(requestId: 'next').requestId, 'next');
+  });
+
   test('stored device reads iroh transport candidates', () {
     final device = StoredDevice.fromJson({
       'server': 'https://relay.example',

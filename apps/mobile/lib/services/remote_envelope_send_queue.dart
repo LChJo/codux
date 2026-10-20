@@ -9,9 +9,11 @@ enum RemoteEnvelopeSendResult { delivered, droppedWhileDisconnected, rejected }
 
 class RemoteEnvelopeSendQueue {
   int _seq = 0;
+  int _generation = 0;
   Future<void> _chain = Future<void>.value();
 
   void reset({int? seed}) {
+    _generation++;
     _seq = seed ?? 0;
     _chain = Future<void>.value();
   }
@@ -20,16 +22,22 @@ class RemoteEnvelopeSendQueue {
     required RelayEnvelope message,
     required RemoteTransport transport,
     required bool Function() connected,
+    bool Function()? stillValid,
     StoredDevice? activeDevice,
     bool terminalStream = false,
     RemoteSendErrorHandler? onError,
     RemoteSendResultHandler? onResult,
   }) {
     final seq = activeDevice == null ? null : ++_seq;
+    final generation = _generation;
+    bool valid() =>
+        generation == _generation &&
+        connected() &&
+        (stillValid?.call() ?? true);
     final previous = _chain.catchError((_) {});
     final task = previous
         .then((_) async {
-          if (!connected()) {
+          if (!valid()) {
             onResult?.call(
               message,
               RemoteEnvelopeSendResult.droppedWhileDisconnected,
@@ -44,13 +52,22 @@ class RemoteEnvelopeSendQueue {
                 ? await transport.sendTerminal(envelope)
                 : await transport.send(envelope);
           } catch (error) {
+            if (!valid()) {
+              onResult?.call(
+                message,
+                RemoteEnvelopeSendResult.droppedWhileDisconnected,
+              );
+              return;
+            }
             onResult?.call(message, RemoteEnvelopeSendResult.rejected);
             onError?.call(error);
             return;
           }
           onResult?.call(
             message,
-            sent
+            !valid()
+                ? RemoteEnvelopeSendResult.droppedWhileDisconnected
+                : sent
                 ? RemoteEnvelopeSendResult.delivered
                 : RemoteEnvelopeSendResult.rejected,
           );

@@ -9,6 +9,7 @@ import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/remote_terminal_output_controller.dart';
+import '../../services/terminal_editing_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/terminal_theme.dart';
 import 'terminal_builtin_glyphs.dart';
@@ -58,6 +59,7 @@ class SelfDrawnTerminalView extends StatefulWidget {
     this.onRequestKeyboard,
     this.keyboardRequested = false,
     this.keyboardRequestSerial = 0,
+    this.inputController,
   });
 
   final String? sessionId;
@@ -84,6 +86,7 @@ class SelfDrawnTerminalView extends StatefulWidget {
 
   final bool keyboardRequested;
   final int keyboardRequestSerial;
+  final TerminalEditingController? inputController;
 
   @override
   State<SelfDrawnTerminalView> createState() => _SelfDrawnTerminalViewState();
@@ -92,21 +95,14 @@ class SelfDrawnTerminalView extends StatefulWidget {
 class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
     with SingleTickerProviderStateMixin {
   static const double _lineHeightMultiplier = 1.3;
-  // Zero-width space anchor in the hidden input (kept invisible and harmless if
-  // ever emitted), used to detect inserts vs a backspace on an empty field.
-  static final String _sentinel = String.fromCharCode(0x200b);
   static final String _fontFamily = Platform.isIOS ? 'Menlo' : 'monospace';
 
   // Per-run paragraph cache, keyed by (text, color, style). Rendering whole
   // line runs keeps one shared baseline for text and symbols in the same row.
   final Map<String, ui.Paragraph> _glyphCache = {};
 
-  // Hidden anchor input that captures the soft keyboard / IME. The sentinel
-  // zero-width space lets us detect both inserted text and a backspace that
-  // would otherwise leave the field empty.
-  final TextEditingController _inputController = TextEditingController();
+  late TerminalEditingController _editing;
   final FocusNode _focusNode = FocusNode();
-  bool _resetting = false;
 
   TerminalScreenSnapshot? _snapshot;
   int _appliedGen = -1;
@@ -154,8 +150,7 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
   void initState() {
     super.initState();
     _measureCell();
-    _resetInput();
-    _inputController.addListener(_handleInputChange);
+    _attachEditing();
     _focusNode.addListener(_onFocusChange);
     _fling.addListener(_onFlingTick);
     widget.repaintSignal.addListener(_onSignal);
@@ -168,6 +163,11 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
   @override
   void didUpdateWidget(covariant SelfDrawnTerminalView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.inputController != widget.inputController) {
+      _editing.removeListener(_onEditingReset);
+      if (oldWidget.inputController == null) _editing.dispose();
+      _attachEditing();
+    }
     if (widget.repaintSignal != oldWidget.repaintSignal) {
       oldWidget.repaintSignal.removeListener(_onSignal);
       widget.repaintSignal.addListener(_onSignal);
@@ -180,6 +180,7 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
       _scheduleRefresh();
     }
     if (widget.sessionId != oldWidget.sessionId) {
+      if (widget.inputController == null) _editing.bind(widget.sessionId);
       _appliedGen = -1;
       _bottomWindowPan = 0;
       _lastCursorMetrics = null;
@@ -253,8 +254,8 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
   @override
   void dispose() {
     widget.repaintSignal.removeListener(_onSignal);
-    _inputController.removeListener(_handleInputChange);
-    _inputController.dispose();
+    _editing.removeListener(_onEditingReset);
+    if (widget.inputController == null) _editing.dispose();
     _focusNode.removeListener(_onFocusChange);
     _focusNode.dispose();
     _fling.dispose();
@@ -337,66 +338,21 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
 
   // ---- input ---------------------------------------------------------------
 
-  // The last committed field value we reconciled with the terminal. We diff each
-  // change against this and forward only the delta, so an IME that keeps its own
-  // accumulating buffer (CJK) never makes us re-send already-sent text.
-  String _lastValue = '';
-
-  void _resetInput() {
-    _resetting = true;
-    _inputController.value = TextEditingValue(
-      text: _sentinel,
-      selection: const TextSelection.collapsed(offset: 1),
-    );
-    _lastValue = _sentinel;
-    _resetting = false;
+  void _attachEditing() {
+    _editing =
+        widget.inputController ??
+        TerminalEditingController(
+          onText: (text) => widget.onInput?.call(text),
+          onKeyBytes: (bytes) => widget.onSendKey?.call(bytes),
+          inputMode: () =>
+              _snapshot?.inputMode ?? const TerminalScreenInputMode(),
+        );
+    if (widget.inputController == null) _editing.bind(widget.sessionId);
+    _editing.addListener(_onEditingReset);
   }
 
-  void _handleInputChange() {
-    if (_resetting) return;
-    final value = _inputController.value;
-    // Wait for the IME to commit before emitting composing (CJK candidate) text.
-    if (value.composing.isValid && !value.composing.isCollapsed) return;
-    final text = value.text;
-    final last = _lastValue;
-    if (text == last) return;
-    // Longest common prefix between the previous value and the new one.
-    var prefix = 0;
-    final limit = last.length < text.length ? last.length : text.length;
-    while (prefix < limit &&
-        last.codeUnitAt(prefix) == text.codeUnitAt(prefix)) {
-      prefix++;
-    }
-    final removed = last.length - prefix;
-    final added = text.substring(prefix);
-    for (var i = 0; i < removed; i++) {
-      _sendKey('backspace');
-    }
-    if (added.isNotEmpty) _sendText(added);
-    _lastValue = text;
-    // Re-seed the zero-width anchor only when the field has emptied out, so the
-    // IME never sees a truly empty field. Never re-seed mid-input: that would
-    // desync the IME and make it re-emit text we have already forwarded.
-    if (text.length <= _sentinel.length) _resetInput();
-  }
-
-  void _sendText(String text) {
-    // Newlines map to the Enter key (CR); other text is sent raw through the
-    // same batched path the native view used.
-    final parts = text.split('\n');
-    for (var i = 0; i < parts.length; i++) {
-      if (parts[i].isNotEmpty) widget.onInput?.call(parts[i]);
-      if (i < parts.length - 1) _sendKey('enter');
-    }
-  }
-
-  void _sendKey(String key) {
-    final bytes = terminalKeyInput(
-      key: key,
-      applicationCursor: _snapshot?.applicationCursor ?? false,
-      kittyFlags: _snapshot?.inputMode.kittyFlags ?? 0,
-    );
-    if (bytes.isNotEmpty) widget.onSendKey?.call(bytes);
+  void _onEditingReset() {
+    if (mounted) setState(() {});
   }
 
   // ---- snapshot / grid -----------------------------------------------------
@@ -879,7 +835,7 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
       return KeyEventResult.ignored;
     }
     // While the IME is composing (CJK candidate bar open) let it own every key.
-    final composing = _inputController.value.composing;
+    final composing = _editing.field.value.composing;
     if (composing.isValid && !composing.isCollapsed) {
       return KeyEventResult.ignored;
     }
@@ -887,44 +843,24 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
     final ctrl = keyboard.isControlPressed;
     final alt = keyboard.isAltPressed;
     final shift = keyboard.isShiftPressed;
-    final appCursor = _snapshot?.applicationCursor ?? false;
-    final kittyFlags = _snapshot?.inputMode.kittyFlags ?? 0;
     // Ctrl+letter → control byte (Ctrl+C = 0x03, …), portable and host-safe;
     // kitty-mode apps get the CSI-u encoding from the shared encoder instead.
     final ch = event.character;
     if (ctrl && !alt && ch != null && ch.length == 1) {
       final upper = ch.toUpperCase().codeUnitAt(0);
       if (upper >= 0x41 && upper <= 0x5A) {
-        if (kittyFlags & 1 != 0) {
-          final bytes = terminalKeyInput(
-            key: ch.toLowerCase(),
-            shift: shift,
-            control: true,
-            kittyFlags: kittyFlags,
-          );
-          if (bytes.isNotEmpty) {
-            widget.onSendKey?.call(bytes);
-            return KeyEventResult.handled;
-          }
-        }
-        widget.onSendKey?.call(String.fromCharCode(upper - 0x40));
+        _editing.sendKey(
+          TerminalKeyIntent(ch.toLowerCase(), shift: shift, control: true),
+        );
         return KeyEventResult.handled;
       }
     }
     final named = _hardwareKeyName(event.logicalKey);
     if (named != null) {
-      final bytes = terminalKeyInput(
-        key: named,
-        shift: shift,
-        alt: alt,
-        control: ctrl,
-        applicationCursor: appCursor,
-        kittyFlags: kittyFlags,
+      _editing.sendKey(
+        TerminalKeyIntent(named, shift: shift, alt: alt, control: ctrl),
       );
-      if (bytes.isNotEmpty) {
-        widget.onSendKey?.call(bytes);
-        return KeyEventResult.handled;
-      }
+      return KeyEventResult.handled;
     }
     // Printable text → fall through to the IME field (composition-safe).
     return KeyEventResult.ignored;
@@ -954,6 +890,11 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
     if (key == LogicalKeyboardKey.arrowDown) return 'down';
     if (key == LogicalKeyboardKey.arrowLeft) return 'left';
     if (key == LogicalKeyboardKey.arrowRight) return 'right';
+    if (key == LogicalKeyboardKey.home) return 'home';
+    if (key == LogicalKeyboardKey.end) return 'end';
+    if (key == LogicalKeyboardKey.delete) return 'delete';
+    if (key == LogicalKeyboardKey.pageUp) return 'pageup';
+    if (key == LogicalKeyboardKey.pageDown) return 'pagedown';
     return null;
   }
 
@@ -978,7 +919,8 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
           // never shows a caret or selection of its own. EditableText (vs
           // TextField) needs no Material ancestor.
           EditableText(
-            controller: _inputController,
+            key: ValueKey((_editing, _editing.connectionEpoch)),
+            controller: _editing.field,
             focusNode: _focusNode,
             style: const TextStyle(
               fontSize: 1,
@@ -998,6 +940,8 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
             textInputAction: TextInputAction.newline,
             maxLines: null,
             autocorrect: false,
+            smartQuotesType: SmartQuotesType.disabled,
+            smartDashesType: SmartDashesType.disabled,
             enableSuggestions: true,
             showCursor: false,
             rendererIgnoresPointer: true,

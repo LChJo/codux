@@ -98,6 +98,26 @@ void main() {
     await transport.close();
   });
 
+  test('input wake preserves an in-flight connection waiter', () async {
+    final timers = <_FakePollTimer>[];
+    final handle = _FakeControllerHandle([]);
+    final transport = RustControllerTransport(
+      handleFactory: (_) => handle,
+      pollTimerFactory: (delay, callback) {
+        final timer = _FakePollTimer(delay, callback);
+        timers.add(timer);
+        return timer;
+      },
+    );
+    final connecting = transport.connect(_storedDevice());
+    await Future<void>.delayed(Duration.zero);
+    await transport.sendTerminal({'type': 'terminal.input'});
+    handle.addEvent({'kind': 'state', 'state': 'connected:path=relay'});
+    timers.last.fire();
+    await connecting;
+    await transport.close();
+  });
+
   test('connect fails when native transport reports failure', () async {
     final transport = RustControllerTransport(
       handleFactory: (_) => _FakeControllerHandle([
@@ -197,6 +217,76 @@ void main() {
     await transport.close();
   });
 
+  test('ACK tracking expires and post ACK activity returns to idle', () async {
+    var now = DateTime.utc(2026);
+    final timers = <_FakePollTimer>[];
+    late _FakeControllerHandle handle;
+    final transport = RustControllerTransport(
+      now: () => now,
+      handleFactory: (_) => handle = _FakeControllerHandle([
+        {'kind': 'state', 'state': 'connected:path=relay'},
+      ]),
+      pollTimerFactory: (delay, callback) {
+        final timer = _FakePollTimer(delay, callback);
+        timers.add(timer);
+        return timer;
+      },
+    );
+    await transport.connect(_storedDevice());
+    await transport.sendTerminal({
+      'type': 'terminal.input',
+      'payload': {'inputId': 'lost'},
+    });
+    now = now.add(const Duration(seconds: 9));
+    timers.last.fire();
+    expect(timers.last.delay, const Duration(milliseconds: 16));
+    now = now.add(const Duration(seconds: 2));
+    timers.last.fire();
+    expect(timers.last.delay, const Duration(milliseconds: 100));
+    await transport.sendTerminal({
+      'type': 'terminal.input',
+      'payload': {'inputId': 'acked'},
+    });
+    handle.addEvent({
+      'kind': 'message',
+      'data':
+          '{"type":"terminal.input.ack","payload":{"inputId":"acked","ok":true}}',
+    });
+    timers.last.fire();
+    expect(timers.last.delay, const Duration(milliseconds: 16));
+    now = now.add(const Duration(milliseconds: 1001));
+    timers.last.fire();
+    expect(timers.last.delay, const Duration(milliseconds: 100));
+    await transport.close();
+    expect(timers.last.isActive, isFalse);
+  });
+  test('sending input wakes idle poll and keeps ACK polling busy', () async {
+    final timers = <_FakePollTimer>[];
+    final transport = RustControllerTransport(
+      handleFactory: (_) => _FakeControllerHandle([
+        {'kind': 'state', 'state': 'connected:path=relay'},
+      ]),
+      pollTimerFactory: (delay, callback) {
+        final timer = _FakePollTimer(delay, callback);
+        timers.add(timer);
+        return timer;
+      },
+    );
+    await transport.connect(_storedDevice());
+    timers.last.fire();
+    final idle = timers.last;
+    expect(idle.delay, const Duration(milliseconds: 100));
+    await transport.sendTerminal({
+      'type': 'terminal.input',
+      'sessionId': 's',
+      'payload': {'inputId': 'one', 'data': 'a'},
+    });
+    expect(idle.isActive, isFalse);
+    expect(timers.last.delay, Duration.zero);
+    timers.last.fire();
+    expect(timers.last.delay, const Duration(milliseconds: 16));
+    await transport.close();
+  });
   test('transport path updates do not masquerade as latency samples', () {
     final event = RemoteTransportStateEvent.parse(
       'latency:rtt=470;path=direct;addr=10.0.0.2:51515',

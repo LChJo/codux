@@ -197,7 +197,8 @@ extension _HomePageWorkspace on HomeController {
     _send(_projectController.aiSessionListEnvelope(project));
   }
 
-  void _handleAISessionResult(Object? payload) {
+  void _handleAISessionResult(RelayEnvelope message) {
+    final payload = message.payload;
     if (payload is! Map) return;
     final op = '${payload['op'] ?? ''}';
     final result = payload['result'];
@@ -219,6 +220,18 @@ extension _HomePageWorkspace on HomeController {
         // The host applied the change; pull a fresh list so the row updates.
         _requestAISessions(force: true);
       case 'restore':
+        final pending = _pendingSessionRestore;
+        // A legacy or unrelated response cannot safely identify its target.
+        // Consume a matching request once, before any callbacks can re-enter.
+        if (pending == null || message.requestId != pending.requestId) return;
+        _pendingSessionRestore = null;
+        if (!mounted ||
+            _disposing ||
+            pending.inputEpoch != _terminalEditing.connectionEpoch ||
+            pending.projectId != _selectedProjectId ||
+            pending.sessionId != _sessionId) {
+          return;
+        }
         _applyRestoredSession(result);
     }
   }
@@ -231,13 +244,26 @@ extension _HomePageWorkspace on HomeController {
     if (command.isEmpty) return;
     _showTerminalMode();
     _insertTerminalText(command);
-    _sendTerminalKey('\r');
+    _terminalEditing.sendKey(const TerminalKeyIntent('enter'));
   }
 
   Future<void> _openAISession(AISessionRecord session) async {
     final project = _selectedProject;
     if (project == null) return;
-    _send(_projectController.aiSessionRestoreEnvelope(project, session.id));
+    final requestId = const Uuid().v4();
+    _pendingSessionRestore = (
+      requestId: requestId,
+      inputEpoch: _terminalEditing.connectionEpoch,
+      projectId: project.id,
+      sessionId: _sessionId,
+    );
+    if (!_send(
+      _projectController
+          .aiSessionRestoreEnvelope(project, session.id)
+          .copyWith(requestId: requestId),
+    )) {
+      _pendingSessionRestore = null;
+    }
   }
 
   Future<void> _renameAISession(AISessionRecord session) async {
@@ -346,10 +372,10 @@ extension _HomePageWorkspace on HomeController {
 
   /// Phone diff pane back button — return to the review file list.
   void _clearReviewSelection() => _applyState(() {
-        _gitDiffPath = null;
-        _gitDiff = null;
-        _gitDiffError = null;
-      });
+    _gitDiffPath = null;
+    _gitDiff = null;
+    _gitDiffError = null;
+  });
 
   void _handleGitRead(Object? payload) {
     if (payload is! Map) return;
@@ -361,7 +387,9 @@ extension _HomePageWorkspace on HomeController {
       case 'review_diff':
         _applyState(() {
           _gitDiffError = null;
-          _gitDiff = RemoteGitDiff.fromResult(Map<String, dynamic>.from(result));
+          _gitDiff = RemoteGitDiff.fromResult(
+            Map<String, dynamic>.from(result),
+          );
         });
       case 'review':
         // git.read replies carry no project/mode correlation — ignore stale

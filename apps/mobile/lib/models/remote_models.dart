@@ -166,6 +166,7 @@ class RelayEnvelope {
   const RelayEnvelope({
     required this.type,
     this.id,
+    this.requestId,
     this.hostId,
     this.deviceId,
     this.sessionId,
@@ -177,6 +178,7 @@ class RelayEnvelope {
   });
   final String type;
   final String? id;
+  final String? requestId;
   final String? hostId;
   final String? deviceId;
   final String? sessionId;
@@ -197,6 +199,7 @@ class RelayEnvelope {
       RelayEnvelope(
         type: '${json['type'] ?? ''}',
         id: json['id']?.toString(),
+        requestId: json['requestId']?.toString(),
         hostId: json['hostId']?.toString(),
         deviceId: json['deviceId']?.toString(),
         sessionId: json['sessionId']?.toString(),
@@ -210,6 +213,7 @@ class RelayEnvelope {
   Map<String, dynamic> toJson() => {
     'type': type,
     if (id != null) 'id': id,
+    if (requestId != null) 'requestId': requestId,
     if (hostId != null) 'hostId': hostId,
     if (deviceId != null) 'deviceId': deviceId,
     if (sessionId != null) 'sessionId': sessionId,
@@ -222,6 +226,7 @@ class RelayEnvelope {
   RelayEnvelope copyWith({
     String? type,
     String? id,
+    String? requestId,
     String? hostId,
     String? deviceId,
     String? sessionId,
@@ -232,6 +237,7 @@ class RelayEnvelope {
   }) => RelayEnvelope(
     type: type ?? this.type,
     id: id ?? this.id,
+    requestId: requestId ?? this.requestId,
     hostId: hostId ?? this.hostId,
     deviceId: deviceId ?? this.deviceId,
     sessionId: sessionId ?? this.sessionId,

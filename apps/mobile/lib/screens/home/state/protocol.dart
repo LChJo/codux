@@ -83,6 +83,7 @@ extension _HomePageProtocol on HomeController {
           final hostRuntimeChanged = _recordHostRuntimeInstance(
             message.payload,
           );
+          _syncInputBinding();
           _markHostResponsive(
             'host.info',
             transport: _deviceTransportKind(target),
@@ -91,6 +92,11 @@ extension _HomePageProtocol on HomeController {
           _startLatencyProbe();
           final payload = message.payload;
           if (payload is Map) {
+            _terminalInputSender.setIdempotentSupport(
+              TerminalInputCapability.fromHostInfo(
+                payload,
+              ).supportsReliableRetry,
+            );
             _terminalBufferCapability = TerminalBufferCapability.fromHostInfo(
               payload,
             );
@@ -176,7 +182,7 @@ extension _HomePageProtocol on HomeController {
         case final type when type == RemoteMessageType.gitRead:
           _handleGitRead(message.payload);
         case final type when type == RemoteMessageType.aiSessionResult:
-          _handleAISessionResult(message.payload);
+          _handleAISessionResult(message);
         case final type when type == RemoteMessageType.sshListResult:
           _handleSshListResult(message.payload);
         case final type when type == RemoteMessageType.fileRead:
@@ -466,7 +472,9 @@ extension _HomePageProtocol on HomeController {
       // A failed git.read (e.g. review_diff) answers with REMOTE_ERROR rather
       // than a git.read envelope — surface it in the pending diff pane instead
       // of leaving an endless spinner.
-      if (_gitDiffPath != null && _gitDiff == null) _gitDiffError = errorMessage;
+      if (_gitDiffPath != null && _gitDiff == null) {
+        _gitDiffError = errorMessage;
+      }
       _status = errorMessage;
     });
   }
