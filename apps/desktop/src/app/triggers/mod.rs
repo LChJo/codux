@@ -7,8 +7,13 @@ use codux_runtime::triggers::{
 
 mod blackboard_editor;
 mod editor;
+mod presence;
 mod view;
 use editor::TriggerEditor;
+use presence::TriggerAgentPresence;
+
+#[cfg(test)]
+mod tests;
 
 pub(in crate::app) struct TriggerCompletion {
     project_id: String,
@@ -34,8 +39,7 @@ pub(in crate::app) struct TriggerWorkspaceState {
     canvas_size: gpui::Size<Pixels>,
     command_ai: HashSet<String>,
     save_error: Option<String>,
-    agent_terminals: HashSet<String>,
-    shell_prompts: HashSet<String>,
+    agent_presence: TriggerAgentPresence,
     last_agent_probe: Option<Instant>,
     agent_probe_in_flight: bool,
 }
@@ -69,8 +73,7 @@ impl TriggerWorkspaceState {
             canvas_size: gpui::size(px(900.0), px(580.0)),
             command_ai: HashSet::new(),
             save_error: None,
-            agent_terminals: HashSet::new(),
-            shell_prompts: HashSet::new(),
+            agent_presence: TriggerAgentPresence::default(),
             last_agent_probe: None,
             agent_probe_in_flight: false,
         }
@@ -345,31 +348,24 @@ impl CoduxApp {
             match status.state {
                 TerminalStatusState::Working => {
                     self.trigger_workspace
-                        .shell_prompts
-                        .remove(&status.terminal_id);
+                        .agent_presence
+                        .note_command_start(&status.terminal_id);
                 }
                 TerminalStatusState::Idle
                 | TerminalStatusState::Completed
                 | TerminalStatusState::Error => {
                     self.trigger_workspace
-                        .shell_prompts
-                        .insert(status.terminal_id.clone());
-                    self.trigger_workspace
-                        .agent_terminals
-                        .remove(&status.terminal_id);
+                        .agent_presence
+                        .note_shell_prompt(&status.terminal_id);
                 }
                 _ => {}
             }
         }
         let state = if trigger_terminal
-            && (!self
+            && !self
                 .trigger_workspace
-                .agent_terminals
+                .agent_presence
                 .contains(&status.terminal_id)
-                || self
-                    .trigger_workspace
-                    .shell_prompts
-                    .contains(&status.terminal_id))
         {
             TerminalState::NotStarted
         } else {
@@ -534,12 +530,12 @@ impl CoduxApp {
             self.trigger_workspace.engine.set_terminal_state(
                 &id,
                 if busy {
-                    if self.trigger_workspace.agent_terminals.contains(&id) {
+                    if self.trigger_workspace.agent_presence.contains(&id) {
                         TerminalState::Busy
                     } else {
                         TerminalState::NotStarted
                     }
-                } else if !self.trigger_workspace.agent_terminals.contains(&id) {
+                } else if !self.trigger_workspace.agent_presence.contains(&id) {
                     TerminalState::NotStarted
                 } else {
                     TerminalState::Idle
@@ -637,13 +633,20 @@ impl CoduxApp {
                     .panes
                     .get(&job.terminal_id)
                     .and_then(TerminalPane::terminal_instance_id);
-                Some((job, d, instance))
+                let presence_version = self
+                    .trigger_workspace
+                    .agent_presence
+                    .version(&job.terminal_id);
+                Some((job, d, instance, presence_version))
             })
             .collect::<Vec<_>>();
         if jobs.is_empty() {
             return;
         }
-        let definitions = jobs.iter().map(|(_, d, _)| d.clone()).collect::<Vec<_>>();
+        let definitions = jobs
+            .iter()
+            .map(|(_, d, _, _)| d.clone())
+            .collect::<Vec<_>>();
         let service = self.runtime_service.clone();
         let projects = self.state.projects.clone();
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
@@ -661,7 +664,7 @@ impl CoduxApp {
             .await
             .unwrap_or_default();
             let _ = this.update(cx, |app, cx| {
-                for (job, _, instance) in jobs {
+                for (job, _, instance, presence_version) in jobs {
                     let Some(d) = app
                         .trigger_workspace
                         .engine
@@ -684,21 +687,20 @@ impl CoduxApp {
                         app.clear_blackboard_automatic(&d.project_id,&job.terminal_id,cx);
                         continue;
                     }
-                    if d.exited
-                        || !started.contains(&job.terminal_id)
-                        || app
-                            .trigger_workspace
-                            .shell_prompts
-                            .contains(&job.terminal_id)
-                    {
+                    let ready = app.trigger_workspace.agent_presence.apply_probe(
+                        &job.terminal_id,
+                        presence_version,
+                        started.contains(&job.terminal_id),
+                    );
+                    if d.exited || !ready {
                         let (state, outcome) = if d.exited {
                             (TerminalState::Exited, TriggerOutcome::Exited)
                         } else {
                             (TerminalState::NotStarted, TriggerOutcome::NotStarted)
                         };
                         app.trigger_workspace
-                            .agent_terminals
-                            .remove(&job.terminal_id);
+                            .agent_presence
+                            .clear(&job.terminal_id);
                         app.trigger_workspace
                             .engine
                             .set_terminal_state(&job.terminal_id, state);
@@ -822,10 +824,15 @@ impl CoduxApp {
         let instances = definitions
             .iter()
             .filter_map(|d| {
-                self.trigger_workspace
-                    .panes
-                    .get(&d.terminal_id)
-                    .map(|p| (d.terminal_id.clone(), p.terminal_instance_id()))
+                self.trigger_workspace.panes.get(&d.terminal_id).map(|p| {
+                    (
+                        d.terminal_id.clone(),
+                        p.terminal_instance_id(),
+                        self.trigger_workspace
+                            .agent_presence
+                            .version(&d.terminal_id),
+                    )
+                })
             })
             .collect::<Vec<_>>();
         self.trigger_workspace.agent_probe_in_flight = true;
@@ -839,7 +846,7 @@ impl CoduxApp {
             .unwrap_or_default();
             let _ = this.update(cx, |app, _| {
                 app.trigger_workspace.agent_probe_in_flight = false;
-                for (id, instance) in instances {
+                for (id, instance, presence_version) in instances {
                     let current = app
                         .trigger_workspace
                         .panes
@@ -848,11 +855,11 @@ impl CoduxApp {
                     if current != instance || app.terminal_attach_in_flight.contains(&id) {
                         continue;
                     }
-                    if started.contains(&id) && !app.trigger_workspace.shell_prompts.contains(&id) {
-                        app.trigger_workspace.agent_terminals.insert(id);
-                    } else {
-                        app.trigger_workspace.agent_terminals.remove(&id);
-                    }
+                    app.trigger_workspace.agent_presence.apply_probe(
+                        &id,
+                        presence_version,
+                        started.contains(&id),
+                    );
                 }
             });
         })
@@ -926,10 +933,7 @@ impl CoduxApp {
     pub(in crate::app) fn restart_trigger_terminal(&mut self, id: &str, cx: &mut Context<Self>) {
         self.reset_blackboard_trigger(id);
         if let Some(d) = self.trigger_workspace.engine.definition(id).cloned() {
-            self.trigger_workspace
-                .agent_terminals
-                .remove(&d.terminal_id);
-            self.trigger_workspace.shell_prompts.remove(&d.terminal_id);
+            self.trigger_workspace.agent_presence.clear(&d.terminal_id);
             let _ = self.kill_terminal_session_if_present(&d.terminal_id);
             self.trigger_workspace.panes.remove(&d.terminal_id);
             self.trigger_workspace.engine.restart(id);
