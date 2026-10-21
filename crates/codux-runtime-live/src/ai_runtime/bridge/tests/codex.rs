@@ -139,7 +139,7 @@ fn codex_wrapper_applies_tool_permissions_and_memory_injection() {
 
 #[cfg(not(windows))]
 #[test]
-fn codex_agent_worktree_launch_forces_autonomous_permissions() {
+fn reclaimed_worktree_flag_cannot_override_configured_permissions() {
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
 
@@ -189,7 +189,7 @@ fn codex_agent_worktree_launch_forces_autonomous_permissions() {
     let args = String::from_utf8_lossy(&output.stdout);
     assert!(
         args.lines()
-            .any(|arg| arg == "--dangerously-bypass-approvals-and-sandbox"),
+            .all(|arg| arg != "--dangerously-bypass-approvals-and-sandbox"),
         "{args}"
     );
     fs::remove_dir_all(dir).unwrap();

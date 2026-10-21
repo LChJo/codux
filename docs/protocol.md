@@ -266,6 +266,24 @@ There are three separate keepalive roles:
 
 Do not add another keepalive path without updating this section.
 
+## Git Trigger Fingerprints
+
+Git-trigger content checks use an opt-in `git.status` request with
+`includeFingerprint: true` and the rule's explicit `projectPath`. The owning
+runtime replies with `fingerprint: null` for a clean repository, or
+`fingerprint: {scope, fingerprint}` for uncommitted content. The scope identifies
+the actual repository/worktree; the digest covers changed paths, their HEAD
+baselines, staged versions and working-tree content, including untracked files.
+Ordinary status requests do not compute this digest. An absent field means an
+older runtime lacks this capability; errors must not be treated as a clean tree.
+
+Automatic Git review compares against the last successfully delivered version
+per rule, runtime and repository, persisted across restarts. Equal versions do
+not queue another review. Changed versions replace an older waiting Git job;
+the current repository is checked again before sending. Manual dispatch bypasses
+this filter. A dispatch identity prevents canceled attempts from committing a
+later attempt's delivery state.
+
 ## Deprecated Compatibility
 
 - `terminal.subscribe` and `terminal.unsubscribe` are kept for older

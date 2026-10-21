@@ -1353,7 +1353,7 @@ dependencies = [
 
 [[package]]
 name = "codux"
-version = "2.0.0-beta.20"
+version = "2.0.0-beta.21"
 dependencies = [
  "anyhow",
  "base64",
@@ -1387,7 +1387,7 @@ dependencies = [
 
 [[package]]
 name = "codux-agent"
-version = "2.0.0-beta.20"
+version = "2.0.0-beta.21"
 dependencies = [
  "base64",
  "chrono",
@@ -1468,6 +1468,7 @@ dependencies = [
  "notify 8.2.0",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -1541,7 +1542,7 @@ dependencies = [
 
 [[package]]
 name = "codux-runtime"
-version = "2.0.0-beta.20"
+version = "2.0.0-beta.21"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -1668,7 +1669,7 @@ dependencies = [
 
 [[package]]
 name = "codux-wrapper-helper"
-version = "2.0.0-beta.20"
+version = "2.0.0-beta.21"
 dependencies = [
  "codux-blackboard",
  "codux-runtime-live",

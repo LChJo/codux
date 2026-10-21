@@ -106,9 +106,9 @@ impl AIRuntimeBridge {
             .collect::<Vec<_>>();
         bin_names.push("codux-ssh");
         bin_names.push("codux-db");
-        bin_names.push("codux-worktree");
         bin_names.push("codux-blackboard");
         for stale_bin_name in [
+            "codux-worktree",
             "kiro",
             "codewhale-tui",
             "deepseek",

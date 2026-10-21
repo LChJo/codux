@@ -1,4 +1,3 @@
-mod agent_worktree;
 mod dispatch;
 mod terminal;
 

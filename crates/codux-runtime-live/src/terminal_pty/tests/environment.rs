@@ -2,6 +2,33 @@ use super::*;
 use crate::terminal_pty::environment::{CONFIGURED_ENV_KEYS, configured_dotenv};
 
 #[test]
+fn reclaimed_worktree_environment_cannot_restore_legacy_capabilities() {
+    let retired = [
+        "CODUX_WORKTREE_CONTROL_ADDRESS",
+        "CODUX_WORKTREE_CONTROL_CAPABILITY",
+        "CODUX_AGENT_WORKTREE_TOOL",
+        "CODUX_AGENT_WORKTREE_PROMPT_FILE",
+        "CODUX_AGENT_WORKTREE_AUTONOMOUS",
+    ];
+    let config = TerminalPtyConfig {
+        env: Some(
+            retired
+                .iter()
+                .map(|name| (name.to_string(), "stale".into()))
+                .collect(),
+        ),
+        ..Default::default()
+    };
+    let env = terminal_environment("powershell", None, "reclaimed-worktree", &config, None);
+    for name in retired {
+        assert!(
+            !env.contains_key(name),
+            "retired capability must be stripped: {name}"
+        );
+    }
+}
+
+#[test]
 fn blackboard_environment_uses_root_project_and_carries_rules_without_a_memory_workspace() {
     let root = std::env::temp_dir().join(format!("codux-board-env-{}", uuid::Uuid::new_v4()));
     let store = codux_blackboard::Store::open(&root).unwrap();

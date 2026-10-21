@@ -39,7 +39,7 @@ fn blackboard_store_match_dispatch_queue_and_exited_target_work_together() {
     assert!(sent[0].message.contains("next task 0"));
     assert!(engine.has_pending(&d.id));
     assert_eq!(engine.definition(&d.id).unwrap().message, d.message);
-    engine.complete("a", &d.terminal_id, "done", false, 110);
+    engine.complete("a", &d.terminal_id, "done", 110);
     let pending = engine.take_dispatches();
     assert_eq!(pending.len(), 1);
     assert!(pending[0].message.contains("next task 1"));
@@ -88,7 +88,7 @@ fn triggers_agent_exit_clears_pending_and_late_completion_does_not_restart_autom
     engine.fire(&d.id, TriggerCause::Manual, 102);
     assert!(engine.has_pending(&d.id));
     engine.set_terminal_state(&d.terminal_id, TerminalState::NotStarted);
-    engine.complete("a", &d.terminal_id, "late-agent-completion", true, 103);
+    engine.complete("a", &d.terminal_id, "late-agent-completion", 103);
     assert!(!engine.has_pending(&d.id));
     assert!(engine.take_dispatches().is_empty());
     assert_eq!(
@@ -201,7 +201,7 @@ fn triggers_completed_between_polls_release_one_pending_job_and_continue_interva
         .apply_runtime_snapshot(&d.terminal_id, snapshot.clone())
         .completion
         .expect("finished interval must emit a new completion");
-    engine.complete("a", &d.terminal_id, &completion.id, false, 131);
+    engine.complete("a", &d.terminal_id, &completion.id, 131);
     assert!(!engine.has_pending(&d.id));
     let jobs = engine.take_dispatches();
     assert_eq!(jobs.len(), 1);
@@ -220,12 +220,276 @@ fn triggers_completed_between_polls_release_one_pending_job_and_continue_interva
         .apply_runtime_snapshot(&d.terminal_id, snapshot)
         .completion
         .unwrap();
-    engine.complete("a", &d.terminal_id, &completion.id, false, 136);
+    engine.complete("a", &d.terminal_id, &completion.id, 136);
     assert!(!engine.is_automatic(&d.terminal_id));
     assert_eq!(engine.terminal_state(&d.terminal_id), TerminalState::Idle);
     assert!(engine.take_dispatches().is_empty());
     engine.tick(140);
     assert_eq!(engine.take_dispatches().len(), 1);
+}
+
+#[test]
+fn git_completion_does_not_review_the_same_dirty_content_again() {
+    let mut engine = TriggerEngine::default();
+    let d = definition("a", TriggerKind::TaskCompletedWithGitChanges);
+    engine.upsert(d.clone(), 100).unwrap();
+    engine.set_terminal_state(&d.terminal_id, TerminalState::Idle);
+    engine.complete("a", "source", "first", 101);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 101);
+    let first = engine.take_dispatches().pop().unwrap();
+    engine.delivery_succeeded(&first, 102);
+    engine.complete("a", &d.terminal_id, "review-finished", 103);
+    engine.complete("a", "source", "another-task", 104);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 104);
+    assert!(
+        engine.take_dispatches().is_empty(),
+        "unchanged dirty content was already sent for review"
+    );
+    assert!(!engine.has_pending(&d.id));
+}
+
+fn git_state(scope: &str, fingerprint: &str) -> TriggerGitState {
+    TriggerGitState {
+        scope: scope.into(),
+        fingerprint: fingerprint.into(),
+    }
+}
+
+fn observe_git(
+    engine: &mut TriggerEngine,
+    d: &TriggerDefinition,
+    state: Option<TriggerGitState>,
+    now: i64,
+) {
+    engine.observe_git_changes(&d.project_id, &HashMap::from([(d.id.clone(), state)]), now);
+}
+
+#[test]
+fn git_versions_merge_to_latest_and_repeated_completions_are_silent() {
+    let mut engine = TriggerEngine::default();
+    let d = definition("a", TriggerKind::TaskCompletedWithGitChanges);
+    engine.upsert(d.clone(), 100).unwrap();
+    engine.set_terminal_state(&d.terminal_id, TerminalState::Idle);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 101);
+    let first = engine.take_dispatches().pop().unwrap();
+    for now in 102..110 {
+        observe_git(&mut engine, &d, Some(git_state("repo", "v1")), now);
+    }
+    assert!(!engine.has_pending(&d.id));
+    assert!(engine.records("a").is_empty());
+    observe_git(&mut engine, &d, Some(git_state("repo", "v2")), 110);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v3")), 111);
+    let records = engine.records("a").len();
+    observe_git(&mut engine, &d, Some(git_state("repo", "v3")), 112);
+    assert_eq!(engine.records("a").len(), records);
+    engine.delivery_succeeded(&first, 113);
+    engine.complete("a", &d.terminal_id, "review-finished", 114);
+    let latest = engine.take_dispatches().pop().unwrap();
+    assert_eq!(latest.cause, TriggerCause::Pending);
+    assert_eq!(latest.git_state, Some(git_state("repo", "v3")));
+    assert!(!engine.has_pending(&d.id));
+}
+
+#[test]
+fn git_success_survives_restart_and_tracks_each_rule_and_repository() {
+    let mut engine = TriggerEngine::default();
+    let d = definition("a", TriggerKind::TaskCompletedWithGitChanges);
+    engine.upsert(d.clone(), 100).unwrap();
+    engine.set_terminal_state(&d.terminal_id, TerminalState::Idle);
+    for (now, scope) in [(101, "repo-a"), (104, "repo-b")] {
+        observe_git(&mut engine, &d, Some(git_state(scope, "v1")), now);
+        let job = engine.take_dispatches().pop().unwrap();
+        engine.delivery_succeeded(&job, now + 1);
+        engine.complete("a", &d.terminal_id, &format!("done-{scope}"), now + 2);
+    }
+    let saved = serde_json::to_string(&engine.data).unwrap();
+    let mut restarted = TriggerEngine::restore(serde_json::from_str(&saved).unwrap(), 110).unwrap();
+    restarted.set_terminal_state(&d.terminal_id, TerminalState::Idle);
+    for scope in ["repo-a", "repo-b", "repo-a"] {
+        observe_git(&mut restarted, &d, Some(git_state(scope, "v1")), 111);
+    }
+    assert!(restarted.take_dispatches().is_empty());
+    let mut another = d.clone();
+    another.id = "another-rule".into();
+    another.terminal_id = "another-terminal".into();
+    restarted.upsert(another.clone(), 112).unwrap();
+    restarted.set_terminal_state(&another.terminal_id, TerminalState::Idle);
+    observe_git(
+        &mut restarted,
+        &another,
+        Some(git_state("repo-a", "v1")),
+        113,
+    );
+    assert_eq!(restarted.take_dispatches()[0].trigger_id, another.id);
+}
+
+#[test]
+fn failed_or_not_started_git_delivery_can_retry_and_manual_review_is_unconditional() {
+    let mut engine = TriggerEngine::default();
+    let d = definition("a", TriggerKind::TaskCompletedWithGitChanges);
+    engine.upsert(d.clone(), 100).unwrap();
+    engine.set_terminal_state(&d.terminal_id, TerminalState::NotStarted);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 101);
+    assert!(engine.take_dispatches().is_empty());
+    engine.set_terminal_state(&d.terminal_id, TerminalState::Idle);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 102);
+    assert_eq!(engine.take_dispatches().len(), 1);
+    engine.delivery_failed(&d.id, "cannot submit", 103);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 104);
+    let retry = engine.take_dispatches().pop().unwrap();
+    engine.delivery_succeeded(&retry, 105);
+    engine.complete("a", &d.terminal_id, "done", 106);
+    engine.fire(&d.id, TriggerCause::Manual, 107);
+    let manual = engine.take_dispatches().pop().unwrap();
+    assert_eq!(manual.cause, TriggerCause::Manual);
+    assert!(manual.git_state.is_none());
+    engine.delivery_succeeded(&manual, 108);
+    engine.complete("a", &d.terminal_id, "manual-done", 109);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 110);
+    assert!(engine.take_dispatches().is_empty());
+}
+
+#[test]
+fn clean_tree_clears_stale_git_waiting_but_failed_probe_does_not() {
+    let mut engine = TriggerEngine::default();
+    let d = definition("a", TriggerKind::TaskCompletedWithGitChanges);
+    engine.upsert(d.clone(), 100).unwrap();
+    engine.set_terminal_state(&d.terminal_id, TerminalState::Idle);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 101);
+    let first = engine.take_dispatches().pop().unwrap();
+    observe_git(&mut engine, &d, Some(git_state("repo", "v2")), 102);
+    engine.observe_git_changes("a", &HashMap::new(), 103);
+    assert!(engine.has_pending(&d.id));
+    observe_git(&mut engine, &d, None, 104);
+    assert!(!engine.has_pending(&d.id));
+    engine.delivery_succeeded(&first, 105);
+    engine.complete("a", &d.terminal_id, "done", 106);
+    assert!(engine.take_dispatches().is_empty());
+}
+
+#[test]
+fn waiting_git_review_is_rechecked_before_delivery_and_uses_current_content() {
+    let mut engine = TriggerEngine::default();
+    let d = definition("a", TriggerKind::TaskCompletedWithGitChanges);
+    engine.upsert(d.clone(), 100).unwrap();
+    engine.set_terminal_state(&d.terminal_id, TerminalState::Busy);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 101);
+    engine.complete("a", &d.terminal_id, "user-done", 102);
+    let pending = engine.take_dispatches().pop().unwrap();
+    let current = engine
+        .refresh_git_dispatch(&pending, Some(git_state("repo", "v2")))
+        .unwrap();
+    engine.delivery_succeeded(&current, 103);
+    engine.complete("a", &d.terminal_id, "done", 104);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v2")), 105);
+    assert!(engine.take_dispatches().is_empty());
+    observe_git(&mut engine, &d, Some(git_state("repo", "v3")), 106);
+    let changed = engine.take_dispatches().pop().unwrap();
+    assert!(engine.refresh_git_dispatch(&changed, None).is_none());
+    observe_git(&mut engine, &d, Some(git_state("repo", "v3")), 107);
+    assert_eq!(
+        engine.take_dispatches().len(),
+        1,
+        "canceled delivery must not consume a version"
+    );
+}
+
+#[test]
+fn git_configuration_changes_invalidate_old_jobs_and_failed_edits_keep_waiting() {
+    let mut engine = TriggerEngine::default();
+    let mut d = definition("a", TriggerKind::TaskCompletedWithGitChanges);
+    engine.upsert(d.clone(), 100).unwrap();
+    engine.set_terminal_state(&d.terminal_id, TerminalState::Idle);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 101);
+    let first = engine.take_dispatches().pop().unwrap();
+    observe_git(&mut engine, &d, Some(git_state("repo", "v2")), 102);
+    let mut invalid = d.clone();
+    invalid.message.clear();
+    assert!(engine.upsert(invalid, 103).is_err());
+    assert!(engine.has_pending(&d.id));
+    d.message = "Use the updated review policy".into();
+    engine.upsert(d.clone(), 104).unwrap();
+    assert!(!engine.dispatch_is_current(&first));
+    assert!(!engine.has_pending(&d.id));
+    engine.delivery_succeeded(&first, 105);
+    engine.cancel_dispatch(&first);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 106);
+    let new = engine.take_dispatches().pop().unwrap();
+    assert_eq!(new.message, d.message);
+    assert_ne!(new.git_context, first.git_context);
+}
+
+#[test]
+fn dropping_a_stale_released_git_job_unlocks_later_reviews() {
+    let mut engine = TriggerEngine::default();
+    let mut d = definition("a", TriggerKind::TaskCompletedWithGitChanges);
+    engine.upsert(d.clone(), 100).unwrap();
+    engine.set_terminal_state(&d.terminal_id, TerminalState::Busy);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 101);
+    engine.complete("a", &d.terminal_id, "user-done", 102);
+    d.message = "New review policy".into();
+    engine.upsert(d.clone(), 103).unwrap();
+    let stale = engine.take_dispatches().pop().unwrap();
+    assert!(!engine.dispatch_is_current(&stale));
+    engine.cancel_dispatch(&stale);
+    assert!(!engine.is_automatic(&d.terminal_id));
+    engine.delivery_succeeded(&stale, 104);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 105);
+    let current = engine.take_dispatches().pop().unwrap();
+    assert_eq!(current.message, d.message);
+    assert!(engine.dispatch_is_current(&current));
+}
+
+#[test]
+fn canceled_git_dispatch_cannot_later_commit_a_successful_version() {
+    let mut engine = TriggerEngine::default();
+    let d = definition("a", TriggerKind::TaskCompletedWithGitChanges);
+    engine.upsert(d.clone(), 100).unwrap();
+    engine.set_terminal_state(&d.terminal_id, TerminalState::Idle);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 101);
+    let canceled = engine.take_dispatches().pop().unwrap();
+    engine.cancel_dispatch(&canceled);
+    assert!(!engine.dispatch_is_current(&canceled));
+    engine.delivery_succeeded(&canceled, 102);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 103);
+    assert_eq!(engine.take_dispatches().len(), 1);
+}
+
+#[test]
+fn late_git_callback_cannot_complete_or_cancel_a_new_attempt_of_the_same_version() {
+    let mut engine = TriggerEngine::default();
+    let d = definition("a", TriggerKind::TaskCompletedWithGitChanges);
+    engine.upsert(d.clone(), 100).unwrap();
+    engine.set_terminal_state(&d.terminal_id, TerminalState::Idle);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 101);
+    let old = engine.take_dispatches().pop().unwrap();
+    engine.cancel_dispatch(&old);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 102);
+    let new = engine.take_dispatches().pop().unwrap();
+    assert!(engine.dispatch_is_current(&new));
+    assert!(!engine.dispatch_is_current(&old));
+    engine.delivery_succeeded(&old, 103);
+    assert!(engine.records("a").is_empty());
+    engine.cancel_dispatch(&old);
+    assert!(engine.is_automatic(&d.terminal_id));
+    assert!(engine.dispatch_is_current(&new));
+}
+
+#[test]
+fn canceling_a_git_review_does_not_discard_a_waiting_manual_review() {
+    let mut engine = TriggerEngine::default();
+    let d = definition("a", TriggerKind::TaskCompletedWithGitChanges);
+    engine.upsert(d.clone(), 100).unwrap();
+    engine.set_terminal_state(&d.terminal_id, TerminalState::Idle);
+    observe_git(&mut engine, &d, Some(git_state("repo", "v1")), 101);
+    let automatic = engine.take_dispatches().pop().unwrap();
+    engine.fire(&d.id, TriggerCause::Manual, 102);
+    assert!(engine.has_pending(&d.id));
+    observe_git(&mut engine, &d, Some(git_state("repo", "v2")), 103);
+    assert!(engine.refresh_git_dispatch(&automatic, None).is_none());
+    let manual = engine.take_dispatches().pop().unwrap();
+    assert!(manual.git_state.is_none());
+    assert!(engine.dispatch_is_current(&manual));
 }
 
 #[test]
@@ -237,15 +501,16 @@ fn triggers_project_completion_git_filter_and_no_recursive_automation() {
     engine.upsert(b.clone(), 100).unwrap();
     engine.set_terminal_state(&a.terminal_id, TerminalState::Idle);
     engine.set_terminal_state(&b.terminal_id, TerminalState::Idle);
-    engine.complete("a", "source", "one", false, 101);
+    engine.complete("a", "source", "one", 101);
     assert!(engine.take_dispatches().is_empty());
-    engine.complete("a", "source", "two", true, 102);
+    engine.complete("a", "source", "two", 102);
+    observe_git(&mut engine, &a, Some(git_state("repo", "v1")), 102);
     let jobs = engine.take_dispatches();
     assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].trigger_id, a.id);
-    engine.complete("a", &a.terminal_id, "three", true, 103);
+    assert!(!engine.complete("a", &a.terminal_id, "three", 103));
     assert!(engine.take_dispatches().is_empty());
-    engine.complete("a", "source", "two", true, 104);
+    assert!(!engine.complete("a", "source", "two", 104));
     assert!(
         engine.take_dispatches().is_empty(),
         "duplicate completion must not replay"
@@ -268,11 +533,11 @@ fn triggers_busy_hits_merge_once_and_use_first_message_snapshot() {
     e.fire(&d.id, TriggerCause::Manual, 105);
     assert!(e.take_dispatches().is_empty());
     assert!(e.has_pending(&d.id));
-    e.complete("a", &d.terminal_id, "done", false, 106);
+    e.complete("a", &d.terminal_id, "done", 106);
     let jobs = e.take_dispatches();
     assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].message, "first waiting");
-    e.complete("a", &d.terminal_id, "done-next", false, 107);
+    e.complete("a", &d.terminal_id, "done-next", 107);
     assert!(e.take_dispatches().is_empty());
 }
 
@@ -308,7 +573,7 @@ fn triggers_pause_clears_pending_without_interrupting_current_task() {
     e.fire(&d.id, TriggerCause::Manual, 102);
     e.set_enabled(&d.id, false, 103).unwrap();
     assert!(!e.has_pending(&d.id));
-    e.complete("a", &d.terminal_id, "done", false, 104);
+    e.complete("a", &d.terminal_id, "done", 104);
     e.fire(&d.id, TriggerCause::Manual, 105);
     assert!(e.take_dispatches().is_empty());
 }
@@ -435,7 +700,7 @@ fn triggers_exit_is_not_a_task_completion_and_late_events_do_not_fan_out() {
     e.fire(&d.id, TriggerCause::Manual, 101);
     e.take_dispatches();
     e.mark_exited(&d.id);
-    e.complete("a", &d.terminal_id, "late", true, 102);
+    e.complete("a", &d.terminal_id, "late", 102);
     assert!(e.take_dispatches().is_empty());
     assert!(e.records("a").is_empty());
 }
@@ -453,7 +718,7 @@ fn triggers_host_assigned_terminal_id_preserves_automation_and_pending_message()
     assert_eq!(e.definition(&d.id).unwrap().terminal_id, "host-session");
     assert!(e.has_pending(&d.id));
     assert!(e.is_automatic("host-session"));
-    e.complete("a", "host-session", "done", false, 103);
+    e.complete("a", "host-session", "done", 103);
     let jobs = e.take_dispatches();
     assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].terminal_id, "host-session");

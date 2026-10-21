@@ -27,12 +27,6 @@ pub struct AIRuntimeToolDriver {
     pub lifecycle_config: Option<AIRuntimeLifecycleConfigDefinition>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AIRuntimeInitialPromptLaunch {
-    pub command: String,
-    pub env: std::collections::HashMap<String, String>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AIRuntimeScreenPatterns {
     pub running: &'static [&'static str],
@@ -211,32 +205,6 @@ pub fn initial_prompt_command(tool: &str, prompt_argument: &str) -> Option<Strin
     )
 }
 
-pub fn initial_prompt_launch(
-    tool: &str,
-    prompt_path: &std::path::Path,
-) -> Option<AIRuntimeInitialPromptLaunch> {
-    let driver = runtime_tool_driver(tool)?;
-    driver.wrapper_bins.first()?;
-    let mut env = std::collections::HashMap::new();
-    env.insert(
-        "CODUX_AGENT_WORKTREE_TOOL".to_string(),
-        driver.id.to_string(),
-    );
-    env.insert(
-        "CODUX_AGENT_WORKTREE_PROMPT_FILE".to_string(),
-        prompt_path.display().to_string(),
-    );
-    env.insert(
-        "CODUX_AGENT_WORKTREE_AUTONOMOUS".to_string(),
-        "1".to_string(),
-    );
-    #[cfg(windows)]
-    let command = "& (Join-Path $env:DMUX_WRAPPER_BIN '..\\codux-wrapper-helper.exe') --codux-wrapper-helper agent-worktree-launch".to_string();
-    #[cfg(not(windows))]
-    let command = "\"$DMUX_WRAPPER_BIN/../codux-wrapper-helper\" --codux-wrapper-helper agent-worktree-launch; exec \"$SHELL\" -i -l".to_string();
-    Some(AIRuntimeInitialPromptLaunch { command, env })
-}
-
 pub fn canonical_command_tool_name(command: &str) -> Option<&'static str> {
     let normalized = command.trim().to_ascii_lowercase();
     if normalized.is_empty() {
@@ -350,16 +318,6 @@ mod tests {
         assert_eq!(
             initial_prompt_command("mimo", "$(cat prompt)"),
             Some("mimo run $(cat prompt)".to_string())
-        );
-    }
-
-    #[test]
-    fn agent_worktree_launch_requests_autonomous_permissions() {
-        let launch = initial_prompt_launch("codex", std::path::Path::new("/tmp/prompt.txt"))
-            .expect("codex launch");
-        assert_eq!(
-            launch.env.get("CODUX_AGENT_WORKTREE_AUTONOMOUS"),
-            Some(&"1".to_string())
         );
     }
 

@@ -163,3 +163,4 @@ mod terminal_input;
 mod terminal_lifecycle;
 mod terminal_viewport;
 mod transport;
+mod worktrees;

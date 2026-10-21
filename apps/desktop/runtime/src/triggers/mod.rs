@@ -163,6 +163,20 @@ pub struct TriggerProject {
     pub definitions: Vec<TriggerDefinition>,
     pub layout: Option<TerminalSplitNode>,
     pub records: Vec<TriggerRecord>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub git_fingerprints: BTreeMap<String, BTreeMap<String, TriggerGitDelivery>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TriggerGitState {
+    pub scope: String,
+    pub fingerprint: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TriggerGitDelivery {
+    pub fingerprint: String,
+    pub context: String,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -251,16 +265,22 @@ pub enum TerminalState {
 }
 #[derive(Clone, Debug)]
 pub struct TriggerDispatch {
+    pub dispatch_id: String,
     pub trigger_id: String,
     pub terminal_id: String,
     pub message: String,
     pub cause: TriggerCause,
+    pub git_state: Option<TriggerGitState>,
+    pub git_context: Option<String>,
 }
 #[derive(Clone, Default)]
 struct LiveTerminal {
     state: TerminalState,
     automatic: bool,
     pending: Option<TriggerDispatch>,
+    active_git: Option<TriggerGitState>,
+    active_git_context: Option<String>,
+    active_dispatch_id: Option<String>,
 }
 #[derive(Clone, Default)]
 pub struct TriggerEngine {
@@ -363,6 +383,20 @@ impl TriggerEngine {
         } else {
             d.next_at = previous.as_ref().and_then(|old| old.next_at);
         }
+        if previous
+            .as_ref()
+            .is_some_and(|old| git_context(old) != git_context(&d))
+        {
+            if let Some(terminal) = self.terminals.get_mut(&d.terminal_id) {
+                if terminal
+                    .pending
+                    .as_ref()
+                    .is_some_and(|job| job.git_state.is_some())
+                {
+                    terminal.pending = None;
+                }
+            }
+        }
         if !d.enabled {
             self.terminals
                 .entry(d.terminal_id.clone())
@@ -405,10 +439,16 @@ impl TriggerEngine {
         if state == TerminalState::NotStarted || state == TerminalState::Unavailable {
             t.pending = None;
             t.automatic = false;
+            t.active_git = None;
+            t.active_git_context = None;
+            t.active_dispatch_id = None;
         }
         if state == TerminalState::Exited {
             t.pending = None;
             t.automatic = false;
+            t.active_git = None;
+            t.active_git_context = None;
+            t.active_dispatch_id = None;
             for p in self.data.projects.values_mut() {
                 if let Some(d) = p
                     .definitions
@@ -479,15 +519,27 @@ impl TriggerEngine {
         }
     }
     pub fn fire(&mut self, id: &str, cause: TriggerCause, now: i64) {
+        self.fire_with_git_state(id, cause, None, now);
+    }
+    fn fire_with_git_state(
+        &mut self,
+        id: &str,
+        cause: TriggerCause,
+        git_state: Option<TriggerGitState>,
+        now: i64,
+    ) {
         let Some(d) = self.definition(id).filter(|d| d.enabled).cloned() else {
             return;
         };
         let t = self.terminals.entry(d.terminal_id.clone()).or_default();
         let job = TriggerDispatch {
+            dispatch_id: uuid::Uuid::new_v4().to_string(),
             trigger_id: d.id.clone(),
             terminal_id: d.terminal_id.clone(),
             message: d.message.clone(),
             cause,
+            git_context: git_state.as_ref().map(|_| git_context(&d)),
+            git_state,
         };
         let outcome = if d.exited || t.state == TerminalState::Exited {
             Some(TriggerOutcome::Exited)
@@ -497,6 +549,11 @@ impl TriggerEngine {
             Some(TriggerOutcome::Unavailable)
         } else if t.state == TerminalState::Busy || t.automatic {
             if t.pending.is_some() {
+                if job.git_state.is_some() {
+                    // A review waits for the newest version, rather than the
+                    // first version that happened to arrive while busy.
+                    t.pending = Some(job.clone());
+                }
                 Some(TriggerOutcome::Merged)
             } else {
                 t.pending = Some(job.clone());
@@ -504,6 +561,9 @@ impl TriggerEngine {
             }
         } else {
             t.automatic = true;
+            t.active_git = job.git_state.clone();
+            t.active_git_context = job.git_context.clone();
+            t.active_dispatch_id = Some(job.dispatch_id.clone());
             self.dispatches.push(job);
             None
         };
@@ -542,12 +602,11 @@ impl TriggerEngine {
         project_id: &str,
         terminal_id: &str,
         event_id: &str,
-        git_dirty: bool,
         now: i64,
-    ) {
+    ) -> bool {
         let key = format!("{terminal_id}:{event_id}");
         if !self.completions.insert(key.clone()) {
-            return;
+            return false;
         }
         self.completion_order.push_back(key);
         while self.completion_order.len() > 512 {
@@ -559,53 +618,215 @@ impl TriggerEngine {
         if matches!(t.state, TerminalState::Exited | TerminalState::NotStarted) {
             t.pending = None;
             t.automatic = false;
-            return;
+            t.active_git = None;
+            t.active_git_context = None;
+            t.active_dispatch_id = None;
+            return false;
         }
         let automatic = t.automatic;
         t.automatic = false;
+        t.active_git = None;
+        t.active_git_context = None;
+        t.active_dispatch_id = None;
         if t.state != TerminalState::Exited {
             t.state = TerminalState::Idle;
         }
-        let pending = t.pending.take();
-        if let Some(mut job) = pending {
-            if t.state == TerminalState::Idle
-                && self
-                    .definition(&job.trigger_id)
-                    .is_some_and(|d| d.enabled && !d.exited)
-            {
-                job.cause = TriggerCause::Pending;
-                self.terminals.get_mut(terminal_id).unwrap().automatic = true;
-                self.dispatches.push(job);
-            }
-        }
+        self.release_pending(terminal_id);
         if !automatic {
             let ids = self
                 .project(project_id)
                 .map(|p| {
                     p.definitions
                         .iter()
-                        .filter(|d| {
-                            matches!(d.kind, TriggerKind::TaskCompleted)
-                                || (git_dirty
-                                    && matches!(d.kind, TriggerKind::TaskCompletedWithGitChanges))
-                        })
+                        .filter(|d| matches!(d.kind, TriggerKind::TaskCompleted))
                         .map(|d| d.id.clone())
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
             for id in ids {
-                let cause = if matches!(
-                    self.definition(&id).unwrap().kind,
-                    TriggerKind::TaskCompleted
-                ) {
-                    TriggerCause::TaskCompleted
-                } else {
-                    TriggerCause::TaskCompletedWithGitChanges
-                };
-                self.fire(&id, cause, now);
+                self.fire(&id, TriggerCause::TaskCompleted, now);
             }
         }
         self.revision += 1;
+        !automatic
+    }
+
+    /// Each result belongs to the rule's own repository. Missing keys are
+    /// failed/incomplete probes, while None explicitly means a clean tree.
+    pub fn observe_git_changes(
+        &mut self,
+        project_id: &str,
+        states: &HashMap<String, Option<TriggerGitState>>,
+        now: i64,
+    ) {
+        let definitions = self
+            .project(project_id)
+            .into_iter()
+            .flat_map(|project| &project.definitions)
+            .filter(|d| d.enabled && matches!(d.kind, TriggerKind::TaskCompletedWithGitChanges))
+            .cloned()
+            .collect::<Vec<_>>();
+        for definition in definitions {
+            let Some(state) = states.get(&definition.id) else {
+                continue;
+            };
+            let Some(state) = state else {
+                self.clear_git_pending(&definition.terminal_id);
+                continue;
+            };
+            let context = git_context(&definition);
+            let already_sent = self.git_was_sent(&definition, state);
+            let active = self
+                .terminals
+                .get(&definition.terminal_id)
+                .is_some_and(|t| {
+                    t.active_git.as_ref() == Some(state)
+                        && t.active_git_context.as_ref() == Some(&context)
+                });
+            if already_sent || active {
+                // The tree can return to its active/already reviewed version
+                // before a pending newer version is dispatched.
+                self.clear_git_pending(&definition.terminal_id);
+                continue;
+            }
+            let pending = self
+                .terminals
+                .get(&definition.terminal_id)
+                .and_then(|t| t.pending.as_ref());
+            if pending.is_some_and(|job| job.git_state.is_none()) {
+                // An explicit manual review already waiting on this terminal
+                // takes precedence over automatic version consolidation.
+                continue;
+            }
+            if pending.is_some_and(|job| {
+                job.git_state.as_ref() == Some(state) && job.git_context.as_ref() == Some(&context)
+            }) {
+                continue;
+            }
+            self.fire_with_git_state(
+                &definition.id,
+                TriggerCause::TaskCompletedWithGitChanges,
+                Some(state.clone()),
+                now,
+            );
+        }
+    }
+
+    fn clear_git_pending(&mut self, terminal_id: &str) {
+        if let Some(t) = self.terminals.get_mut(terminal_id) {
+            if t.pending
+                .as_ref()
+                .is_some_and(|job| job.git_state.is_some())
+            {
+                t.pending = None;
+                self.revision += 1;
+            }
+        }
+    }
+
+    fn git_was_sent(&self, definition: &TriggerDefinition, state: &TriggerGitState) -> bool {
+        self.project(&definition.project_id)
+            .and_then(|project| project.git_fingerprints.get(&definition.id))
+            .and_then(|scopes| scopes.get(&state.scope))
+            .is_some_and(|sent| {
+                sent.fingerprint == state.fingerprint && sent.context == git_context(definition)
+            })
+    }
+
+    pub fn dispatch_is_current(&self, job: &TriggerDispatch) -> bool {
+        self.dispatch_configuration_is_current(job)
+            && self
+                .terminals
+                .get(&job.terminal_id)
+                .is_some_and(|terminal| {
+                    terminal.automatic
+                        && terminal.active_dispatch_id.as_ref() == Some(&job.dispatch_id)
+                })
+            && job.git_state.as_ref().is_none_or(|state| {
+                self.terminals
+                    .get(&job.terminal_id)
+                    .is_some_and(|terminal| {
+                        terminal.automatic
+                            && terminal.active_git.as_ref() == Some(state)
+                            && terminal.active_git_context == job.git_context
+                    })
+            })
+    }
+
+    pub fn dispatch_configuration_is_current(&self, job: &TriggerDispatch) -> bool {
+        self.definition(&job.trigger_id).is_some_and(|d| {
+            d.enabled
+                && !d.exited
+                && d.terminal_id == job.terminal_id
+                && job
+                    .git_context
+                    .as_ref()
+                    .is_none_or(|context| *context == git_context(d))
+        })
+    }
+
+    /// Recheck queued work against the repository immediately before sending.
+    pub fn refresh_git_dispatch(
+        &mut self,
+        job: &TriggerDispatch,
+        state: Option<TriggerGitState>,
+    ) -> Option<TriggerDispatch> {
+        if job.git_state.is_none() {
+            return Some(job.clone());
+        }
+        if !self.dispatch_is_current(job) {
+            self.cancel_dispatch(job);
+            return None;
+        }
+        let definition = self.definition(&job.trigger_id)?.clone();
+        let Some(state) = state else {
+            self.clear_git_pending(&job.terminal_id);
+            self.cancel_dispatch(job);
+            return None;
+        };
+        if self.git_was_sent(&definition, &state) {
+            self.clear_git_pending(&job.terminal_id);
+            self.cancel_dispatch(job);
+            return None;
+        }
+        let mut refreshed = job.clone();
+        refreshed.git_state = Some(state.clone());
+        if let Some(t) = self.terminals.get_mut(&job.terminal_id) {
+            t.active_git = Some(state.clone());
+            t.active_git_context = job.git_context.clone();
+            if t.pending
+                .as_ref()
+                .is_some_and(|pending| pending.git_state.as_ref() == Some(&state))
+            {
+                t.pending = None;
+            }
+        }
+        Some(refreshed)
+    }
+
+    fn release_pending(&mut self, terminal_id: &str) {
+        let job = self.terminals.get_mut(terminal_id).and_then(|t| {
+            (t.state == TerminalState::Idle && !t.automatic)
+                .then(|| t.pending.take())
+                .flatten()
+        });
+        let Some(mut job) = job else { return };
+        if !self.dispatch_configuration_is_current(&job) {
+            return;
+        }
+        if job.git_state.as_ref().is_some_and(|state| {
+            self.definition(&job.trigger_id)
+                .is_some_and(|d| self.git_was_sent(d, state))
+        }) {
+            return;
+        }
+        job.cause = TriggerCause::Pending;
+        let terminal = self.terminals.get_mut(terminal_id).unwrap();
+        terminal.automatic = true;
+        terminal.active_git = job.git_state.clone();
+        terminal.active_git_context = job.git_context.clone();
+        terminal.active_dispatch_id = Some(job.dispatch_id.clone());
+        self.dispatches.push(job);
     }
     pub fn take_dispatches(&mut self) -> Vec<TriggerDispatch> {
         std::mem::take(&mut self.dispatches)
@@ -666,10 +887,21 @@ impl TriggerEngine {
     }
     pub fn cancel_dispatch(&mut self, job: &TriggerDispatch) {
         if let Some(t) = self.terminals.get_mut(&job.terminal_id) {
+            if t.active_dispatch_id.as_ref() != Some(&job.dispatch_id) {
+                return;
+            }
             t.automatic = false;
-            t.pending = None;
+            t.active_git = None;
+            t.active_git_context = None;
+            t.active_dispatch_id = None;
+            if t.pending.as_ref().is_some_and(|pending| {
+                pending.git_state == job.git_state && pending.git_context == job.git_context
+            }) {
+                t.pending = None;
+            }
             self.revision += 1;
         }
+        self.release_pending(&job.terminal_id);
     }
     pub fn delivery_skipped(&mut self, job: &TriggerDispatch, outcome: TriggerOutcome, now: i64) {
         self.cancel_dispatch(job);
@@ -679,6 +911,34 @@ impl TriggerEngine {
     }
     pub fn delivery_succeeded(&mut self, job: &TriggerDispatch, now: i64) {
         if let Some(d) = self.definition(&job.trigger_id).cloned() {
+            if let Some(state) = &job.git_state {
+                if !self.dispatch_is_current(job) {
+                    return;
+                }
+                let scopes = self
+                    .data
+                    .projects
+                    .get_mut(&d.project_id)
+                    .unwrap()
+                    .git_fingerprints
+                    .entry(d.id.clone())
+                    .or_default();
+                scopes.insert(
+                    state.scope.clone(),
+                    TriggerGitDelivery {
+                        fingerprint: state.fingerprint.clone(),
+                        context: git_context(&d),
+                    },
+                );
+                while scopes.len() > 32 {
+                    let key = scopes
+                        .keys()
+                        .find(|key| **key != state.scope)
+                        .cloned()
+                        .unwrap();
+                    scopes.remove(&key);
+                }
+            }
             self.record(
                 &d,
                 TriggerOutcome::Sent,
@@ -693,7 +953,15 @@ impl TriggerEngine {
         if let Some(d) = self.definition(id).cloned() {
             let t = self.terminals.entry(d.terminal_id.clone()).or_default();
             t.automatic = false;
-            t.pending = None;
+            let failed_git = t.active_git.take();
+            t.active_git_context = None;
+            t.active_dispatch_id = None;
+            if t.pending
+                .as_ref()
+                .is_some_and(|pending| pending.git_state == failed_git)
+            {
+                t.pending = None;
+            }
             self.record(
                 &d,
                 TriggerOutcome::Failed,
@@ -702,6 +970,7 @@ impl TriggerEngine {
                 Some(error.into()),
                 now,
             );
+            self.release_pending(&d.terminal_id);
         }
     }
     fn record(
@@ -732,6 +1001,7 @@ impl TriggerEngine {
         for p in self.data.projects.values_mut() {
             if let Some(index) = p.definitions.iter().position(|d| d.id == id) {
                 let d = p.definitions.remove(index);
+                p.git_fingerprints.remove(&d.id);
                 self.terminals.remove(&d.terminal_id);
                 self.dispatches.retain(|j| j.trigger_id != id);
                 fn remove_node(n: TerminalSplitNode, index: usize) -> Option<TerminalSplitNode> {
@@ -764,6 +1034,17 @@ impl TriggerEngine {
         }
         None
     }
+}
+
+fn git_context(definition: &TriggerDefinition) -> String {
+    serde_json::to_string(&(
+        &definition.runtime_target,
+        definition.working_directory.trim(),
+        &definition.message,
+        definition.startup_command.trim(),
+        &definition.kind,
+    ))
+    .expect("trigger configuration serializes")
 }
 
 #[cfg(test)]

@@ -1,12 +1,8 @@
-use super::{
-    RuntimeStdioWriter, agent_worktree::RuntimeStdioAgentWorktreeHost,
-    terminal::RuntimeStdioTerminals,
-};
+use super::{RuntimeStdioWriter, terminal::RuntimeStdioTerminals};
 use codux_runtime_core::file::{
     file_copy, file_delete, file_list_payload, file_make_directory, file_move,
     file_read_blob_bytes, file_read_payload, file_rename, file_write, file_write_bytes,
 };
-use codux_runtime_live::agent_worktree::{AgentWorktreeControl, AgentWorktreeHost};
 use codux_runtime_live::ai_runtime::AIRuntimeBridge;
 use codux_terminal_core::TerminalQueryColors;
 use serde_json::{Value, json};
@@ -18,8 +14,6 @@ pub(super) struct RuntimeStdioService {
     blackboard: codux_blackboard::Store,
     terminals: RuntimeStdioTerminals,
     ai_history: codux_ai_history::indexer::AIHistoryIndexer,
-    _agent_worktree_control: Arc<AgentWorktreeControl>,
-    _agent_worktree_host: Arc<dyn AgentWorktreeHost>,
 }
 
 impl RuntimeStdioService {
@@ -31,22 +25,11 @@ impl RuntimeStdioService {
         let ai_history = crate::ai_stats::open_indexer_at(&data_dir);
         let terminals =
             RuntimeStdioTerminals::new(data_dir.clone(), writer.clone(), Arc::clone(&ai_runtime));
-        let control = AgentWorktreeControl::start(&data_dir, ai_runtime)?;
-        let host: Arc<dyn AgentWorktreeHost> = Arc::new(RuntimeStdioAgentWorktreeHost::new(
-            terminals.clone(),
-            writer,
-        ));
-        control.set_host(Arc::clone(&host));
-        terminals
-            .manager()
-            .bind_agent_worktree_control(Arc::clone(&control));
         Ok(Self {
             blackboard_support_dir: data_dir.clone(),
             blackboard: codux_blackboard::Store::open(&data_dir)?,
             terminals,
             ai_history,
-            _agent_worktree_control: control,
-            _agent_worktree_host: host,
         })
     }
 
@@ -137,11 +120,7 @@ impl RuntimeStdioService {
                     params.get("overwrite").and_then(Value::as_bool).unwrap_or(false),
                 )?
             })),
-            "git.status" => {
-                let path = required_str(params, "projectPath")?;
-                serde_json::to_value(codux_git::wire::status(path))
-                    .map_err(|error| error.to_string())
-            }
+            "git.status" => git_status_request(params),
             "git.invoke" => {
                 let path = required_str(params, "projectPath")?;
                 let op = required_str(params, "op")?;
@@ -244,6 +223,58 @@ impl RuntimeStdioService {
     }
 }
 
+fn git_status_request(params: &Value) -> Result<Value, String> {
+    let path = required_str(params, "projectPath")?;
+    let include = params.get("includeFingerprint").and_then(Value::as_bool) == Some(true);
+    let summary = if include {
+        codux_git::wire::wire_status_summary(codux_git::GitService::status_counts(path))
+    } else {
+        codux_git::wire::status(path)
+    };
+    let mut payload = serde_json::to_value(summary).map_err(|error| error.to_string())?;
+    if include {
+        codux_git::wire::attach_change_fingerprint(&mut payload, path)?;
+    }
+    Ok(payload)
+}
+
+#[cfg(test)]
+mod fingerprint_tests {
+    use super::*;
+
+    #[test]
+    fn stdio_git_fingerprint_is_opt_in_and_reads_runtime_files() {
+        let root =
+            std::env::temp_dir().join(format!("codux-stdio-fingerprint-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        git2::Repository::init(&root).unwrap();
+        let normal = git_status_request(&json!({"projectPath": root})).unwrap();
+        assert!(normal.get("fingerprint").is_none());
+        let clean =
+            git_status_request(&json!({"projectPath": root, "includeFingerprint": true})).unwrap();
+        assert!(clean.get("fingerprint").unwrap().is_null());
+        std::fs::write(root.join("runtime.bin"), [0, 255, 1]).unwrap();
+        let before =
+            git_status_request(&json!({"projectPath": root, "includeFingerprint": true})).unwrap();
+        let expected = codux_git::GitService::change_fingerprint(root.to_str().unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(before["fingerprint"]["scope"], expected.scope);
+        assert_eq!(before["fingerprint"]["fingerprint"], expected.fingerprint);
+        std::fs::write(root.join("runtime.bin"), [0, 255, 2]).unwrap();
+        let after =
+            git_status_request(&json!({"projectPath": root, "includeFingerprint": true})).unwrap();
+        assert_ne!(before["fingerprint"], after["fingerprint"]);
+        assert!(
+            git_status_request(
+                &json!({"projectPath": root.join("missing"), "includeFingerprint": true})
+            )
+            .is_err()
+        );
+        std::fs::remove_dir_all(root).ok();
+    }
+}
+
 fn required_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, String> {
     params
         .get(key)
@@ -251,4 +282,59 @@ fn required_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| format!("{key} is required"))
+}
+
+#[cfg(test)]
+mod worktree_tests {
+    use super::*;
+
+    #[test]
+    fn manual_stdio_worktree_create_remains_available_without_agent_control() {
+        let root =
+            std::env::temp_dir().join(format!("codux-manual-stdio-{}", uuid::Uuid::new_v4()));
+        let project = root.join("project");
+        let repo = git2::Repository::init(&project).unwrap();
+        let tree_id = repo.index().unwrap().write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let signature = git2::Signature::now("Codux Test", "test@example.test").unwrap();
+        repo.commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
+            .unwrap();
+        let bridge = Arc::new(AIRuntimeBridge::with_runtime_paths(
+            root.join("runtime"),
+            root.join("temp"),
+            root.join("home"),
+        ));
+        let service =
+            RuntimeStdioService::new(root.join("data"), RuntimeStdioWriter::new(), bridge).unwrap();
+        let result = service
+            .dispatch(
+                "worktree.create",
+                &json!({
+                    "projectId": "project-1",
+                    "projectPath": project,
+                    "branchName": "manual-task",
+                }),
+            )
+            .unwrap();
+        let created = result["worktrees"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["branch"] == "manual-task")
+            .unwrap();
+        assert_eq!(result["selectedWorktreeId"], created["id"]);
+        assert!(std::path::Path::new(created["path"].as_str().unwrap()).is_dir());
+        assert!(
+            service
+                .dispatch("terminal.list", &json!({}))
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        drop(service);
+        drop(tree);
+        drop(repo);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

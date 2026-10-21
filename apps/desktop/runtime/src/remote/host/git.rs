@@ -2,6 +2,52 @@ use super::*;
 
 impl RemoteHostRuntime {
     pub(super) fn handle_git_status(&self, envelope: &RemoteEnvelope) {
+        if envelope
+            .payload
+            .get("includeFingerprint")
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
+            // Automation targets a rule's exact worktree, which can differ
+            // from the root stored under its project id. Never redirect it.
+            let project_id = envelope
+                .payload
+                .get("projectId")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let explicit_path = envelope
+                .payload
+                .get("projectPath")
+                .and_then(Value::as_str)
+                .filter(|path| !path.trim().is_empty());
+            let target = explicit_path
+                .map(|path| (project_id.to_owned(), path.to_owned()))
+                .or_else(|| self.git_project_from_envelope(envelope));
+            let Some((project_id, project_path)) = target else {
+                self.send_error(envelope, "Explicit Git fingerprint target is required.");
+                return;
+            };
+            let mut payload = remote_git_status_payload(
+                project_id.clone(),
+                project_path.clone(),
+                crate::git::GitService::status_counts(&project_path),
+            );
+            if let Err(error) =
+                codux_git::wire::attach_change_fingerprint(&mut payload, &project_path)
+            {
+                self.send_error(envelope, &error);
+                return;
+            }
+            self.reply_resource_payload(
+                envelope,
+                REMOTE_GIT_STATUS,
+                REMOTE_RESOURCE_GIT_STATUS,
+                Some(&project_id),
+                None,
+                payload,
+            );
+            return;
+        }
         // Status may fall back to the first project (legacy id-less pulls);
         // mutations and reads never guess.
         let project = self.git_project_from_envelope(envelope).or_else(|| {

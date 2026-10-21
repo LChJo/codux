@@ -1,4 +1,3 @@
-pub mod agent_worktree;
 pub mod ai_stats;
 pub mod file;
 pub mod git;

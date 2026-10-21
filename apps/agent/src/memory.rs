@@ -189,7 +189,7 @@ mod tests {
         assert!(prompt.contains("Project ID: project-root"));
         assert!(prompt.contains("Workspace: /repo/workspace-a"));
         assert!(prompt.contains("codux-blackboard list notes"));
-        assert!(prompt.contains("codux-blackboard add --title"));
+        assert!(prompt.contains("codux-blackboard summary add --title"));
         assert!(prompt.contains("# Project hard rules"));
         assert!(prompt.contains("Run cargo check before delivery."));
         assert!(!prompt.contains("codux-worktree"));

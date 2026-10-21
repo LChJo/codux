@@ -470,3 +470,56 @@ fn terminal_list_subscription_does_not_receive_session_output() {
     assert!(runtime.terminal_output_viewers("session-1").is_empty());
     fs::remove_dir_all(support_dir).ok();
 }
+
+#[test]
+fn git_fingerprint_opt_in_reads_explicit_worktree_not_stored_project_root() {
+    let support_dir = temp_support_dir("codux-remote-git-fingerprint");
+    let (project_a, _) = write_two_project_state(&support_dir);
+    let exact_path = support_dir.join("rule-worktree");
+    fs::create_dir_all(&exact_path).unwrap();
+    git2::Repository::init(&project_a).unwrap();
+    git2::Repository::init(&exact_path).unwrap();
+    fs::write(project_a.join("root.txt"), "root changes").unwrap();
+    fs::write(exact_path.join("actual.txt"), "rule worktree changes").unwrap();
+    let runtime = Arc::new(RemoteHostRuntime::new(support_dir.clone()));
+    let transport = Arc::new(CapturingTransport::default());
+    *runtime.transport.lock().unwrap() = Some(transport.clone());
+    let mut request = RemoteEnvelope {
+        kind: REMOTE_GIT_STATUS.into(),
+        device_id: Some("device-1".into()),
+        session_id: None,
+        request_id: Some("fingerprint-query".into()),
+        seq: None,
+        payload: json!({"projectId": "project-a", "projectPath": exact_path, "includeFingerprint": true}),
+    };
+    runtime.handle_git_status(&request);
+    let replies = transport.take_messages();
+    let reply: RemoteEnvelope = serde_json::from_slice(&replies[0].1).unwrap();
+    let expected = codux_git::GitService::change_fingerprint(exact_path.to_str().unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(reply.kind, REMOTE_GIT_STATUS);
+    assert_eq!(reply.payload["fingerprint"]["scope"], expected.scope);
+    assert_eq!(
+        reply.payload["fingerprint"]["fingerprint"],
+        expected.fingerprint
+    );
+    request.payload["includeFingerprint"] = json!(false);
+    runtime.handle_git_status(&request);
+    let replies = transport.take_messages();
+    let reply: RemoteEnvelope = serde_json::from_slice(&replies[0].1).unwrap();
+    assert!(
+        reply.payload.get("fingerprint").is_none(),
+        "ordinary Git refresh stays unchanged"
+    );
+    request.payload["includeFingerprint"] = json!(true);
+    request.payload["projectPath"] = json!(support_dir.join("missing"));
+    runtime.handle_git_status(&request);
+    let replies = transport.take_messages();
+    let reply: RemoteEnvelope = serde_json::from_slice(&replies[0].1).unwrap();
+    assert_eq!(
+        reply.kind, REMOTE_ERROR,
+        "fingerprint failures never pretend to be clean"
+    );
+    fs::remove_dir_all(support_dir).ok();
+}

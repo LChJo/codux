@@ -1,6 +1,24 @@
 use super::*;
 
 #[test]
+fn reclaimed_worktree_cli_is_removed_from_existing_runtime_assets() {
+    let dir = std::env::temp_dir().join(format!("codux-reclaimed-worktree-{}", Uuid::new_v4()));
+    let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+    fs::create_dir_all(bridge.wrapper_bin_dir()).unwrap();
+    for name in ["codux-worktree", "codux-worktree.ps1", "codux-worktree.cmd"] {
+        fs::write(bridge.wrapper_bin_dir().join(name), "stale command").unwrap();
+    }
+    bridge.stage_assets().unwrap();
+    for name in ["codux-worktree", "codux-worktree.ps1", "codux-worktree.cmd"] {
+        assert!(
+            !bridge.wrapper_bin_dir().join(name).exists(),
+            "{name} must be withdrawn"
+        );
+    }
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn bridge_stages_runtime_assets_without_installing_hooks() {
     let dir = std::env::temp_dir().join(format!("codux-ai-bridge-{}", Uuid::new_v4()));
     let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
@@ -52,19 +70,6 @@ fn bridge_stages_runtime_assets_without_installing_hooks() {
         assert!(bridge.wrapper_bin_dir().join("kimi-code").is_file());
         assert!(bridge.wrapper_bin_dir().join("mimo").is_file());
         assert!(bridge.wrapper_bin_dir().join("omp").is_file());
-        fs::write(
-            bridge.wrapper_bin_dir().parent().unwrap().join("codux-wrapper-helper"),
-            "#!/bin/sh\n[ \"$1\" = --codux-wrapper-helper ] && [ \"$2\" = agent-worktree ] && [ \"$3\" = create ] && [ \"$4\" = --name ] && [ \"$5\" = test-branch ]\n",
-        )
-        .unwrap();
-        assert!(
-            std::process::Command::new("/bin/sh")
-                .arg(bridge.wrapper_bin_dir().join("codux-worktree"))
-                .args(["create", "--name", "test-branch"])
-                .status()
-                .unwrap()
-                .success()
-        );
     }
     #[cfg(windows)]
     {

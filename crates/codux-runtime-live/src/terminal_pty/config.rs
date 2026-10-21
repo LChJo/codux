@@ -132,48 +132,6 @@ fn project_environment_variables(
     (!variables.is_empty()).then_some(variables)
 }
 
-pub(super) fn agent_worktree_terminal_scope(
-    config: &TerminalPtyConfig,
-    context: Option<&TerminalLaunchContext>,
-) -> Option<codux_runtime_core::agent_worktree::AgentWorktreeTerminalScope> {
-    use codux_runtime_core::agent_worktree::AgentWorktreeTerminalScope;
-
-    let root_project_id = config
-        .root_project_id
-        .clone()
-        .or_else(|| context.map(|context| context.root_project_id.clone()))
-        .filter(|value| !value.trim().is_empty())?;
-    let root_project_path = config
-        .root_project_path
-        .clone()
-        .or_else(|| context.map(|context| context.root_project_path.display().to_string()))
-        .filter(|value| !value.trim().is_empty())?;
-    let source_worktree_id = config
-        .worktree_id
-        .clone()
-        .or_else(|| config.project_id.clone())
-        .or_else(|| context.map(|context| context.project_id.clone()))
-        .filter(|value| !value.trim().is_empty())?;
-    let source_worktree_path = requested_terminal_cwd(config, context)?;
-    let project_name = config
-        .project_name
-        .clone()
-        .or_else(|| context.map(|context| context.project_name.clone()))
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "Codux".to_string());
-
-    Some(AgentWorktreeTerminalScope {
-        root_project_id,
-        root_project_path,
-        project_name,
-        source_worktree_id,
-        source_worktree_path,
-        runtime_target: context
-            .map(|context| context.runtime_target.clone())
-            .unwrap_or_else(|| config.runtime_target.clone()),
-    })
-}
-
 #[derive(Clone, Debug, Default)]
 pub(super) struct RequestedTerminalIdentity {
     pub(super) cwd: Option<String>,

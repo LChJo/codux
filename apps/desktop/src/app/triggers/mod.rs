@@ -7,6 +7,8 @@ use codux_runtime::triggers::{
 
 mod blackboard_editor;
 mod editor;
+mod git_context;
+mod git_probe;
 mod presence;
 mod view;
 use editor::TriggerEditor;
@@ -23,7 +25,6 @@ pub(in crate::app) struct TriggerCompletion {
     project_id: String,
     terminal_id: String,
     event_id: String,
-    working_directory: Option<String>,
 }
 pub(in crate::app) struct TriggerWorkspaceState {
     pub engine: TriggerEngine,
@@ -46,6 +47,8 @@ pub(in crate::app) struct TriggerWorkspaceState {
     agent_presence: TriggerAgentPresence,
     last_agent_probe: Option<Instant>,
     agent_probe_in_flight: bool,
+    git_probes: git_probe::GitProbeCoordinator,
+    git_probe_gates: HashMap<String, Arc<std::sync::Mutex<()>>>,
 }
 impl TriggerWorkspaceState {
     pub fn new(dir: PathBuf) -> Self {
@@ -80,6 +83,8 @@ impl TriggerWorkspaceState {
             agent_presence: TriggerAgentPresence::default(),
             last_agent_probe: None,
             agent_probe_in_flight: false,
+            git_probes: git_probe::GitProbeCoordinator::default(),
+            git_probe_gates: HashMap::new(),
         }
     }
 }
@@ -311,7 +316,6 @@ impl CoduxApp {
                         &session.project_id,
                         &session.terminal_id,
                         &completion.id,
-                        false,
                         app_now_seconds() as i64,
                     );
                 }
@@ -326,7 +330,6 @@ impl CoduxApp {
                     project_id,
                     terminal_id: session.terminal_id.clone(),
                     event_id: completion.id.clone(),
-                    working_directory: session.project_path.clone(),
                 });
             }
         }
@@ -409,17 +412,10 @@ impl CoduxApp {
                     None,
                 )
             {
-                let working_directory = self
-                    .terminal_manager
-                    .list()
-                    .into_iter()
-                    .find(|s| s.id == status.terminal_id)
-                    .map(|s| s.cwd);
                 self.trigger_workspace.completions.push(TriggerCompletion {
                     project_id,
                     terminal_id: status.terminal_id.clone(),
                     event_id: format!("shell:{}", status.updated_at),
-                    working_directory,
                 });
             }
         }
@@ -548,65 +544,151 @@ impl CoduxApp {
         }
         let completions = std::mem::take(&mut self.trigger_workspace.completions);
         for event in completions {
-            if self
-                .trigger_workspace
-                .engine
-                .is_automatic(&event.terminal_id)
-            {
-                self.trigger_workspace.engine.complete(
-                    &event.project_id,
-                    &event.terminal_id,
-                    &event.event_id,
-                    false,
-                    app_now_seconds() as i64,
-                );
-                continue;
+            // Completion identity and automatic-turn suppression are decided
+            // synchronously before starting any expensive repository work.
+            let fresh = self.trigger_workspace.engine.complete(
+                &event.project_id,
+                &event.terminal_id,
+                &event.event_id,
+                app_now_seconds() as i64,
+            );
+            if fresh && !self.trigger_git_definitions(&event.project_id).is_empty() {
+                self.trigger_workspace
+                    .git_probes
+                    .request(&event.project_id, Instant::now());
             }
-            let needs_git = self
-                .trigger_workspace
-                .engine
-                .project(&event.project_id)
-                .is_some_and(|p| {
-                    p.definitions.iter().any(|d| {
-                        d.enabled && matches!(d.kind, TriggerKind::TaskCompletedWithGitChanges)
-                    })
-                });
-            if !needs_git {
-                self.trigger_workspace.engine.complete(
-                    &event.project_id,
-                    &event.terminal_id,
-                    &event.event_id,
-                    false,
-                    app_now_seconds() as i64,
-                );
-                continue;
-            }
-            let Some(project) = self
+        }
+        self.start_trigger_git_probes(cx);
+        self.trigger_workspace.engine.tick(app_now_seconds() as i64);
+        self.dispatch_trigger_messages(cx);
+        self.flush_trigger_changes(cx);
+    }
+
+    fn trigger_git_definitions(&self, project: &str) -> Vec<TriggerDefinition> {
+        self.trigger_workspace
+            .engine
+            .definitions()
+            .filter(|definition| {
+                definition.project_id == project
+                    && definition.enabled
+                    && !definition.exited
+                    && matches!(definition.kind, TriggerKind::TaskCompletedWithGitChanges)
+            })
+            .cloned()
+            .collect()
+    }
+
+    fn trigger_git_probe_gate(&mut self, project: &str) -> Arc<std::sync::Mutex<()>> {
+        self.trigger_workspace
+            .git_probe_gates
+            .entry(project.into())
+            .or_insert_with(|| Arc::new(std::sync::Mutex::new(())))
+            .clone()
+    }
+
+    fn request_trigger_git_recheck(&mut self, project: &str) {
+        if !self.is_exiting
+            && !self.trigger_git_definitions(project).is_empty()
+            && self
                 .state
                 .projects
                 .iter()
-                .find(|p| p.id == event.project_id)
-                .cloned()
-            else {
+                .any(|definition| definition.id == project)
+        {
+            self.trigger_workspace
+                .git_probes
+                .request(project, Instant::now());
+        }
+    }
+
+    fn invalidate_trigger_git_probe(&mut self, project: &str) {
+        let pending = self.trigger_workspace.git_probes.has_work(project);
+        self.trigger_workspace.git_probes.cancel(project);
+        if pending {
+            self.request_trigger_git_recheck(project);
+        }
+    }
+
+    fn start_trigger_git_probes(&mut self, cx: &mut Context<Self>) {
+        for token in self.trigger_workspace.git_probes.take_ready(Instant::now()) {
+            let definitions = self.trigger_git_definitions(&token.project_id);
+            if definitions.is_empty()
+                || !self.state.projects.iter().any(|p| p.id == token.project_id)
+            {
+                self.trigger_workspace.git_probes.cancel(&token.project_id);
+                self.trigger_workspace.git_probes.finish(&token);
                 continue;
-            };
+            }
             let service = self.runtime_service.clone();
-            let cwd = event
-                .working_directory
-                .clone()
-                .unwrap_or_else(|| project.path.clone());
+            let gate = self.trigger_git_probe_gate(&token.project_id);
+            let project = token.project_id.clone();
+            let targets = definitions
+                .iter()
+                .map(|definition| {
+                    (
+                        definition.id.clone(),
+                        definition.runtime_target.clone(),
+                        definition.working_directory.clone(),
+                    )
+                })
+                .collect::<Vec<_>>();
             cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
-                let dirty = codux_runtime::async_runtime::spawn_blocking(move || {
-                    service.trigger_git_changed(&project.id, &project.runtime_target, &cwd)
+                let result = codux_runtime::async_runtime::spawn_blocking(move || {
+                    let _guard = gate.lock().unwrap_or_else(|error| error.into_inner());
+                    git_probe::sample_targets(targets, |target, path| {
+                        service.trigger_git_fingerprint(&project, target, path)
+                    })
                 })
                 .await;
                 let _ = this.update(cx, |app, cx| {
-                    let changed = matches!(dirty, Ok(Ok(true)));
-                    app.trigger_workspace.engine.complete(
-                        &event.project_id,
-                        &event.terminal_id,
-                        &event.event_id,
-                        changed,
+                    // A completion arriving during the query schedules one
+                    // follow-up and makes this older repository sample obsolete.
+                    if !app.trigger_workspace.git_probes.finish(&token) {
+                        return;
+                    }
+                    if app.is_exiting
+                        || !app.state.projects.iter().any(|p| p.id == token.project_id)
+                    {
+                        return;
+                    }
+                    let current = app.trigger_git_definitions(&token.project_id);
+                    if !git_context::same_definitions(&current, &definitions) {
+                        if !current.is_empty() {
+                            app.trigger_workspace
+                                .git_probes
+                                .request(&token.project_id, Instant::now());
+                        }
+                        return;
+                    }
+                    let results = match result {
+                        Ok(results) => results,
+                        Err(error) => {
+                            app.runtime_trace(
+                                "triggers",
+                                &format!("Git probe failed project={}: {error}", token.project_id),
+                            );
+                            return;
+                        }
+                    };
+                    let mut states = HashMap::new();
+                    for (rule, result) in results {
+                        match result {
+                            Ok(state) => {
+                                states.insert(rule, state);
+                            }
+                            Err(error) => app.runtime_trace(
+                                "triggers",
+                                &format!(
+                                    "Git probe failed project={} rule={rule}: {error}",
+                                    token.project_id
+                                ),
+                            ),
+                        }
+                    }
+                    // Missing results represent errors, never a clean tree.
+                    app.trigger_workspace.engine.observe_git_changes(
+                        &token.project_id,
+                        &states,
                         app_now_seconds() as i64,
                     );
                     app.dispatch_trigger_messages(cx);
@@ -615,9 +697,6 @@ impl CoduxApp {
             })
             .detach();
         }
-        self.trigger_workspace.engine.tick(app_now_seconds() as i64);
-        self.dispatch_trigger_messages(cx);
-        self.flush_trigger_changes(cx);
     }
 
     fn dispatch_trigger_messages(&mut self, cx: &mut Context<Self>) {
@@ -627,6 +706,25 @@ impl CoduxApp {
             .take_dispatches()
             .into_iter()
             .filter_map(|job| {
+                if !self.trigger_workspace.engine.dispatch_is_current(&job) {
+                    // take_dispatches consumed this job; release its automatic
+                    // reservation even when configuration changed before probe.
+                    let recheck = job.git_state.is_some()
+                        && !self
+                            .trigger_workspace
+                            .engine
+                            .dispatch_configuration_is_current(&job);
+                    let project = self
+                        .trigger_workspace
+                        .engine
+                        .definition(&job.trigger_id)
+                        .map(|definition| definition.project_id.clone());
+                    self.trigger_workspace.engine.cancel_dispatch(&job);
+                    if recheck && let Some(project) = project {
+                        self.request_trigger_git_recheck(&project);
+                    }
+                    return None;
+                }
                 let d = self
                     .trigger_workspace
                     .engine
@@ -651,24 +749,60 @@ impl CoduxApp {
             .iter()
             .map(|(_, d, _, _)| d.clone())
             .collect::<Vec<_>>();
+        let git_targets = jobs
+            .iter()
+            .filter(|(job, _, _, _)| job.git_state.is_some())
+            .map(|(_, definition, _, _)| {
+                (
+                    definition.id.clone(),
+                    (
+                        definition.project_id.clone(),
+                        definition.runtime_target.clone(),
+                    ),
+                    definition.working_directory.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut git_gates = HashMap::new();
+        for (_, (project, _), _) in &git_targets {
+            git_gates
+                .entry(project.clone())
+                .or_insert_with(|| self.trigger_git_probe_gate(project));
+        }
         let service = self.runtime_service.clone();
         let projects = self.state.projects.clone();
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
             // Check actual processes immediately before delivery, rather than
             // trusting a prior idle/AI snapshot after a CLI has returned to Shell.
-            let started = codux_runtime::async_runtime::spawn_blocking(move || {
+            let delivery_probe = codux_runtime::async_runtime::spawn_blocking(move || {
                 let mut started=probe_trigger_agents(&service, &definitions);
                 for definition in &definitions {
                     if !started.contains(&definition.terminal_id){continue;}
                     let result=projects.iter().find(|p|p.id==definition.project_id).ok_or("blackboard.project.required".to_string()).and_then(|p|service.blackboard_request(p,"terminal.state",serde_json::json!({"terminalId":definition.terminal_id,"active":true,"automatic":true})).map(|_|()));
                     if result.is_err(){started.remove(&definition.terminal_id);}
                 }
-                started
+                let fingerprints = git_probe::sample_targets(git_targets, |(project, target), path| {
+                    let _guard = git_gates[project].lock().unwrap_or_else(|error| error.into_inner());
+                    service.trigger_git_fingerprint(project, target, path)
+                });
+                (started, fingerprints)
             })
-            .await
-            .unwrap_or_default();
+            .await;
             let _ = this.update(cx, |app, cx| {
-                for (job, _, instance, presence_version) in jobs {
+                let (started, mut fingerprints) = match delivery_probe {
+                    Ok(result) => result,
+                    Err(error) => {
+                        for (job, definition, _, _) in &jobs {
+                            if app.trigger_workspace.engine.dispatch_is_current(job) {
+                                app.trigger_workspace.engine.delivery_failed(&job.trigger_id, &error.to_string(), app_now_seconds() as i64);
+                                app.clear_blackboard_automatic(&definition.project_id, &job.terminal_id, cx);
+                            }
+                        }
+                        app.flush_trigger_changes(cx);
+                        return;
+                    }
+                };
+                for (mut job, sampled_definition, instance, presence_version) in jobs {
                     let Some(d) = app
                         .trigger_workspace
                         .engine
@@ -677,6 +811,18 @@ impl CoduxApp {
                     else {
                         continue;
                     };
+                    if !app.trigger_workspace.engine.dispatch_is_current(&job) {
+                        let recheck = job.git_state.is_some()
+                            && !app.trigger_workspace.engine.dispatch_configuration_is_current(&job);
+                        app.trigger_workspace.engine.cancel_dispatch(&job);
+                        if recheck {
+                            app.request_trigger_git_recheck(&d.project_id);
+                        }
+                        if !app.trigger_workspace.engine.is_automatic(&job.terminal_id) {
+                            app.clear_blackboard_automatic(&sampled_definition.project_id, &job.terminal_id, cx);
+                        }
+                        continue;
+                    }
                     let current = app
                         .trigger_workspace
                         .panes
@@ -716,6 +862,24 @@ impl CoduxApp {
                         app.clear_blackboard_automatic(&d.project_id,&job.terminal_id,cx);
                         continue;
                     }
+                    if job.git_state.is_some() {
+                        match fingerprints.remove(&job.trigger_id) {
+                            Some(Ok(state)) => {
+                                let Some(refreshed) = app.trigger_workspace.engine.refresh_git_dispatch(&job, state) else {
+                                    app.clear_blackboard_automatic(&d.project_id, &job.terminal_id, cx);
+                                    continue;
+                                };
+                                job = refreshed;
+                            }
+                            result => {
+                                let error = result.and_then(Result::err).unwrap_or_else(|| "Git state unavailable before delivery".into());
+                                app.runtime_trace("triggers", &format!("Git pre-delivery probe failed rule={}: {error}", job.trigger_id));
+                                app.trigger_workspace.engine.delivery_failed(&job.trigger_id, &error, app_now_seconds() as i64);
+                                app.clear_blackboard_automatic(&d.project_id, &job.terminal_id, cx);
+                                continue;
+                            }
+                        }
+                    }
                     app.send_ready_trigger_message(job, cx);
                 }
                 app.flush_trigger_changes(cx);
@@ -729,6 +893,10 @@ impl CoduxApp {
         job: codux_runtime::triggers::TriggerDispatch,
         cx: &mut Context<Self>,
     ) {
+        if !self.trigger_workspace.engine.dispatch_is_current(&job) {
+            self.trigger_workspace.engine.cancel_dispatch(&job);
+            return;
+        }
         let Some(pane) = self.trigger_workspace.panes.get(&job.terminal_id) else {
             self.finish_trigger_delivery(
                 &job,
@@ -769,9 +937,15 @@ impl CoduxApp {
                     // A restarted/rebound terminal has its own dispatch state.
                     return;
                 }
-                if !definition.enabled {
+                if !app.trigger_workspace.engine.dispatch_is_current(&job) {
                     app.trigger_workspace.engine.cancel_dispatch(&job);
-                    app.clear_blackboard_automatic(&definition.project_id, &job.terminal_id, cx);
+                    if !app.trigger_workspace.engine.is_automatic(&job.terminal_id) {
+                        app.clear_blackboard_automatic(
+                            &definition.project_id,
+                            &job.terminal_id,
+                            cx,
+                        );
+                    }
                 } else if definition.exited
                     || !app
                         .trigger_workspace
@@ -849,6 +1023,11 @@ impl CoduxApp {
         terminal: &str,
         cx: &mut Context<Self>,
     ) {
+        // Cancellation/failure can release a waiting manual or newer Git job.
+        // Its reservation owns the marker now; an old cleanup cannot clear it.
+        if self.trigger_workspace.engine.is_automatic(terminal) {
+            return;
+        }
         let Some(project) = self
             .state
             .projects
@@ -991,12 +1170,14 @@ impl CoduxApp {
             if let Err(error) = result {
                 self.show_toast(self.text(&error, "Check the trigger schedule."), cx);
             }
+            self.invalidate_trigger_git_probe(&d.project_id);
             self.flush_trigger_changes(cx);
         }
     }
     pub(in crate::app) fn exit_trigger_terminal(&mut self, id: &str, cx: &mut Context<Self>) {
         if let Some(d) = self.trigger_workspace.engine.definition(id).cloned() {
             self.trigger_workspace.engine.mark_exited(id);
+            self.invalidate_trigger_git_probe(&d.project_id);
             let _ = self.kill_terminal_session_if_present(&d.terminal_id);
             self.flush_trigger_changes(cx);
         }
@@ -1008,6 +1189,7 @@ impl CoduxApp {
             let _ = self.kill_terminal_session_if_present(&d.terminal_id);
             self.trigger_workspace.panes.remove(&d.terminal_id);
             self.trigger_workspace.engine.restart(id);
+            self.invalidate_trigger_git_probe(&d.project_id);
             self.trigger_workspace.attach_errors.remove(&d.terminal_id);
             let d = self
                 .trigger_workspace

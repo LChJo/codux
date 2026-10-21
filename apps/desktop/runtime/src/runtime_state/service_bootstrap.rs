@@ -35,12 +35,6 @@ fn new_remote_host_runtime(
             terminals,
         ),
     );
-    if let Err(error) = runtime.enable_agent_worktree_control() {
-        crate::runtime_trace::runtime_trace(
-            "agent-worktree",
-            &format!("failed to start desktop control: {error}"),
-        );
-    }
     runtime
 }
 

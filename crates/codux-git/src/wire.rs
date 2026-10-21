@@ -92,6 +92,14 @@ pub fn status(repo: &str) -> WireStatusSummary {
     wire_status_summary(GitService::status(repo))
 }
 
+/// Opt-in content fingerprint for automation. Missing support must not be
+/// interpreted as a clean repository; callers require this field explicitly.
+pub fn attach_change_fingerprint(payload: &mut Value, repo: &str) -> Result<(), String> {
+    payload["fingerprint"] = serde_json::to_value(GitService::change_fingerprint(repo)?)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 /// Generic git mutation (`git.invoke`). On success the caller replies with a
 /// refreshed status. Mirrors every op the desktop UI can issue.
 pub fn invoke(repo: &str, op: &str, args: &Value) -> Result<(), String> {

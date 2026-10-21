@@ -335,6 +335,7 @@ impl CoduxApp {
                                             if let Some(d) =
                                                 app.trigger_workspace.engine.remove(&id)
                                             {
+                                                app.invalidate_trigger_git_probe(&d.project_id);
                                                 let _ = app.kill_terminal_session_if_present(
                                                     &d.terminal_id,
                                                 );

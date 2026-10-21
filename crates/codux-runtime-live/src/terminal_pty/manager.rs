@@ -1,12 +1,4 @@
 use super::*;
-use codux_runtime_core::agent_worktree::{
-    AGENT_WORKTREE_CONTROL_ADDRESS_ENV, AGENT_WORKTREE_CONTROL_CAPABILITY_ENV,
-};
-
-struct AgentWorktreeCapabilityLease {
-    control: Arc<crate::agent_worktree::AgentWorktreeControl>,
-    capability: String,
-}
 
 pub struct TerminalManager {
     sessions: Arc<parking_lot::Mutex<HashMap<String, Arc<TerminalPtySession>>>>,
@@ -14,8 +6,6 @@ pub struct TerminalManager {
     ai_runtime: Option<Arc<AIRuntimeBridge>>,
     viewport_lease_watcher_started: std::sync::Once,
     viewport_owner_resolver: Arc<parking_lot::Mutex<Option<ViewportOwnerResolver>>>,
-    agent_worktree_control:
-        Arc<parking_lot::Mutex<Option<Arc<crate::agent_worktree::AgentWorktreeControl>>>>,
 }
 
 impl TerminalManager {
@@ -26,7 +16,6 @@ impl TerminalManager {
             ai_runtime: None,
             viewport_lease_watcher_started: std::sync::Once::new(),
             viewport_owner_resolver: Arc::new(parking_lot::Mutex::new(None)),
-            agent_worktree_control: Arc::new(parking_lot::Mutex::new(None)),
         }
     }
 
@@ -37,15 +26,7 @@ impl TerminalManager {
             ai_runtime: Some(ai_runtime),
             viewport_lease_watcher_started: std::sync::Once::new(),
             viewport_owner_resolver: Arc::new(parking_lot::Mutex::new(None)),
-            agent_worktree_control: Arc::new(parking_lot::Mutex::new(None)),
         }
-    }
-
-    pub fn bind_agent_worktree_control(
-        &self,
-        control: Arc<crate::agent_worktree::AgentWorktreeControl>,
-    ) {
-        *self.agent_worktree_control.lock() = Some(control);
     }
 
     pub fn ai_runtime(&self) -> Option<Arc<AIRuntimeBridge>> {
@@ -125,25 +106,17 @@ impl TerminalManager {
         if let Some(ai_runtime) = &self.ai_runtime {
             ai_runtime.ensure_started().map_err(anyhow::Error::msg)?;
         }
-        let (config, capability, viewer_query_colors) = self.prepare_spawn_config(config, context);
-        let on_exit = capability_exit_callback(capability.as_ref());
+        let (config, viewer_query_colors) = self.prepare_spawn_config(config);
         let local_query_colors = self.local_query_colors(viewer_query_colors);
         let remote_query_colors = viewer_query_colors.unwrap_or(REMOTE_TERMINAL_QUERY_COLORS);
-        let spawn = TerminalPtySession::spawn(
+        let (session, _writer, reader) = TerminalPtySession::spawn(
             config,
             context,
             None,
-            on_exit,
+            None,
             local_query_colors,
             remote_query_colors,
-        );
-        let (session, _writer, reader) = match spawn {
-            Ok(spawned) => spawned,
-            Err(error) => {
-                revoke_capability(capability.as_ref());
-                return Err(error);
-            }
-        };
+        )?;
         let session = Arc::new(session);
         let id = session.id().to_string();
         self.register_ai_runtime_terminal(&session);
@@ -202,25 +175,17 @@ impl TerminalManager {
         if let Some(ai_runtime) = &self.ai_runtime {
             ai_runtime.ensure_started().map_err(anyhow::Error::msg)?;
         }
-        let (config, capability, viewer_query_colors) = self.prepare_spawn_config(config, context);
-        let on_exit = capability_exit_callback(capability.as_ref());
+        let (config, viewer_query_colors) = self.prepare_spawn_config(config);
         let local_query_colors = self.local_query_colors(viewer_query_colors);
         let remote_query_colors = viewer_query_colors.unwrap_or(REMOTE_TERMINAL_QUERY_COLORS);
-        let spawn = TerminalPtySession::spawn(
+        let (session, _writer, reader) = TerminalPtySession::spawn(
             config,
             context,
             Some((event_key, emit.clone())),
-            on_exit,
+            None,
             local_query_colors,
             remote_query_colors,
-        );
-        let (session, _writer, reader) = match spawn {
-            Ok(spawned) => spawned,
-            Err(error) => {
-                revoke_capability(capability.as_ref());
-                return Err(error);
-            }
-        };
+        )?;
         let session = Arc::new(session);
         let id = session.id().to_string();
         self.register_ai_runtime_terminal(&session);
@@ -402,7 +367,7 @@ impl TerminalManager {
         let Some(session) = self.sessions.lock().remove(session_id) else {
             return Err(anyhow!("terminal session not found: {session_id}"));
         };
-        self.revoke_agent_worktree_terminal(session_id);
+
         self.remove_ai_runtime_terminal(&session);
         session.kill()
     }
@@ -418,7 +383,7 @@ impl TerminalManager {
         let Some(session) = self.sessions.lock().get(session_id).cloned() else {
             return Ok(false);
         };
-        self.revoke_agent_worktree_terminal(session_id);
+
         let kill_error = if session.has_exited() {
             None
         } else {
@@ -519,7 +484,6 @@ impl TerminalManager {
             }
         };
         if let Some(removed) = removed {
-            self.revoke_agent_worktree_terminal(session_id);
             self.remove_ai_runtime_terminal(&removed);
         }
     }
@@ -555,7 +519,6 @@ impl TerminalManager {
             }
         };
         if let Some(removed) = removed {
-            self.revoke_agent_worktree_terminal(&existing.id);
             self.remove_ai_runtime_terminal(&removed);
             let _ = removed.kill();
         }
@@ -564,12 +527,7 @@ impl TerminalManager {
     fn prepare_spawn_config(
         &self,
         mut config: TerminalPtyConfig,
-        context: Option<&TerminalLaunchContext>,
-    ) -> (
-        TerminalPtyConfig,
-        Option<AgentWorktreeCapabilityLease>,
-        Option<TerminalQueryColors>,
-    ) {
+    ) -> (TerminalPtyConfig, Option<TerminalQueryColors>) {
         if let Some(runtime) = &self.ai_runtime {
             runtime.apply_terminal_runtime_environment(config.env.get_or_insert_with(HashMap::new));
         }
@@ -584,30 +542,7 @@ impl TerminalManager {
             apply_terminal_query_colors_env(&mut config, colors);
         }
         drop(query_colors);
-        let Some(terminal_id) = config.terminal_id.clone() else {
-            return (config, None, configured_colors);
-        };
-        let Some(scope) = agent_worktree_terminal_scope(&config, context) else {
-            return (config, None, configured_colors);
-        };
-        let Some(control) = self.agent_worktree_control.lock().clone() else {
-            return (config, None, configured_colors);
-        };
-        let (address, capability) = control.grant_terminal(terminal_id, scope);
-        let env = config.env.get_or_insert_with(HashMap::new);
-        env.insert(AGENT_WORKTREE_CONTROL_ADDRESS_ENV.to_string(), address);
-        env.insert(
-            AGENT_WORKTREE_CONTROL_CAPABILITY_ENV.to_string(),
-            capability.clone(),
-        );
-        (
-            config,
-            Some(AgentWorktreeCapabilityLease {
-                control,
-                capability,
-            }),
-            configured_colors,
-        )
+        (config, configured_colors)
     }
 
     fn local_query_colors(
@@ -617,12 +552,6 @@ impl TerminalManager {
         (*self.query_colors.lock())
             .or(configured_colors)
             .or(Some(REMOTE_TERMINAL_QUERY_COLORS))
-    }
-
-    fn revoke_agent_worktree_terminal(&self, terminal_id: &str) {
-        if let Some(control) = self.agent_worktree_control.lock().as_ref() {
-            control.revoke_terminal(terminal_id);
-        }
     }
 
     fn register_ai_runtime_terminal(&self, session: &TerminalPtySession) {
@@ -666,23 +595,6 @@ fn ensure_terminal_id(config: &mut TerminalPtyConfig, context: Option<&TerminalL
         .and_then(|context| context.terminal_id.clone())
         .filter(|value| !value.trim().is_empty())
         .or_else(|| Some(Uuid::new_v4().to_string()));
-}
-
-fn capability_exit_callback(
-    capability: Option<&AgentWorktreeCapabilityLease>,
-) -> Option<TerminalExitCallback> {
-    let capability = capability?;
-    let control = Arc::clone(&capability.control);
-    let capability = capability.capability.clone();
-    Some(Arc::new(move |_| {
-        control.revoke_capability(&capability);
-    }))
-}
-
-fn revoke_capability(capability: Option<&AgentWorktreeCapabilityLease>) {
-    if let Some(capability) = capability {
-        capability.control.revoke_capability(&capability.capability);
-    }
 }
 
 impl Default for TerminalManager {

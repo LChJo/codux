@@ -50,6 +50,30 @@ impl RuntimeService {
         }
         Ok(summary.is_repository && summary.staged + summary.unstaged + summary.untracked > 0)
     }
+    /// Stable dirty content identity from the runtime that owns this path.
+    /// An older runtime that omits opt-in fingerprint support is an error.
+    pub fn trigger_git_fingerprint(
+        &self,
+        project_id: &str,
+        target: &ProjectRuntimeTarget,
+        path: &str,
+    ) -> Result<Option<crate::triggers::TriggerGitState>, String> {
+        let state = match self.hosted_runtime_for_target_blocking(target)? {
+            Some(host) => git_fingerprint_from_payload(&host.git_fingerprint(project_id, path)?)?,
+            None => crate::git::GitService::change_fingerprint(path)?,
+        };
+        state
+            .map(|state| {
+                let scope = serde_json::to_string(&(target, state.scope))
+                    .map_err(|error| error.to_string())?;
+                Ok(crate::triggers::TriggerGitState {
+                    scope,
+                    fingerprint: state.fingerprint,
+                })
+            })
+            .transpose()
+    }
+
     fn drain_hosted_workspace_updates(&self) -> Vec<RemoteHostEvent> {
         self.remote_controllers
             .drain_hosted_workspace_updates()
@@ -910,6 +934,18 @@ impl HostedProjectRuntime {
         }
     }
 
+    fn git_fingerprint(&self, project_id: &str, project_path: &str) -> Result<Value, String> {
+        match self {
+            Self::Wsl(client) => client.request(
+                "git.status",
+                json!({"projectPath": project_path, "includeFingerprint": true}),
+            ),
+            Self::Remote(controller) => {
+                controller.git_status_with_fingerprint(project_id, project_path)
+            }
+        }
+    }
+
     fn git_invoke(
         &self,
         project_id: &str,
@@ -1118,6 +1154,30 @@ struct HostedWorktreeSnapshotPayload {
     worktrees: Vec<crate::worktree::ProjectWorktreeSnapshot>,
     tasks: Vec<crate::worktree::WorktreeTaskSnapshot>,
     error: Option<String>,
+}
+
+fn git_fingerprint_from_payload(
+    value: &Value,
+) -> Result<Option<codux_git::GitChangeFingerprint>, String> {
+    if let Some(error) = value
+        .get("error")
+        .and_then(Value::as_str)
+        .filter(|error| !error.is_empty())
+    {
+        return Err(error.to_owned());
+    }
+    let field = value
+        .get("fingerprint")
+        .ok_or("This runtime does not support Git content fingerprints; update the host.")?;
+    let result: Option<codux_git::GitChangeFingerprint> = serde_json::from_value(field.clone())
+        .map_err(|error| format!("Invalid hosted Git fingerprint: {error}"))?;
+    if result
+        .as_ref()
+        .is_some_and(|state| state.scope.is_empty() || state.fingerprint.is_empty())
+    {
+        return Err("Hosted Git fingerprint has an empty identity.".into());
+    }
+    Ok(result)
 }
 
 fn git_summary_from_payload(value: &Value) -> Result<crate::git::GitSummary, String> {
@@ -1533,6 +1593,37 @@ mod hosted_runtime_payload_tests {
 
         drop(service);
         std::fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
+    fn hosted_git_fingerprint_requires_explicit_support_and_valid_identity() {
+        assert!(
+            git_fingerprint_from_payload(&json!({"isRepository": true, "unstaged": 1}))
+                .unwrap_err()
+                .contains("does not support")
+        );
+        assert_eq!(
+            git_fingerprint_from_payload(&json!({"fingerprint": null})).unwrap(),
+            None
+        );
+        let state = git_fingerprint_from_payload(
+            &json!({"fingerprint": {"scope": "repo", "fingerprint": "digest"}}),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(state.scope, "repo");
+        assert_eq!(state.fingerprint, "digest");
+        assert!(
+            git_fingerprint_from_payload(
+                &json!({"fingerprint": {"scope": "", "fingerprint": "digest"}})
+            )
+            .is_err()
+        );
+        assert!(
+            git_fingerprint_from_payload(&json!({"fingerprint": null, "error": "read failed"}))
+                .is_err()
+        );
+        assert!(git_fingerprint_from_payload(&json!({"fingerprint": "legacy-counts"})).is_err());
     }
 
     #[test]

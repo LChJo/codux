@@ -27,7 +27,7 @@ pub(super) struct TriggerEditor {
 pub(super) const PRESETS: [(&str, &str, HeroIconName); 6] = [
     (
         "trigger.kind.git",
-        "Task completed + Git changes",
+        "Task completed + new Git changes",
         HeroIconName::CodeBracket,
     ),
     (
@@ -359,6 +359,12 @@ impl Render for TriggerEditor {
                     })
             })
             .child(label(tr("trigger.field.message", "Message")))
+            .when(self.kind == 0, |el| {
+                el.child(label(tr(
+                    "trigger.git.dedup_help",
+                    "Skip automatic reviews when changes match the last sent version. New changes can trigger again; manual review is always available.",
+                )))
+            })
             .child(Input::new(&self.message).h(px(140.0)))
             .when(self.kind == 5, |el| {
                 el.child(
@@ -605,7 +611,15 @@ impl CoduxApp {
         match result {
             Ok(d) => {
                 self.reset_blackboard_trigger(&d.id);
+                let changed_context = self
+                    .trigger_workspace
+                    .engine
+                    .definition(&d.id)
+                    .is_some_and(|previous| !super::git_context::same_context(previous, &d));
                 self.trigger_workspace.engine = candidate;
+                if changed_context {
+                    self.invalidate_trigger_git_probe(&d.project_id);
+                }
                 self.trigger_workspace.split_target = None;
                 self.trigger_workspace.selected = Some(d.id.clone());
                 self.trigger_workspace.editor = None;

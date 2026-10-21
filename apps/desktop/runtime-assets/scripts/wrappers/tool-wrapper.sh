@@ -507,10 +507,6 @@ configured_tool_setting() {
 }
 
 configured_permission_mode() {
-  if [[ "${CODUX_AGENT_WORKTREE_AUTONOMOUS:-}" == "1" ]]; then
-    print -r -- "fullAccess"
-    return 0
-  fi
   local config_key=""
   case "${tool_name}" in
     codex)

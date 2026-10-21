@@ -350,6 +350,15 @@ pub fn terminal_environment(
             values.insert(key.clone(), value.clone());
         }
     }
+    // Old launch configs and inherited shell environments may retain these.
+    // The model worktree control channel and autonomous launcher are retired.
+    values.retain(|key, _| {
+        !key.eq_ignore_ascii_case("CODUX_WORKTREE_CONTROL_ADDRESS")
+            && !key.eq_ignore_ascii_case("CODUX_WORKTREE_CONTROL_CAPABILITY")
+            && !key
+                .to_ascii_uppercase()
+                .starts_with("CODUX_AGENT_WORKTREE_")
+    });
     ensure_utf8_locale(&mut values);
     prepare_blackboard_context(&mut values);
     values

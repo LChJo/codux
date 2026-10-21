@@ -49,5 +49,7 @@ include!("metadata.rs");
 #[cfg(test)]
 include!("tests.rs");
 
+mod fingerprint;
 pub mod wire;
 pub mod worktree;
+pub use fingerprint::GitChangeFingerprint;

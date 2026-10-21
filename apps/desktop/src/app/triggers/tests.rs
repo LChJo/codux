@@ -34,7 +34,7 @@ fn ai_presence_after_shell_prompt_allows_dispatch_and_exit_blocks_delivery() {
     let version = presence.version("terminal");
     assert!(presence.apply_probe("terminal", version, true));
     engine.delivery_succeeded(&manual, 102);
-    engine.complete("project", "terminal", "turn", false, 103);
+    engine.complete("project", "terminal", "turn", 103);
 
     engine.tick(105);
     let timed = engine.take_dispatches().pop().unwrap();

@@ -809,6 +809,17 @@ impl RemoteController {
         )
     }
 
+    pub fn git_status_with_fingerprint(
+        &self,
+        project_id: &str,
+        project_path: &str,
+    ) -> Result<Value, String> {
+        self.request(
+            REMOTE_GIT_STATUS, REMOTE_GIT_STATUS,
+            json!({"projectId": project_id, "projectPath": project_path, "includeFingerprint": true}),
+        )
+    }
+
     /// Generic git mutation — replies with the refreshed `git.status` payload.
     pub fn git_invoke(
         &self,
