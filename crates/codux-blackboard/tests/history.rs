@@ -128,9 +128,26 @@ fn startup_context_distinguishes_milestones_from_explicit_notes() {
     let text = std::fs::read_to_string(store.write_context("p", "t", None).unwrap()).unwrap();
     assert!(text.contains("codux-blackboard summary add"));
     assert!(text.contains("only when the user explicitly"));
+    assert!(text.contains("Shared notes (主动读写, `notes`)"));
+    assert!(text.contains("Terminal summaries (终端总结, `summary`)"));
+    assert!(text.contains("写入黑板"));
+    assert!(text.contains("从黑板中去读"));
+    assert!(text.contains("codux-blackboard read notes <id>"));
+    assert!(text.contains("A summary entry does not fulfill a request to write to the blackboard"));
+    assert!(text.contains("If notes are empty, report that instead of substituting summaries"));
     assert!(!text.contains("Write progress"));
     assert!(!text.contains("Terminal summaries and file/Git activity update automatically"));
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn cli_help_explains_default_blackboard_area_and_separate_terminal_summaries() {
+    let help = codux_blackboard::dispatch::CLI_HELP;
+    assert!(help.contains("Shared notes (主动读写, notes)"));
+    assert!(help.contains("default area for user requests to read or write the blackboard"));
+    assert!(help.contains("list notes / read notes <id> / add / edit / remove"));
+    assert!(help.contains("Terminal summaries (终端总结, summary)"));
+    assert!(help.contains("do not fulfill requests to write to the blackboard"));
 }
 
 #[test]

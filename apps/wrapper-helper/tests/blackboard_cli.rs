@@ -156,7 +156,10 @@ fn actual_helper_roundtrip_uses_terminal_root_project_and_read_only_rules() {
         "保留 $() 与中文\n第二行",
     ]);
     let id = note["id"].as_str().unwrap();
+    assert_eq!(note["component"], "notes");
+    assert_eq!(cli(&["list"]), cli(&["list", "notes"]));
     assert_eq!(cli(&["list", "notes"])[0]["id"], id);
+    assert!(cli(&["list", "summary"]).as_array().unwrap().is_empty());
     assert!(
         store
             .list("worktree-project", Component::Notes)

@@ -247,7 +247,28 @@ fn required<'a>(value: &'a Value, key: &str) -> Result<&'a str, String> {
         .ok_or_else(|| format!("blackboard.{key}.required"))
 }
 
-pub const CLI_HELP: &str = "codux-blackboard\n  list [notes|summary|recent|git|images|web|knowledge|rules]\n  read <component> <id>\n  summary add [--title <text>] --body <text>\n  summary edit <id> [--title <text>] [--body <text>]\n  summary remove <id>\n  add [--title <text>] --body <text>\n  edit <id> [--title <text>] [--body <text>]\n  remove <id>\n  image save <path> [--title <text>]\n  image read <id> [--output <path>]\n  web open <http(s)://url>\n  web read [id] [--refresh]\n  context\nResponses are JSON; context prints its file path. Uses the current Codux terminal project. Summary commands record milestones; add/edit/remove change shared notes only when explicitly requested. Rules and knowledge are read-only.\n";
+pub const CLI_HELP: &str = concat!(
+    "codux-blackboard\n",
+    "  list [notes|summary|recent|git|images|web|knowledge|rules]\n",
+    "  read <component> <id>\n",
+    "  add [--title <text>] --body <text>\n",
+    "  edit <id> [--title <text>] [--body <text>]\n",
+    "  remove <id>\n",
+    "  summary add [--title <text>] --body <text>\n",
+    "  summary edit <id> [--title <text>] [--body <text>]\n",
+    "  summary remove <id>\n",
+    "  image save <path> [--title <text>]\n",
+    "  image read <id> [--output <path>]\n",
+    "  web open <http(s)://url>\n",
+    "  web read [id] [--refresh]\n",
+    "  context\n",
+    "Responses are JSON; context prints its file path. Uses the current Codux terminal project.\n",
+    "Shared notes (主动读写, notes): default area for user requests to read or write the blackboard (读取黑板 / 写入黑板), unless another component is explicitly named.\n",
+    "Use list notes / read notes <id> / add / edit / remove; list without a component also defaults to notes.\n",
+    "Change notes only when explicitly requested or required by explicitly configured project rules. Read back notes to verify writes.\n",
+    "Terminal summaries (终端总结, summary): separate milestone history; summary commands do not fulfill requests to write to the blackboard. Do not substitute summaries for empty notes.\n",
+    "Rules and knowledge are read-only. File/Git activity updates automatically.\n",
+);
 
 #[derive(Default)]
 struct CliArguments<'a> {

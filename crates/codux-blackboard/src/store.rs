@@ -624,7 +624,23 @@ impl Store {
         let mut text = source
             .and_then(|p| std::fs::read_to_string(p).ok())
             .unwrap_or_default();
-        text.push_str("\n\n# Codux Blackboard\nRead relevant shared context with `codux-blackboard list summary` and `codux-blackboard list notes`. After completing the user's task or an independently verifiable milestone, proactively record the outcome with `codux-blackboard summary add --title <title> --body <text>`. Include useful verification and remaining work. Skip ordinary Q&A, tool calls, attempts and progress updates; do not duplicate an existing milestone. Shared notes are separate: use `codux-blackboard add`, `edit` or `remove` only when the user explicitly requests a note change or their explicitly configured project rules require it. Do not write task completion or progress into notes by default. Read images, webpages, knowledge and project rules with `codux-blackboard --help`. File/Git activity updates automatically.\n");
+        text.push_str(concat!(
+            "\n\n# Codux Blackboard\n",
+            "Shared notes (主动读写, `notes`) are the default area for user requests to read or write the blackboard. ",
+            "When the user says '写入黑板', '读取黑板', '从黑板中去读', 'write to the blackboard' or 'read from the blackboard', operate on `notes` unless they explicitly name another component. ",
+            "Read with `codux-blackboard list notes` and `codux-blackboard read notes <id>`. ",
+            "Write with `codux-blackboard add --title <title> --body <text>`, `codux-blackboard edit <id>` or `codux-blackboard remove <id>`. ",
+            "Use these write commands only when the user explicitly requests a blackboard/note change or their explicitly configured project rules require it. ",
+            "After writing, read back the affected notes to verify the requested change before reporting success. ",
+            "If notes are empty, report that instead of substituting summaries.\n\n",
+            "Terminal summaries (终端总结, `summary`) are a separate task milestone history. ",
+            "A summary entry does not fulfill a request to write to the blackboard; reading summaries does not fulfill a request to read shared notes. ",
+            "Use `codux-blackboard list summary` / `codux-blackboard read summary <id>` when task history is needed or explicitly requested. ",
+            "After completing the user's task or an independently verifiable milestone, proactively record the outcome with `codux-blackboard summary add --title <title> --body <text>`. ",
+            "Include useful verification and remaining work. Skip ordinary Q&A, tool calls, attempts and progress updates; do not duplicate an existing milestone. ",
+            "Do not write task completion or progress into notes by default.\n\n",
+            "Read images, webpages, knowledge and project rules with `codux-blackboard --help`. File/Git activity updates automatically.\n",
+        ));
         if !binding.carried_rules.is_empty() {
             text.push_str("\n# Project hard rules\n");
             for rule in binding.carried_rules {
