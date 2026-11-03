@@ -229,7 +229,63 @@ fn ai_history_geometry_fingerprint(history: &AIHistorySummary, statistics_mode: 
     history.heatmap.len().hash(&mut hasher);
     history.tool_breakdown.len().hash(&mut hasher);
     history.model_breakdown.len().hash(&mut hasher);
+    for day in &history.heatmap {
+        day.day.to_bits().hash(&mut hasher);
+        (
+            day.input_tokens,
+            day.output_tokens,
+            day.total_tokens,
+            day.cached_input_tokens,
+            day.request_count,
+            day.is_partial,
+        )
+            .hash(&mut hasher);
+    }
+    for bucket in &history.today_time_buckets {
+        bucket.start.to_bits().hash(&mut hasher);
+        (
+            bucket.input_tokens,
+            bucket.output_tokens,
+            bucket.total_tokens,
+            bucket.cached_input_tokens,
+            bucket.request_count,
+        )
+            .hash(&mut hasher);
+    }
+    for item in history
+        .tool_breakdown
+        .iter()
+        .chain(&history.model_breakdown)
+    {
+        (
+            &item.key,
+            item.total_tokens,
+            item.cached_input_tokens,
+            item.request_count,
+        )
+            .hash(&mut hasher);
+    }
     hasher.finish()
+}
+
+#[cfg(test)]
+mod statistics_regressions {
+    use super::*;
+
+    #[test]
+    fn geometry_changes_when_usage_moves_to_a_different_day_without_changing_totals() {
+        let mut history = AIHistorySummary::default();
+        history.heatmap = serde_json::from_value(serde_json::json!([
+            {"day": 100000.0, "totalTokens": 10, "cachedInputTokens": 0, "requestCount": 1}
+        ]))
+        .unwrap();
+        let before = ai_history_geometry_fingerprint(&history, "normalized");
+        history.heatmap[0].day += 86_400.0;
+        assert_ne!(
+            before,
+            ai_history_geometry_fingerprint(&history, "normalized")
+        );
+    }
 }
 
 fn build_ai_history_stats(

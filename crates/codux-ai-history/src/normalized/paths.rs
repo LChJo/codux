@@ -1,9 +1,16 @@
 fn claude_project_log_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
     let directory_name = project_path.replace(['/', '\\', ':', '.'], "-");
-    directory_files(
-        &home.join(".claude").join("projects").join(directory_name),
-        "jsonl",
-    )
+    let directory = home.join(".claude").join("projects").join(directory_name);
+    let mut files = directory_files(&directory, "jsonl");
+    if let Ok(entries) = fs::read_dir(&directory) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                files.extend(directory_files(&entry.path().join("subagents"), "jsonl"));
+            }
+        }
+    }
+    files.sort();
+    files
 }
 
 fn agy_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
@@ -479,11 +486,19 @@ fn turn_duration_seconds(turn: &Value) -> f64 {
         .map(|duration| {
             duration
                 .get("secs")
-                .and_then(|value| value.as_f64().or_else(|| value.as_i64().map(|value| value as f64)))
+                .and_then(|value| {
+                    value
+                        .as_f64()
+                        .or_else(|| value.as_i64().map(|value| value as f64))
+                })
                 .unwrap_or(0.0)
                 + duration
                     .get("nanos")
-                    .and_then(|value| value.as_f64().or_else(|| value.as_i64().map(|value| value as f64)))
+                    .and_then(|value| {
+                        value
+                            .as_f64()
+                            .or_else(|| value.as_i64().map(|value| value as f64))
+                    })
                     .unwrap_or(0.0)
                     / 1_000_000_000.0
         })

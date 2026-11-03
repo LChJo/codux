@@ -19,6 +19,7 @@ pub enum AIHistoryJob {
     RefreshGlobal {
         projects: Vec<AIHistoryProjectRequest>,
         database_path: PathBuf,
+        rescan_sources: bool,
     },
 }
 

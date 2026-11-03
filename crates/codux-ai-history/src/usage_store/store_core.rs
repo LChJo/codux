@@ -63,11 +63,13 @@ impl AIUsageStore {
     pub fn indexed_project_paths(&self, conn: &Connection) -> Result<HashSet<String>> {
         let mut statement = conn.prepare(
             r#"
+            SELECT project_path FROM (
             SELECT project_path FROM ai_history_project_index_state
             UNION
             SELECT project_path FROM ai_history_file_session_link
             UNION
-            SELECT project_path FROM ai_history_file_usage_event;
+            SELECT project_path FROM ai_history_file_usage_event
+            ) WHERE project_path NOT IN (SELECT project_path FROM ai_history_reindex_project);
             "#,
         )?;
         let paths = statement
@@ -176,8 +178,10 @@ impl AIUsageStore {
                     .entry(key)
                     .and_modify(|current| {
                         current.first_seen_at = current.first_seen_at.min(row.first_seen_at);
-                        current.request_count = current.request_count.saturating_add(row.request_count);
-                        current.total_tokens = current.total_tokens.saturating_add(row.total_tokens);
+                        current.request_count =
+                            current.request_count.saturating_add(row.request_count);
+                        current.total_tokens =
+                            current.total_tokens.saturating_add(row.total_tokens);
                         current.active_duration_seconds = current
                             .active_duration_seconds
                             .saturating_add(row.active_duration_seconds);
@@ -278,18 +282,16 @@ impl AIUsageStore {
     }
 
     pub fn indexed_global_heatmap(&self, conn: &Connection) -> Result<Vec<AIHeatmapDay>> {
-        let input_tokens_expr =
-            if usage_bucket_table_has_column(conn, "input_tokens")? {
-                "COALESCE(SUM(input_tokens), 0)"
-            } else {
-                "0"
-            };
-        let output_tokens_expr =
-            if usage_bucket_table_has_column(conn, "output_tokens")? {
-                "COALESCE(SUM(output_tokens), 0)"
-            } else {
-                "0"
-            };
+        let input_tokens_expr = if usage_bucket_table_has_column(conn, "input_tokens")? {
+            "COALESCE(SUM(input_tokens), 0)"
+        } else {
+            "0"
+        };
+        let output_tokens_expr = if usage_bucket_table_has_column(conn, "output_tokens")? {
+            "COALESCE(SUM(output_tokens), 0)"
+        } else {
+            "0"
+        };
         let mut statement = conn.prepare(&format!(
             r#"
             SELECT
@@ -316,7 +318,12 @@ impl AIUsageStore {
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(heatmap_days_from_buckets(rows))
+        let mut days = heatmap_days_from_buckets(rows);
+        let partial_days = partial_history_days(conn, None)?;
+        for day in &mut days {
+            day.is_partial = partial_days.contains(&(day.day as i64));
+        }
+        Ok(days)
     }
 
     pub fn indexed_global_breakdown(
@@ -502,15 +509,17 @@ impl AIUsageStore {
         Ok((0..bucket_count)
             .map(|index| {
                 let start = range_start + index as f64 * 30.0 * 60.0;
-                rows_by_start.remove(&(start as i64)).unwrap_or(AITimeBucket {
-                    start,
-                    end: start + 30.0 * 60.0,
-                    input_tokens: 0,
-                    output_tokens: 0,
-                    total_tokens: 0,
-                    cached_input_tokens: 0,
-                    request_count: 0,
-                })
+                rows_by_start
+                    .remove(&(start as i64))
+                    .unwrap_or(AITimeBucket {
+                        start,
+                        end: start + 30.0 * 60.0,
+                        input_tokens: 0,
+                        output_tokens: 0,
+                        total_tokens: 0,
+                        cached_input_tokens: 0,
+                        request_count: 0,
+                    })
             })
             .collect())
     }
@@ -834,7 +843,9 @@ fn merged_usage_intervals(intervals: &[AIUsageInterval]) -> Vec<AIUsageInterval>
             if project_path.is_empty() {
                 return None;
             }
-            let excluded_at = interval.excluded_at.filter(|end| *end > interval.included_at);
+            let excluded_at = interval
+                .excluded_at
+                .filter(|end| *end > interval.included_at);
             if interval.excluded_at.is_some() && excluded_at.is_none() {
                 return None;
             }
@@ -872,9 +883,18 @@ fn merged_usage_intervals(intervals: &[AIUsageInterval]) -> Vec<AIUsageInterval>
 
 fn heatmap_days_from_buckets(rows: Vec<(f64, i64, i64, i64, i64, i64)>) -> Vec<AIHeatmapDay> {
     let mut days = HashMap::<i64, AIHeatmapDay>::new();
-    for (bucket_start, input_tokens, output_tokens, total_tokens, cached_input_tokens, request_count) in rows {
+    for (
+        bucket_start,
+        input_tokens,
+        output_tokens,
+        total_tokens,
+        cached_input_tokens,
+        request_count,
+    ) in rows
+    {
         let day = local_day_start_seconds(bucket_start);
         let item = days.entry(day as i64).or_insert(AIHeatmapDay {
+            is_partial: false,
             day,
             input_tokens: 0,
             output_tokens: 0,

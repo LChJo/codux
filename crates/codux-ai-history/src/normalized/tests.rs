@@ -67,8 +67,14 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(10));
         let second = parse_claude_history_file_snapshot(&project, &file_path, 0, None);
 
-        assert_eq!(first.result.events[0].timestamp, second.result.events[0].timestamp);
-        assert_eq!(first.result.entries[0].timestamp, second.result.entries[0].timestamp);
+        assert_eq!(
+            first.result.events[0].timestamp,
+            second.result.events[0].timestamp
+        );
+        assert_eq!(
+            first.result.entries[0].timestamp,
+            second.result.entries[0].timestamp
+        );
         let _ = fs::remove_dir_all(root);
     }
 
@@ -89,8 +95,7 @@ mod tests {
             path: project_path.to_string(),
         };
 
-        let mut first =
-            load_project_history_without_store(project.clone(), &root, &mut |_, _| {});
+        let mut first = load_project_history_without_store(project.clone(), &root, &mut |_, _| {});
         std::thread::sleep(std::time::Duration::from_millis(10));
         fs::write(&file_path, contents).unwrap();
         let mut second = load_project_history_without_store(project, &root, &mut |_, _| {});
@@ -431,7 +436,10 @@ runtime launch context
         let first = parse_claude_history_file_snapshot(&project, &file_path, 0, None);
         let seed = decode_checkpoint_payload(first.payload_json.as_deref()).unwrap();
 
-        let mut file = fs::OpenOptions::new().append(true).open(&file_path).unwrap();
+        let mut file = fs::OpenOptions::new()
+            .append(true)
+            .open(&file_path)
+            .unwrap();
         writeln!(
             file,
             "{}",
@@ -453,12 +461,8 @@ runtime launch context
             })
         )
         .unwrap();
-        let second = parse_claude_history_file_snapshot(
-            &project,
-            &file_path,
-            initial_size,
-            Some(&seed),
-        );
+        let second =
+            parse_claude_history_file_snapshot(&project, &file_path, initial_size, Some(&seed));
 
         assert_eq!(first.result.entries.len(), 1);
         assert_eq!(first.result.entries[0].input_tokens, 100);
@@ -764,8 +768,7 @@ runtime launch context
                 }
             });
             if let Some(parent_thread_id) = parent_thread_id {
-                session_meta["payload"]["parent_thread_id"] =
-                    serde_json::json!(parent_thread_id);
+                session_meta["payload"]["parent_thread_id"] = serde_json::json!(parent_thread_id);
                 session_meta["payload"]["source"] = serde_json::json!({
                     "subagent": {
                         "thread_spawn": {
@@ -837,11 +840,10 @@ runtime launch context
             }
             fs::write(
                 codex_dir.join(file_name),
-                rows
-                .into_iter()
-                .map(|row| row.to_string())
-                .collect::<Vec<_>>()
-                .join("\n"),
+                rows.into_iter()
+                    .map(|row| row.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
             )
             .unwrap();
         }
@@ -862,7 +864,10 @@ runtime launch context
             .filter_map(|session| session.external_session_id.as_deref())
             .collect::<HashSet<_>>();
         assert_eq!(snapshot.sessions.len(), 2);
-        assert_eq!(session_ids, HashSet::from(["parent-session", "subagent-session"]));
+        assert_eq!(
+            session_ids,
+            HashSet::from(["parent-session", "subagent-session"])
+        );
         assert_eq!(snapshot.project_summary.project_total_tokens, 110);
         assert_eq!(
             snapshot
@@ -963,7 +968,10 @@ runtime launch context
         assert!(seed.codex_is_subagent);
         assert!(seed.codex_own_history_started);
 
-        let mut file = fs::OpenOptions::new().append(true).open(&file_path).unwrap();
+        let mut file = fs::OpenOptions::new()
+            .append(true)
+            .open(&file_path)
+            .unwrap();
         writeln!(
             file,
             "\n{}\n{}",
@@ -986,15 +994,21 @@ runtime launch context
         )
         .unwrap();
 
-        let second = parse_codex_history_file_snapshot(
-            &project,
-            &file_path,
-            initial_size,
-            Some(&seed),
-        );
+        let second =
+            parse_codex_history_file_snapshot(&project, &file_path, initial_size, Some(&seed));
         let durations = active_duration_by_history_key(&second.result.events);
 
-        assert!(second.result.entries.is_empty());
+        // The copied parent's 100 + 10 is excluded, but the child's subsequent
+        // cumulative 140 + 20 contributes its own delta of 50.
+        assert_eq!(
+            second
+                .result
+                .entries
+                .iter()
+                .map(HistoryEntry::total_tokens)
+                .sum::<i64>(),
+            50
+        );
         assert_eq!(durations["codex:subagent-session"].total_seconds, 60);
         let _ = fs::remove_dir_all(root);
     }
@@ -1111,7 +1125,10 @@ runtime launch context
         let initial_size = fs::metadata(&file_path).unwrap().len() as i64;
         let first = parse_codex_history_file_snapshot(&project, &file_path, 0, None);
         let seed = decode_checkpoint_payload(first.payload_json.as_deref()).unwrap();
-        let mut file = fs::OpenOptions::new().append(true).open(&file_path).unwrap();
+        let mut file = fs::OpenOptions::new()
+            .append(true)
+            .open(&file_path)
+            .unwrap();
         writeln!(
             file,
             "{}",
@@ -1123,12 +1140,8 @@ runtime launch context
         )
         .unwrap();
 
-        let second = parse_codex_history_file_snapshot(
-            &project,
-            &file_path,
-            initial_size,
-            Some(&seed),
-        );
+        let second =
+            parse_codex_history_file_snapshot(&project, &file_path, initial_size, Some(&seed));
         let durations = active_duration_by_history_key(&second.result.events);
 
         assert_eq!(durations["codex:s1"].total_seconds, 120);
@@ -1189,10 +1202,7 @@ runtime launch context
 
     #[test]
     fn codex_cumulative_reset_starts_a_new_baseline() {
-        let snapshot = codex_cumulative_snapshot(
-            &[1_000, 200, 250],
-            &[None, Some(200), Some(50)],
-        );
+        let snapshot = codex_cumulative_snapshot(&[1_000, 200, 250], &[None, Some(200), Some(50)]);
         assert_eq!(snapshot.project_summary.project_total_tokens, 1_250);
     }
 
@@ -1470,10 +1480,7 @@ runtime launch context
         assert_eq!(snapshot.project_summary.project_cached_input_tokens, 8704);
         assert_eq!(snapshot.sessions.len(), 1);
         assert_eq!(snapshot.sessions[0].last_tool.as_deref(), Some("opencode"));
-        assert_eq!(
-            snapshot.sessions[0].last_model.as_deref(),
-            Some("gpt-5.4")
-        );
+        assert_eq!(snapshot.sessions[0].last_model.as_deref(), Some("gpt-5.4"));
         assert_eq!(snapshot.sessions[0].request_count, 1);
         assert!(
             snapshot
@@ -1834,8 +1841,14 @@ runtime launch context
         assert_eq!(snapshot.project_summary.project_total_tokens, 21);
         assert_eq!(snapshot.project_summary.project_cached_input_tokens, 54);
         assert_eq!(snapshot.sessions.len(), 1);
-        assert_eq!(snapshot.sessions[0].external_session_id.as_deref(), Some("session-current"));
-        assert_eq!(snapshot.sessions[0].last_model.as_deref(), Some("kimi-code/k3"));
+        assert_eq!(
+            snapshot.sessions[0].external_session_id.as_deref(),
+            Some("session-current")
+        );
+        assert_eq!(
+            snapshot.sessions[0].last_model.as_deref(),
+            Some("kimi-code/k3")
+        );
         assert_eq!(snapshot.sessions[0].request_count, 1);
         assert_eq!(snapshot.sessions[0].total_input_tokens, 14);
         assert_eq!(snapshot.sessions[0].total_output_tokens, 7);
@@ -1937,7 +1950,10 @@ runtime launch context
         assert_eq!(snapshot.project_summary.project_cached_input_tokens, 1_719);
         assert_eq!(snapshot.sessions.len(), 1);
         let session = &snapshot.sessions[0];
-        assert_eq!(session.external_session_id.as_deref(), Some("omp-session-1"));
+        assert_eq!(
+            session.external_session_id.as_deref(),
+            Some("omp-session-1")
+        );
         assert_eq!(session.session_title, "Current OMP title");
         assert_eq!(session.last_tool.as_deref(), Some("omp"));
         assert_eq!(session.last_model.as_deref(), Some("claude-sonnet-4-5"));

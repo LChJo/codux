@@ -4,6 +4,35 @@ fn parse_claude_history_file_snapshot(
     starting_at: i64,
     seed: Option<&AIExternalFileCheckpointPayload>,
 ) -> JSONLParseSnapshot {
+    let agent_key = file_path
+        .parent()
+        .filter(|parent| parent.file_name().is_some_and(|name| name == "subagents"))
+        .and_then(|_| file_path.file_stem())
+        .and_then(|name| name.to_str());
+    let mut inherited_ids = HashSet::new();
+    if agent_key.is_some()
+        && let Some(parent_log) = file_path
+            .parent()
+            .and_then(Path::parent)
+            .map(|path| path.with_extension("jsonl"))
+    {
+        let _ = for_each_jsonl_line(&parent_log, 0, |line, _| {
+            if let Ok(row) = serde_json::from_str::<Value>(line) {
+                for id in [
+                    row.get("uuid"),
+                    row.get("message").and_then(|message| message.get("id")),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    if let Some(id) = id.as_str() {
+                        inherited_ids.insert(id.to_string());
+                    }
+                }
+            }
+            true
+        });
+    }
     let mut result = ParsedHistory::default();
     let mut last_processed_offset = starting_at.max(0);
     let mut cwd_confirmed = false;
@@ -24,9 +53,7 @@ fn parse_claude_history_file_snapshot(
         let Ok(row) = serde_json::from_str::<Value>(line) else {
             return !stop_on_invalid_json;
         };
-        if !cwd_confirmed
-            && let Some(cwd) = row.get("cwd").and_then(|value| value.as_str())
-        {
+        if !cwd_confirmed && let Some(cwd) = row.get("cwd").and_then(|value| value.as_str()) {
             if paths_equivalent(Some(cwd), &project.path) {
                 cwd_confirmed = true;
             } else {
@@ -39,6 +66,18 @@ fn parse_claude_history_file_snapshot(
             early_line_count += 1;
             return early_line_count < 10;
         }
+        if [
+            row.get("uuid"),
+            row.get("message").and_then(|message| message.get("id")),
+        ]
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .any(|id| inherited_ids.contains(id))
+        {
+            last_processed_offset = end_offset;
+            return true;
+        }
         let Some(session_id) = row
             .get("sessionId")
             .and_then(|value| value.as_str())
@@ -47,6 +86,9 @@ fn parse_claude_history_file_snapshot(
             last_processed_offset = end_offset;
             return true;
         };
+        let session_id = agent_key
+            .map(|agent| format!("{session_id}/agent/{agent}"))
+            .unwrap_or(session_id);
         let source_timestamp = row
             .get("timestamp")
             .and_then(|value| value.as_str())
@@ -178,14 +220,14 @@ fn parse_codex_history_file_snapshot(
     let mut session_title: Option<String> = payload.session_title.clone();
     let mut model: Option<String> = payload.last_model.clone();
     let mut total_usage_by_session = payload.codex_total_usage_by_session.clone();
-    let mut active_task_started_at_by_session = payload
-        .codex_active_task_started_at_by_session
-        .clone();
+    let mut active_task_started_at_by_session =
+        payload.codex_active_task_started_at_by_session.clone();
     let mut canonical_session_meta_seen = payload.codex_canonical_session_meta_seen;
     let mut is_subagent = payload.codex_is_subagent;
     let mut session_created_at = payload.codex_session_created_at;
     let mut subagent_history_start_ordinal = payload.codex_subagent_history_start_ordinal;
     let mut own_history_started = payload.codex_own_history_started || !is_subagent;
+    let mut own_usage_started = payload.codex_own_usage_started;
     let mut pending_entries = Vec::new();
     let mut pending_events = Vec::new();
     let mut last_processed_offset = starting_at.max(0);
@@ -254,6 +296,18 @@ fn parse_codex_history_file_snapshot(
                 subagent_history_start_ordinal,
             );
             if !own_history_started {
+                // Older rollouts continue the copied parent's cumulative
+                // counter. Keep its baseline without counting its usage.
+                if row_type == Some("event_msg")
+                    && payload.get("type").and_then(Value::as_str) == Some("token_count")
+                    && let Some(usage) = codex_history_usage(
+                        payload
+                            .get("info")
+                            .and_then(|info| info.get("total_token_usage")),
+                    )
+                {
+                    total_usage_by_session.insert(session_id.clone(), usage);
+                }
                 last_processed_offset = end_offset;
                 return true;
             }
@@ -285,8 +339,7 @@ fn parse_codex_history_file_snapshot(
                     active_task_started_at_by_session.insert(session_id.clone(), timestamp);
                 }
                 HistoryEventKind::ActivityEnd => {
-                    if let Some(started_at) =
-                        active_task_started_at_by_session.remove(&session_id)
+                    if let Some(started_at) = active_task_started_at_by_session.remove(&session_id)
                     {
                         pending_events.push(HistoryEvent {
                             source: "codex".to_string(),
@@ -312,8 +365,9 @@ fn parse_codex_history_file_snapshot(
                 }
             }
         }
-        if is_subagent
-            || row_type != Some("event_msg")
+        // The inherited prefix was excluded above. Usage after that boundary
+        // belongs to this agent and is not included in the parent's counters.
+        if row_type != Some("event_msg")
             || payload.get("type").and_then(|value| value.as_str()) != Some("token_count")
         {
             last_processed_offset = end_offset;
@@ -334,13 +388,20 @@ fn parse_codex_history_file_snapshot(
             .unwrap_or_else(|| "unknown".to_string());
         let last_usage = codex_history_usage(info.get("last_token_usage"));
         let total_usage = codex_history_usage(info.get("total_token_usage"));
+        if is_subagent && !own_usage_started {
+            // Newer children start their own counter at zero, even when its
+            // first value is larger than the inherited parent's counter.
+            if total_usage.is_some() && last_usage == total_usage {
+                total_usage_by_session.remove(&session_id);
+            }
+            own_usage_started = true;
+        }
         let usage = if let Some(total_usage) = total_usage {
             let previous = total_usage_by_session
                 .get(&session_id)
                 .cloned()
                 .unwrap_or_default();
-            let reset = total_usage.cumulative_total_tokens()
-                < previous.cumulative_total_tokens()
+            let reset = total_usage.cumulative_total_tokens() < previous.cumulative_total_tokens()
                 && last_usage.as_ref() == Some(&total_usage);
             let delta = total_usage.saturating_delta(&previous);
             total_usage_by_session.insert(
@@ -415,6 +476,7 @@ fn parse_codex_history_file_snapshot(
     payload.codex_session_created_at = session_created_at;
     payload.codex_subagent_history_start_ordinal = subagent_history_start_ordinal;
     payload.codex_own_history_started = own_history_started;
+    payload.codex_own_usage_started = own_usage_started;
 
     JSONLParseSnapshot {
         result,
@@ -457,7 +519,11 @@ fn codex_subagent_row_starts_own_history(
     };
     payload
         .get("started_at")
-        .and_then(|value| value.as_f64().or_else(|| value.as_i64().map(|value| value as f64)))
+        .and_then(|value| {
+            value
+                .as_f64()
+                .or_else(|| value.as_i64().map(|value| value as f64))
+        })
         .is_some_and(|started_at| started_at >= session_created_at.floor())
         || payload
             .get("turn_id")

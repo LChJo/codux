@@ -47,15 +47,10 @@ impl AIUsageStore {
         conn.execute_batch("BEGIN IMMEDIATE TRANSACTION;")?;
         let result = (|| -> Result<()> {
             for file_path in file_paths {
-                // usage_event rows survive file pruning on purpose: earned pet
-                // XP must not drop when a CLI rotates old transcripts away.
-                for table in [
-                    "ai_history_file_usage_amount",
-                    "ai_history_file_usage_bucket",
-                    "ai_history_file_session_link",
-                    "ai_history_file_checkpoint",
-                    "ai_history_file_state",
-                ] {
+                // Transcripts are disposable; recorded usage is not. Retain the
+                // rich buckets and session identities so all statistics survive
+                // rotation, and invalidate only the file-reading checkpoints.
+                for table in ["ai_history_file_checkpoint", "ai_history_file_state"] {
                     conn.execute(
                         &format!(
                             "DELETE FROM {table} WHERE source = ?1 AND file_path = ?2 AND project_path = ?3;"
@@ -169,8 +164,15 @@ impl AIUsageStore {
                 }
             }
             JSONLIndexMode::Append => {
-                if let (Some(stored_summary), Some(checkpoint)) =
-                    (stored_summary.as_ref(), checkpoint.as_ref())
+                // Claude streams revisions of a message's usage, including
+                // decreases when provisional input becomes cached input. A
+                // positive delta cannot undo an earlier snapshot or move it
+                // between time/model buckets. Replay only the changed file and
+                // replace its derived facts atomically; unchanged files still
+                // take the fast path above.
+                if source != "claude"
+                    && let (Some(stored_summary), Some(checkpoint)) =
+                        (stored_summary.as_ref(), checkpoint.as_ref())
                 {
                     let mut snapshot = append_parser(Some(checkpoint));
                     apply_history_timestamp_fallback(&mut snapshot.result, fallback_timestamp);
@@ -328,6 +330,10 @@ impl AIUsageStore {
     ) -> Result<()> {
         conn.execute_batch("BEGIN IMMEDIATE TRANSACTION;")?;
         let result = (|| -> Result<()> {
+            conn.execute(
+                "DELETE FROM ai_history_partial_file WHERE source = ?1 AND file_path = ?2 AND project_path = ?3;",
+                params![summary.source, summary.file_path, summary.project_path],
+            )?;
             conn.execute(
                 "DELETE FROM ai_history_file_session_link WHERE source = ?1 AND file_path = ?2 AND project_path = ?3;",
                 params![summary.source, summary.file_path, summary.project_path],

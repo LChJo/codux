@@ -3,7 +3,44 @@ use super::format::*;
 use super::*;
 
 #[test]
-fn project_table_total_tokens_always_include_cache() {
+fn heatmap_uses_the_selected_calendar_range_and_cache_mode() {
+    let now = chrono::Local
+        .with_ymd_and_hms(2026, 11, 2, 15, 0, 0)
+        .unwrap()
+        .timestamp() as f64;
+    let mut global = codux_runtime::ai_history::AIGlobalHistorySummary::default();
+    global.heatmap = serde_json::from_value(serde_json::json!([
+        {"day": now, "totalTokens": 10, "cachedInputTokens": 20, "requestCount": 1},
+        {"day": now - 86400.0, "totalTokens": 90, "cachedInputTokens": 30, "requestCount": 1}
+    ]))
+    .unwrap();
+    let today = stats_global_heatmap_at(&global, false, StatsTimeRange::Today, now);
+    assert_eq!(today.iter().map(|cell| cell.value).sum::<i64>(), 10);
+    let week = stats_global_heatmap_at(&global, true, StatsTimeRange::SevenDays, now);
+    assert_eq!(week.iter().map(|cell| cell.value).sum::<i64>(), 150);
+    assert_eq!(week.len(), 7);
+}
+
+#[test]
+fn heatmap_does_not_present_unknown_details_as_zero() {
+    let cell = codux_runtime::ai_history::AIHistoryHeatmapCellView {
+        is_partial: true,
+        is_known: true,
+        value: 42,
+        total_tokens: 42,
+        ..Default::default()
+    };
+    let tooltip = heatmap_cell_tooltip("english", &cell);
+    assert!(tooltip.contains("Input —"));
+    assert!(tooltip.contains("Cache —"));
+    assert!(tooltip.contains("Total ≥42"));
+    let unknown = heatmap_cell_tooltip("english", &Default::default());
+    assert!(unknown.contains("No recorded usage"));
+    assert!(!unknown.contains("Total 0"));
+}
+
+#[test]
+fn project_table_total_tokens_follow_selected_cache_mode() {
     let mut global = codux_runtime::ai_history::AIGlobalHistorySummary::default();
     global
         .project_totals
@@ -18,16 +55,20 @@ fn project_table_total_tokens_always_include_cache() {
             ..Default::default()
         });
 
-    let rows = stats_project_table_rows(&global, None);
+    let rows = stats_project_table_rows(&global, None, false);
 
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].no_cache_tokens, 100);
     assert_eq!(rows[0].cached_input_tokens, 40);
-    assert_eq!(rows[0].total_tokens, 140);
+    assert_eq!(rows[0].total_tokens, 100);
+    assert_eq!(
+        stats_project_table_rows(&global, None, true)[0].total_tokens,
+        140
+    );
 }
 
 #[test]
-fn range_project_table_total_tokens_always_include_cache() {
+fn range_project_table_total_tokens_follow_selected_cache_mode() {
     let mut global = codux_runtime::ai_history::AIGlobalHistorySummary::default();
     global
         .project_totals
@@ -54,17 +95,21 @@ fn range_project_table_total_tokens_always_include_cache() {
             ..Default::default()
         });
 
-    let rows = stats_project_table_rows(&global, Some(&range));
+    let rows = stats_project_table_rows(&global, Some(&range), false);
 
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].project, "Range");
     assert_eq!(rows[0].no_cache_tokens, 30);
     assert_eq!(rows[0].cached_input_tokens, 12);
-    assert_eq!(rows[0].total_tokens, 42);
+    assert_eq!(rows[0].total_tokens, 30);
+    assert_eq!(
+        stats_project_table_rows(&global, Some(&range), true)[0].total_tokens,
+        42
+    );
 }
 
 #[test]
-fn trend_bucket_tooltip_total_always_includes_cache() {
+fn trend_bucket_tooltip_total_matches_displayed_bar() {
     let start = chrono::Local
         .with_ymd_and_hms(2026, 7, 4, 13, 30, 0)
         .unwrap()
@@ -84,7 +129,7 @@ fn trend_bucket_tooltip_total_always_includes_cache() {
 
     assert_eq!(
         tooltip,
-        "07/04 13:30 - 14:00\nInput 80\nOutput 20\nCache 40\nTotal 140"
+        "07/04 13:30 - 14:00\nInput 80\nOutput 20\nCache 40\nTotal 100"
     );
 }
 
@@ -112,6 +157,7 @@ fn heatmap_month_labels_group_visible_columns() {
     for day in [jan_22, jan_29, feb_5] {
         for row in 0..STATS_HEATMAP_ROWS {
             cells.push(codux_runtime::ai_history::AIHistoryHeatmapCellView {
+                is_partial: false,
                 day: day + row as f64 * 24.0 * 60.0 * 60.0,
                 ..Default::default()
             });
@@ -168,8 +214,8 @@ fn trend_bucket_visual_total_respects_cache_mode() {
             request_count: 2,
         });
 
-    let no_cache = stats_trend_buckets(&global, false);
-    let with_cache = stats_trend_buckets(&global, true);
+    let no_cache = stats_trend_buckets(&global, false, StatsTimeRange::All);
+    let with_cache = stats_trend_buckets(&global, true, StatsTimeRange::All);
 
     assert_eq!(no_cache[0].total_tokens, 100);
     assert_eq!(with_cache[0].total_tokens, 140);
@@ -184,6 +230,7 @@ fn heatmap_cell_tooltip_includes_token_breakdown() {
     let tooltip = heatmap_cell_tooltip(
         "english",
         &codux_runtime::ai_history::AIHistoryHeatmapCellView {
+            is_partial: false,
             day: 0.0,
             value: 100,
             input_tokens: 80,
@@ -199,6 +246,6 @@ fn heatmap_cell_tooltip_includes_token_breakdown() {
     assert!(tooltip.contains("Input 80"));
     assert!(tooltip.contains("Output 20"));
     assert!(tooltip.contains("Cache 40"));
-    assert!(tooltip.contains("Total 140"));
+    assert!(tooltip.contains("Total 100"));
     assert!(tooltip.contains("Requests 2"));
 }

@@ -46,6 +46,7 @@ const STATS_TABLE_BASE_WIDTH: f32 = 1200.0;
 pub(in crate::app) struct StatsWorkspaceSnapshot {
     language: String,
     include_cached: bool,
+    has_incomplete_usage: bool,
     time_range: StatsTimeRange,
     range_total_tokens: i64,
     range_no_cache_tokens: i64,
@@ -160,8 +161,11 @@ impl CoduxApp {
                     .map(|project| project.cached_input_tokens.max(0))
                     .sum()
             });
-        let range_total_tokens =
-            stats_total_tokens(range_no_cache_tokens, range_cached_input_tokens);
+        let range_total_tokens = codux_runtime::ai_history::display_tokens(
+            range_no_cache_tokens,
+            range_cached_input_tokens,
+            include_cached,
+        );
         let range_request_count = range
             .map(|range| range.request_count.max(0))
             .unwrap_or_else(|| {
@@ -183,11 +187,11 @@ impl CoduxApp {
                     .map(|project| project.active_duration_seconds.max(0))
                     .sum()
             });
-        let project_rows = stats_project_table_rows(global, range);
+        let project_rows = stats_project_table_rows(global, range, include_cached);
         let tool_rows = stats_tool_rows(global, range, include_cached);
         let model_rows = stats_model_rows(global, range, include_cached);
-        let heatmap = stats_global_heatmap(global, include_cached);
-        let trend_buckets = stats_trend_buckets(global, include_cached);
+        let heatmap = stats_global_heatmap(global, include_cached, time_range);
+        let trend_buckets = stats_trend_buckets(global, include_cached, time_range);
         let controls_fingerprint = super::workspace_views::workspace_view_hash(&(
             self.state.settings.language.clone(),
             self.state.settings.statistics_mode.clone(),
@@ -217,6 +221,7 @@ impl CoduxApp {
         ));
 
         StatsWorkspaceSnapshot {
+            has_incomplete_usage: global.heatmap.iter().any(|day| day.is_partial),
             language: self.state.settings.language.clone(),
             include_cached,
             time_range,
@@ -281,6 +286,12 @@ pub(in crate::app) fn stats_workspace_body(
                                 .flex_col()
                                 .gap(px(16.0))
                                 .child(stats_control_row(app_entity.clone(), &snapshot))
+                                .when(snapshot.has_incomplete_usage, |view| {
+                                    view.child(div().text_size(rems(0.75)).text_color(color(theme::TEXT_MUTED)).child(
+                                        stats_text(&snapshot.language, "stats.history.partial",
+                                            "Some historical usage details are unavailable. Input, output and cache show known records only."),
+                                    ))
+                                })
                                 .child(stats_kpi_grid(&snapshot, cx))
                                 .child(
                                     div()

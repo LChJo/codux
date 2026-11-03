@@ -151,15 +151,13 @@ impl CoduxApp {
 
     pub(in crate::app) fn refresh_stats_workspace_data(
         &mut self,
-        show_progress: bool,
+        _show_progress: bool,
         cx: &mut Context<Self>,
     ) {
-        self.refresh_ai_global_history_summary(cx);
-        if self.state.selected_project.is_some() {
-            self.start_ai_history_refresh(show_progress, cx);
-        } else {
-            self.invalidate_ui(cx, [UiRegion::WorkspaceBody, UiRegion::StatusBar]);
+        if let Err(error) = self.runtime_service.refresh_global_ai_history_sources() {
+            self.status_message = format!("failed to refresh usage history: {error}");
         }
+        self.invalidate_ui(cx, [UiRegion::WorkspaceBody, UiRegion::StatusBar]);
     }
 
     pub(in crate::app) fn set_stats_time_range(

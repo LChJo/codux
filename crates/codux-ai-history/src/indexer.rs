@@ -235,10 +235,26 @@ impl AIHistoryIndexer {
     }
 
     pub fn refresh_global(&self, projects: Vec<AIHistoryProjectRequest>) -> Result<(), String> {
+        self.queue_global_refresh(projects, false)
+    }
+
+    pub fn refresh_global_sources(
+        &self,
+        projects: Vec<AIHistoryProjectRequest>,
+    ) -> Result<(), String> {
+        self.queue_global_refresh(projects, true)
+    }
+
+    fn queue_global_refresh(
+        &self,
+        projects: Vec<AIHistoryProjectRequest>,
+        rescan_sources: bool,
+    ) -> Result<(), String> {
         self.tx
             .send(AIHistoryJob::RefreshGlobal {
                 projects,
                 database_path: self.database_path.clone(),
+                rescan_sources,
             })
             .map_err(|_| "AI history indexer stopped.".to_string())
     }

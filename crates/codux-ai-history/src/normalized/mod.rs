@@ -32,3 +32,6 @@ mod history_sources;
 
 #[cfg(test)]
 include!("tests.rs");
+
+#[cfg(test)]
+include!("accuracy_tests.rs");

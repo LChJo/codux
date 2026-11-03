@@ -23,8 +23,9 @@ impl RuntimeService {
                     let state = service
                         .hosted_ai_history_runtime(&project.path)
                         .and_then(|runtime| {
-                            runtime
-                                .ok_or_else(|| "Hosted AI history runtime is unavailable".to_string())
+                            runtime.ok_or_else(|| {
+                                "Hosted AI history runtime is unavailable".to_string()
+                            })
                         })
                         .and_then(|runtime| runtime.refresh_state(&project))
                         .unwrap_or_else(|error| AIHistoryProjectState {
@@ -63,9 +64,7 @@ impl RuntimeService {
         self.ai_history_indexer.project_state(project)
     }
 
-    pub fn indexed_global_ai_history_summary(
-        &self,
-    ) -> Result<AIGlobalHistorySnapshot, String> {
+    pub fn indexed_global_ai_history_summary(&self) -> Result<AIGlobalHistorySnapshot, String> {
         self.ai_history_indexer
             .global_summary(self.ai_history_workspace_requests())
     }
@@ -80,6 +79,11 @@ impl RuntimeService {
     pub fn refresh_indexed_global_ai_history(&self) -> Result<(), String> {
         self.ai_history_indexer
             .refresh_global(self.ai_history_workspace_requests())
+    }
+
+    pub fn refresh_global_ai_history_sources(&self) -> Result<(), String> {
+        self.ai_history_indexer
+            .refresh_global_sources(self.ai_history_workspace_requests())
     }
 
     pub fn rename_indexed_ai_session(

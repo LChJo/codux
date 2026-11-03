@@ -385,12 +385,20 @@ pub(super) fn ai_recent_usage_heatmap(
                         .flex_col()
                         .gap(px(AI_RECENT_USAGE_GAP))
                         .children(days.iter().cloned().enumerate().map(move |(row, cell)| {
-                            let tooltip = ai_usage_tooltip(
+                            let mut tooltip = ai_usage_tooltip(
                                 ai_date_label(cell.day, &usage_labels),
                                 cell.value,
                                 cell.request_count,
                                 &usage_labels,
                             );
+                            if !cell.is_known {
+                                tooltip = format!("{}\n{}", ai_date_label(cell.day, &usage_labels),
+                                    ai_sidebar_text(language, "stats.heatmap.no_record", "No recorded usage in this range"));
+                            } else if cell.is_partial {
+                                tooltip.push('\n');
+                                tooltip.push_str(&ai_sidebar_text(language, "stats.history.partial",
+                                    "Some historical usage details are unavailable. Input, output and cache show known records only."));
+                            }
                             codux_tooltip_container(
                                 app_entity.clone(),
                                 SharedString::from(format!("ai-recent-usage-{column}-{row}")),

@@ -212,7 +212,7 @@ pub(super) fn stats_trend_axis_indexes(bucket_count: usize) -> Vec<usize> {
 }
 
 pub(super) fn trend_bucket_tooltip(language: &str, bucket: StatsTrendBucket) -> String {
-    let total = stats_total_tokens(bucket.no_cache_tokens, bucket.cached_input_tokens);
+    let total = bucket.total_tokens;
     format!(
         "{}\n{} {}\n{} {}\n{} {}\n{} {}",
         trend_bucket_time_range(bucket),
@@ -231,21 +231,49 @@ pub(super) fn heatmap_cell_tooltip(
     language: &str,
     cell: &codux_runtime::ai_history::AIHistoryHeatmapCellView,
 ) -> String {
-    let total = stats_total_tokens(cell.total_tokens, cell.cached_input_tokens);
-    format!(
+    if !cell.is_known {
+        return format!(
+            "{}\n{}",
+            stats_date_label(Some(cell.day)),
+            stats_text(
+                language,
+                "stats.heatmap.no_record",
+                "No recorded usage in this range"
+            )
+        );
+    }
+    let detail = |value| {
+        if cell.is_partial {
+            "—".to_string()
+        } else {
+            compact_number(value)
+        }
+    };
+    let total = if cell.is_partial {
+        format!("≥{}", compact_number(cell.value))
+    } else {
+        compact_number(cell.value)
+    };
+    let mut tooltip = format!(
         "{}\n{} {}\n{} {}\n{} {}\n{} {}\n{} {}",
         stats_date_label(Some(cell.day)),
         stats_text(language, "stats.tooltip.input", "Input"),
-        compact_number(cell.input_tokens),
+        detail(cell.input_tokens),
         stats_text(language, "stats.tooltip.output", "Output"),
-        compact_number(cell.output_tokens),
+        detail(cell.output_tokens),
         stats_text(language, "stats.tooltip.cache", "Cache"),
-        compact_number(cell.cached_input_tokens),
+        detail(cell.cached_input_tokens),
         stats_text(language, "stats.tooltip.total", "Total"),
-        compact_number(total),
+        total,
         stats_text(language, "stats.tooltip.requests", "Requests"),
         compact_number(cell.request_count),
-    )
+    );
+    if cell.is_partial {
+        tooltip.push('\n');
+        tooltip.push_str(&stats_text(language, "stats.history.partial",
+            "Some historical usage details are unavailable. Input, output and cache show known records only."));
+    }
+    tooltip
 }
 
 pub(super) fn format_duration_short(seconds: i64) -> String {

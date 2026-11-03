@@ -17,7 +17,12 @@ fn initialize_connection(conn: &Connection) -> Result<()> {
     if stored_version.as_deref() != Some(NORMALIZED_HISTORY_SCHEMA_VERSION)
         || !usage_event_schema_is_current(conn)?
     {
-        migrate_schema(conn)?;
+        // Version 15 already has rich normalized buckets. Never drop those:
+        // some transcripts have been rotated and cannot be parsed again.
+        if stored_version.as_deref() != Some("15") {
+            migrate_schema(conn)?;
+        }
+        migrate_statistics_history(conn)?;
     }
     create_project_scope_views(conn, false)?;
     Ok(())
@@ -84,7 +89,7 @@ fn merge_usage_buckets(existing: &[AIUsageBucket], delta: &[AIUsageBucket]) -> V
             bucket.model.clone().unwrap_or_default(),
             bucket.bucket_start as i64,
         );
-            map.entry(key)
+        map.entry(key)
             .and_modify(|current| {
                 if bucket.last_seen_at > current.last_seen_at
                     || (same_timestamp(bucket.last_seen_at, current.last_seen_at)

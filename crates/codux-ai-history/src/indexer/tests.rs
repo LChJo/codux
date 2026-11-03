@@ -11,6 +11,33 @@ use crate::normalized::{
 use std::sync::{Arc, Mutex};
 
 #[test]
+fn explicit_global_refresh_rescans_sources_but_project_updates_only_reaggregate() {
+    let (tx, rx) = super::sync_channel(2);
+    let indexer = super::AIHistoryIndexer {
+        tx,
+        state: Arc::new(Mutex::new(Default::default())),
+        events: Arc::new(Mutex::new(Default::default())),
+        database_path: Default::default(),
+    };
+    indexer.refresh_global(Vec::new()).unwrap();
+    assert!(matches!(
+        rx.recv().unwrap(),
+        super::AIHistoryJob::RefreshGlobal {
+            rescan_sources: false,
+            ..
+        }
+    ));
+    indexer.refresh_global_sources(Vec::new()).unwrap();
+    assert!(matches!(
+        rx.recv().unwrap(),
+        super::AIHistoryJob::RefreshGlobal {
+            rescan_sources: true,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn project_state_tracks_queue_progress_and_completion() {
     let state = Arc::new(Mutex::new(AIHistoryIndexerState::default()));
     let project = test_project();

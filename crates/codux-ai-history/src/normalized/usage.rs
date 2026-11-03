@@ -40,9 +40,7 @@ impl HistoryUsage {
         Self {
             input_tokens: self.input_tokens.max(previous.input_tokens),
             output_tokens: self.output_tokens.max(previous.output_tokens),
-            cached_input_tokens: self
-                .cached_input_tokens
-                .max(previous.cached_input_tokens),
+            cached_input_tokens: self.cached_input_tokens.max(previous.cached_input_tokens),
             reasoning_output_tokens: self
                 .reasoning_output_tokens
                 .max(previous.reasoning_output_tokens),
@@ -228,11 +226,7 @@ fn conversational_activity_intervals(events: &[&HistoryEvent]) -> Vec<(f64, f64)
     intervals
 }
 
-fn push_activity_interval(
-    intervals: &mut Vec<(f64, f64)>,
-    start: Option<f64>,
-    end: Option<f64>,
-) {
+fn push_activity_interval(intervals: &mut Vec<(f64, f64)>, start: Option<f64>, end: Option<f64>) {
     if let (Some(start), Some(end)) = (start, end)
         && end > start
     {
@@ -337,12 +331,17 @@ pub fn half_hour_bucket_start(timestamp: f64) -> f64 {
 }
 
 pub fn local_day_start_seconds(timestamp: f64) -> f64 {
+    local_day_start_days_ago(timestamp, 0)
+}
+
+pub fn local_day_start_days_ago(timestamp: f64, days: u64) -> f64 {
     let Some(date) = Local.timestamp_opt(timestamp as i64, 0).single() else {
         return timestamp;
     };
-    Local
-        .with_ymd_and_hms(date.year(), date.month(), date.day(), 0, 0, 0)
-        .single()
+    date.date_naive()
+        .checked_sub_days(chrono::Days::new(days))
+        .and_then(|day| day.and_hms_opt(0, 0, 0))
+        .and_then(|midnight| Local.from_local_datetime(&midnight).earliest())
         .map(|date| date.timestamp() as f64)
         .unwrap_or(timestamp)
 }

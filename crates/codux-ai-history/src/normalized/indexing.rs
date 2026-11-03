@@ -198,7 +198,8 @@ pub fn index_global_history_fresh_at(
         project_count += 1;
     }
 
-    if let Ok(Some(snapshot)) = load_indexed_global_history_with_store(Some(project_paths), &store) {
+    if let Ok(Some(snapshot)) = load_indexed_global_history_with_store(Some(project_paths), &store)
+    {
         return snapshot;
     }
 
@@ -276,16 +277,17 @@ fn load_indexed_global_history_with_store(
             .sum();
     }
     let (total_tokens, cached_input_tokens, today_total_tokens, today_cached_input_tokens) =
-        project_totals
-            .iter()
-            .fold((0, 0, 0, 0), |(total, cached, today, today_cached), project| {
+        project_totals.iter().fold(
+            (0, 0, 0, 0),
+            |(total, cached, today, today_cached), project| {
                 (
                     total + project.total_tokens,
                     cached + project.cached_input_tokens,
                     today + project.today_total_tokens,
                     today_cached + project.today_cached_input_tokens,
                 )
-            });
+            },
+        );
     let range_summaries = indexed_global_range_summaries(store, &conn, now)?;
     let project_count = project_totals.len();
     Ok(Some(AIGlobalHistorySnapshot {
@@ -343,8 +345,8 @@ fn indexed_global_range_summaries(
     let today = local_day_start_seconds(now);
     let ranges = [
         ("today", Some(today)),
-        ("sevenDays", Some(now - 7.0 * 86_400.0)),
-        ("thirtyDays", Some(now - 30.0 * 86_400.0)),
+        ("sevenDays", Some(local_day_start_days_ago(now, 6))),
+        ("thirtyDays", Some(local_day_start_days_ago(now, 29))),
         ("all", None),
     ];
     ranges
@@ -436,7 +438,10 @@ fn load_project_history_without_store(
     let mut parsed = ParsedHistory::default();
     for driver in history_sources::history_source_drivers() {
         parsed.merge(driver.parse_all(&project, home));
-        on_progress(history_sources::history_source_progress(driver.source), "readingSources");
+        on_progress(
+            history_sources::history_source_progress(driver.source),
+            "readingSources",
+        );
     }
     on_progress(0.96, "aggregating");
     build_snapshot(project, parsed)
@@ -455,7 +460,10 @@ fn load_project_history_with_store(
     let conn = store.connect()?;
     for driver in history_sources::history_source_drivers() {
         driver.load_or_index(store, &conn, &project, home)?;
-        on_progress(history_sources::history_source_progress(driver.source), "readingSources");
+        on_progress(
+            history_sources::history_source_progress(driver.source),
+            "readingSources",
+        );
     }
     on_progress(0.96, "aggregating");
     let project_path = project.path.clone();

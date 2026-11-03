@@ -305,6 +305,8 @@ pub struct AIHistoryUsageBucketView {
 #[serde(rename_all = "camelCase")]
 pub struct AIHistoryHeatmapCellView {
     pub day: f64,
+    #[serde(default)]
+    pub is_partial: bool,
     pub value: i64,
     #[serde(default)]
     pub input_tokens: i64,

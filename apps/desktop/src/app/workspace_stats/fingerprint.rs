@@ -50,6 +50,7 @@ pub(super) fn global_fingerprint(
             .map(|day| {
                 (
                     day.day.to_bits(),
+                    day.is_partial,
                     day.input_tokens,
                     day.output_tokens,
                     day.total_tokens,
@@ -139,6 +140,7 @@ pub(super) fn heatmap_fingerprint(
             .map(|cell| {
                 (
                     cell.day.to_bits(),
+                    cell.is_partial,
                     cell.value,
                     cell.input_tokens,
                     cell.output_tokens,

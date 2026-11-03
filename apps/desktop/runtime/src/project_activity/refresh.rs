@@ -226,37 +226,46 @@ impl ProjectActivityCoordinator {
     fn projects_due_for_ai(
         &self,
         foreground_interval: Duration,
-        _background_interval: Duration,
+        background_interval: Duration,
     ) -> Vec<TrackedProject> {
         let active_project_id = self.active_project_id.lock().ok().and_then(|id| id.clone());
         let is_foreground = self.main_window_visible.load(Ordering::Relaxed)
             || self.main_window_focused.load(Ordering::Relaxed);
-        if !is_foreground || active_project_id.is_none() {
-            return Vec::new();
-        }
         let now = Instant::now();
         let Ok(mut projects) = self.projects.lock() else {
             return Vec::new();
         };
-        let mut due = Vec::new();
-        for project in projects.values_mut() {
-            if Some(project.id.as_str()) != active_project_id.as_deref() {
+        let mut candidates = Vec::new();
+        for project in projects.values() {
+            if !project.runtime_target.is_local() {
                 continue;
             }
+            let foreground =
+                is_foreground && Some(project.id.as_str()) == active_project_id.as_deref();
+            let interval = if foreground {
+                foreground_interval
+            } else {
+                background_interval
+            };
             let is_due = project
                 .last_ai_refresh
-                .map(|value| now.duration_since(value) >= foreground_interval)
-                .unwrap_or(false);
+                .map(|value| now.duration_since(value) >= interval)
+                .unwrap_or(true);
             if !is_due {
                 continue;
             }
-            project.last_ai_refresh = Some(now);
-            due.push(project.clone());
-            break;
+            candidates.push((!foreground, project.last_ai_refresh, project.id.clone()));
         }
-
-        due.truncate(MAX_AI_REFRESH_PER_TICK);
-        due
+        candidates.sort();
+        candidates
+            .into_iter()
+            .take(MAX_AI_REFRESH_PER_TICK)
+            .filter_map(|(_, _, id)| {
+                let project = projects.get_mut(&id)?;
+                project.last_ai_refresh = Some(now);
+                Some(project.clone())
+            })
+            .collect()
     }
 }
 

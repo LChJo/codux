@@ -149,6 +149,7 @@ fn stats_heatmap(
             (0..7).map(move |row| {
                 let day = first_day + (column * 7 + row) as f64 * 86_400.0;
                 AIHistoryHeatmapCellView {
+                    is_partial: false,
                     day,
                     value: 0,
                     input_tokens: 0,
@@ -176,6 +177,7 @@ fn stats_heatmap(
             values[index].cached_input_tokens += day.cached_input_tokens.max(0);
             values[index].request_count += day.request_count.max(0);
             values[index].is_known = true;
+            values[index].is_partial |= day.is_partial;
         }
     }
 

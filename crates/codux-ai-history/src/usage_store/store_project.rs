@@ -7,7 +7,12 @@ impl AIUsageStore {
         let project = canonical_project_request(project);
         let links = self.project_session_links(conn, &project.path)?;
         let buckets = self.project_usage_buckets(conn, &project.path)?;
-        Ok(build_snapshot_from_rows(project, links, buckets))
+        let partial_days = partial_history_days(conn, Some(&project.path))?;
+        let mut snapshot = build_snapshot_from_rows(project, links, buckets);
+        for day in &mut snapshot.heatmap {
+            day.is_partial = partial_days.contains(&(day.day as i64));
+        }
+        Ok(snapshot)
     }
 
     pub fn indexed_project_snapshot(
@@ -22,6 +27,7 @@ impl AIUsageStore {
                 SELECT indexed_at
                 FROM ai_history_project_index_state
                 WHERE project_path = ?1
+                  AND project_path NOT IN (SELECT project_path FROM ai_history_reindex_project)
                 LIMIT 1;
                 "#,
                 params![project.path],
@@ -123,6 +129,10 @@ impl AIUsageStore {
                 snapshot.project_name,
                 snapshot.indexed_at
             ],
+        )?;
+        conn.execute(
+            "DELETE FROM ai_history_reindex_project WHERE project_path = ?1;",
+            params![project_path],
         )?;
         Ok(())
     }

@@ -28,10 +28,25 @@
 // de-inflation). On launch a version mismatch drops the index tables and
 // re-parses every log from offset 0 with the corrected parser. Pet XP is
 // derived from the corrected event facts, so parser fixes also correct pet XP.
-const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "15";
+// 16 preserves rich history across log pruning, repairs parser checkpoints and
+// recovers legacy event-only history with explicit incomplete-detail markers.
+const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "16";
 const RECENT_HISTORY_SESSION_LIMIT: usize = 80;
 
 const SCHEMA_STATEMENTS: &[&str] = &[
+    r#"
+    CREATE TABLE IF NOT EXISTS ai_history_partial_file (
+        source TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        project_path TEXT NOT NULL,
+        PRIMARY KEY (source, file_path, project_path)
+    );
+    "#,
+    r#"
+    CREATE TABLE IF NOT EXISTS ai_history_reindex_project (
+        project_path TEXT PRIMARY KEY
+    );
+    "#,
     r#"
     CREATE TABLE IF NOT EXISTS ai_history_meta (
         key TEXT PRIMARY KEY,

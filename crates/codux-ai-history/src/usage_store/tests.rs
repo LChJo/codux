@@ -6,6 +6,126 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
+    fn source_replay_replaces_partial_history_instead_of_adding_to_it() {
+        let root = std::env::temp_dir().join(format!("codux-history-recovery-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let project = test_project(&root);
+        let file = root.join("restored.jsonl");
+        let store = AIUsageStore::at_path(root.join("usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        conn.execute(
+            "INSERT INTO ai_history_file_usage_event VALUES ('claude', ?1, ?2, ?3, 0, 'restored', 100, 42, 0, 0)",
+            params![normalized_path(&file), canonical_project_path(&project.path), project.id],
+        ).unwrap();
+        conn.execute(
+            "UPDATE ai_history_meta SET value='15' WHERE key='normalized_history_schema_version'",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+        let conn = store.connect().unwrap();
+        assert!(
+            store
+                .project_snapshot(&conn, project.clone())
+                .unwrap()
+                .heatmap
+                .iter()
+                .any(|day| day.is_partial)
+        );
+        fs::write(&file, "{}\n").unwrap();
+        store
+            .load_or_index_file(&conn, "claude", &file, &project, || {
+                parsed_history("restored", 100.0, 10, 5)
+            })
+            .unwrap();
+        let snapshot = store.project_snapshot(&conn, project).unwrap();
+        assert_eq!(snapshot.project_summary.project_total_tokens, 15);
+        assert!(snapshot.heatmap.iter().all(|day| !day.is_partial));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn schema_15_upgrade_preserves_details_and_recovers_pruned_usage_once() {
+        let root = std::env::temp_dir().join(format!("codux-history-upgrade-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let project = test_project(&root);
+        let file = root.join("known.jsonl");
+        fs::write(&file, "{}\n").unwrap();
+        let store = AIUsageStore::at_path(root.join("usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        store
+            .load_or_index_file(&conn, "claude", &file, &project, || {
+                parsed_history("known", 200.0, 80, 20)
+            })
+            .unwrap();
+        conn.execute(
+            "INSERT INTO ai_history_file_usage_event VALUES ('codex', 'pruned.jsonl', ?1, ?2, 0, 'pruned', 100, 42, 1, 0)",
+            params![canonical_project_path(&project.path), project.id],
+        ).unwrap();
+        conn.execute("UPDATE ai_history_meta SET value = '15' WHERE key = 'normalized_history_schema_version'", []).unwrap();
+        drop(conn);
+        for _ in 0..2 {
+            let conn = store.connect().unwrap();
+            let snapshot = store.project_snapshot(&conn, project.clone()).unwrap();
+            assert_eq!(snapshot.project_summary.project_total_tokens, 142);
+            assert_eq!(snapshot.project_summary.project_cached_input_tokens, 5);
+            let days = serde_json::to_value(&snapshot.heatmap).unwrap();
+            assert!(
+                days.as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|day| day["isPartial"] == true)
+            );
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn schema_15_upgrade_requires_replay_of_existing_parser_checkpoints() {
+        let root = std::env::temp_dir().join(format!("codux-history-upgrade-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let project = test_project(&root);
+        let file = root.join("known.jsonl");
+        fs::write(&file, "{}\n").unwrap();
+        let store = AIUsageStore::at_path(root.join("usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        store
+            .load_or_index_file(&conn, "claude", &file, &project, || {
+                parsed_history("known", 200.0, 80, 20)
+            })
+            .unwrap();
+        let snapshot = store.project_snapshot(&conn, project.clone()).unwrap();
+        store
+            .save_project_index_state(&conn, &snapshot, &project.path)
+            .unwrap();
+        conn.execute("UPDATE ai_history_meta SET value = '15' WHERE key = 'normalized_history_schema_version'", []).unwrap();
+        drop(conn);
+        let conn = store.connect().unwrap();
+        assert!(
+            store
+                .indexed_project_snapshot(&conn, project.clone())
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            !store
+                .indexed_project_paths(&conn)
+                .unwrap()
+                .contains(&canonical_project_path(&project.path))
+        );
+        // The old rich totals remain available throughout migration/replay.
+        assert_eq!(
+            store
+                .project_snapshot(&conn, project)
+                .unwrap()
+                .project_summary
+                .project_total_tokens,
+            100
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn initializes_normalized_schema() {
         let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
         let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
@@ -203,7 +323,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(stored_path, canonical_project_path(&project_dir.to_string_lossy()));
+        assert_eq!(
+            stored_path,
+            canonical_project_path(&project_dir.to_string_lossy())
+        );
         assert_eq!(
             store
                 .normalized_tokens_in_intervals(
@@ -470,7 +593,13 @@ mod tests {
         let old_start = today_start - 7_200.0;
         let current_start = today_start + 1_800.0;
 
-        insert_usage_bucket(&conn, "/tmp/project-a", "old-session", old_start, 325_000_000);
+        insert_usage_bucket(
+            &conn,
+            "/tmp/project-a",
+            "old-session",
+            old_start,
+            325_000_000,
+        );
         insert_usage_bucket(
             &conn,
             "/tmp/project-a",
@@ -479,7 +608,10 @@ mod tests {
             12_000_000,
         );
 
-        assert_eq!(store.global_today_normalized_tokens(&conn).unwrap(), 12_000_000);
+        assert_eq!(
+            store.global_today_normalized_tokens(&conn).unwrap(),
+            12_000_000
+        );
         let _ = fs::remove_dir_all(root);
     }
 
@@ -765,7 +897,11 @@ mod tests {
                     last_processed_offset: updated_size,
                     payload_json: None,
                 },
-                JSONLParseSnapshot::default,
+                || JSONLParseSnapshot {
+                    result: parsed_history("session", 0.0, 30, 15),
+                    last_processed_offset: updated_size,
+                    payload_json: None,
+                },
             )
             .unwrap();
 
@@ -796,8 +932,13 @@ mod tests {
                 unstamped_history(false)
             })
             .unwrap();
-        let first = serde_json::to_vec(&store.project_snapshot(&conn, project.clone()).unwrap().sessions)
-            .unwrap();
+        let first = serde_json::to_vec(
+            &store
+                .project_snapshot(&conn, project.clone())
+                .unwrap()
+                .sessions,
+        )
+        .unwrap();
         let first_modified = modified_seconds(&fs::metadata(&file_path).unwrap());
         drop(conn);
         drop(store);
@@ -846,8 +987,13 @@ mod tests {
                 unstamped_history(false)
             })
             .unwrap();
-        let first = serde_json::to_vec(&store.project_snapshot(&conn, project.clone()).unwrap().sessions)
-            .unwrap();
+        let first = serde_json::to_vec(
+            &store
+                .project_snapshot(&conn, project.clone())
+                .unwrap()
+                .sessions,
+        )
+        .unwrap();
         fs::remove_file(&file_path).unwrap();
         store
             .remove_missing_source_files(&conn, "claude", &project.path, &[])
@@ -1116,7 +1262,9 @@ mod tests {
         }
         let snapshot = store.project_snapshot(&conn, project).unwrap();
         let global_sessions = store.indexed_sessions_since(&conn, None).unwrap();
-        let range = store.indexed_global_range_summary(&conn, "all", None).unwrap();
+        let range = store
+            .indexed_global_range_summary(&conn, "all", None)
+            .unwrap();
 
         assert_eq!(snapshot.sessions.len(), 1);
         assert_eq!(
@@ -1161,7 +1309,10 @@ mod tests {
             serde_json::to_value(&forward.sessions).unwrap(),
             serde_json::to_value(&reverse.sessions).unwrap()
         );
-        assert_eq!(forward.project_summary.current_model, reverse.project_summary.current_model);
+        assert_eq!(
+            forward.project_summary.current_model,
+            reverse.project_summary.current_model
+        );
     }
 
     #[test]
@@ -1211,7 +1362,9 @@ mod tests {
         let start = 10_000.0;
         insert_usage_bucket(&conn, "/tmp/project-a", "session", start, 100);
 
-        let all = store.indexed_global_range_summary(&conn, "all", None).unwrap();
+        let all = store
+            .indexed_global_range_summary(&conn, "all", None)
+            .unwrap();
         let clipped = store
             .indexed_global_range_summary(&conn, "range", Some(start + 900.0))
             .unwrap();
@@ -1224,7 +1377,7 @@ mod tests {
     }
 
     #[test]
-    fn removes_deleted_source_files_after_a_successful_scan() {
+    fn keeps_recorded_usage_after_source_log_pruning() {
         let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let removed_path = root.join("removed.jsonl");
@@ -1247,18 +1400,13 @@ mod tests {
         fs::remove_file(&removed_path).unwrap();
 
         store
-            .remove_missing_source_files(
-                &conn,
-                "claude",
-                &project.path,
-                &[retained_path],
-            )
+            .remove_missing_source_files(&conn, "claude", &project.path, &[retained_path])
             .unwrap();
         let project_path = project.path.clone();
         let snapshot = store.project_snapshot(&conn, project).unwrap();
 
-        assert_eq!(snapshot.project_summary.project_total_tokens, 20);
-        assert_eq!(snapshot.sessions.len(), 1);
+        assert_eq!(snapshot.project_summary.project_total_tokens, 120);
+        assert_eq!(snapshot.sessions.len(), 2);
         assert_eq!(
             store
                 .normalized_tokens_in_intervals(
@@ -1295,7 +1443,7 @@ mod tests {
             }],
         )
         .unwrap()
-            .unwrap();
+        .unwrap();
         assert_eq!(snapshot.total_tokens, 100);
 
         let conn = store.connect().unwrap();
@@ -1698,5 +1846,4 @@ mod tests {
         )
         .unwrap();
     }
-
 }

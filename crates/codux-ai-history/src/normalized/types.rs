@@ -149,6 +149,9 @@ pub struct AISessionSummary {
 #[serde(rename_all = "camelCase")]
 pub struct AIHeatmapDay {
     pub day: f64,
+    /// Legacy event-only totals do not contain input/output/cache details.
+    #[serde(default)]
+    pub is_partial: bool,
     #[serde(default)]
     pub input_tokens: i64,
     #[serde(default)]
@@ -274,6 +277,8 @@ pub struct AIExternalFileCheckpointPayload {
     pub(crate) codex_subagent_history_start_ordinal: Option<u64>,
     #[serde(default)]
     pub(crate) codex_own_history_started: bool,
+    #[serde(default)]
+    pub(crate) codex_own_usage_started: bool,
     pub last_claude_message_id: Option<String>,
     #[serde(default)]
     pub last_claude_input_tokens: i64,

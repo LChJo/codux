@@ -118,7 +118,9 @@
       "stats.month.short.september": "Sep",
       "stats.month.short.october": "Oct",
       "stats.month.short.november": "Nov",
-      "stats.month.short.december": "Dec"
+      "stats.month.short.december": "Dec",
+      "stats.history.partial": "Some historical usage details are unavailable. Input, output and cache show known records only.",
+      "stats.heatmap.no_record": "No recorded usage in this range"
     },
     "es": {
       "stats.by_model": "Ranking de modelos",
@@ -538,7 +540,9 @@
       "stats.month.short.september": "Sep",
       "stats.month.short.october": "Oct",
       "stats.month.short.november": "Nov",
-      "stats.month.short.december": "Dec"
+      "stats.month.short.december": "Dec",
+      "stats.history.partial": "部分历史用量明细已丢失，输入、输出和缓存仅汇总已知记录。",
+      "stats.heatmap.no_record": "所选范围内没有用量记录"
     },
     "zh-Hant": {
       "stats.by_model": "模型排名",
@@ -598,7 +602,9 @@
       "stats.month.short.september": "Sep",
       "stats.month.short.october": "Oct",
       "stats.month.short.november": "Nov",
-      "stats.month.short.december": "Dec"
+      "stats.month.short.december": "Dec",
+      "stats.history.partial": "部分歷史用量明細已遺失，輸入、輸出和快取僅彙總已知記錄。",
+      "stats.heatmap.no_record": "所選範圍內沒有用量記錄"
     }
   }
 }

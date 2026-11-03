@@ -170,6 +170,7 @@ fn build_snapshot_from_rows(
 
         let day = local_day_start_seconds(bucket.bucket_start);
         let heatmap_day = heatmap.entry(day as i64).or_insert(AIHeatmapDay {
+            is_partial: false,
             day,
             input_tokens: 0,
             output_tokens: 0,

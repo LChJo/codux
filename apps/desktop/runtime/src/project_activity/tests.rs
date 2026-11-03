@@ -47,7 +47,7 @@ fn ai_refresh_uses_foreground_and_background_intervals() {
 }
 
 #[test]
-fn ai_background_refresh_is_skipped_during_idle_tick() {
+fn ai_background_refresh_runs_after_the_foreground_project() {
     let coordinator =
         ProjectActivityCoordinator::new(std::env::temp_dir(), AIHistoryIndexer::new());
     let now = Instant::now();
@@ -88,6 +88,10 @@ fn ai_background_refresh_is_skipped_during_idle_tick() {
     let due = coordinator.projects_due_for_ai(Duration::from_secs(120), Duration::from_secs(600));
     assert_eq!(due.len(), 1);
     assert_eq!(due[0].id, "active");
+
+    let due = coordinator.projects_due_for_ai(Duration::from_secs(120), Duration::from_secs(600));
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].id, "background");
 }
 
 #[test]

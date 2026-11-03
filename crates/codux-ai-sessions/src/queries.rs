@@ -766,6 +766,7 @@ fn heatmap_days_from_buckets(rows: Vec<(f64, i64, i64, i64, i64, i64)>) -> Vec<A
     {
         let day = codux_ai_history::normalized::local_day_start_seconds(bucket_start);
         let item = days.entry(day as i64).or_insert(AIHeatmapDay {
+            is_partial: false,
             day,
             input_tokens: 0,
             output_tokens: 0,

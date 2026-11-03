@@ -53,6 +53,7 @@ pub fn history_indexer_loop(
             AIHistoryJob::RefreshGlobal {
                 projects,
                 database_path,
+                rescan_sources,
             } => {
                 runtime_trace(
                     "ai-history",
@@ -67,7 +68,12 @@ pub fn history_indexer_loop(
                         detail: "indexing".to_string(),
                     },
                 );
-                if let Ok(snapshot) = run_global_snapshot(database_path, projects) {
+                let result = if rescan_sources {
+                    run_global_index(database_path, projects)
+                } else {
+                    run_global_snapshot(database_path, projects)
+                };
+                if let Ok(snapshot) = result {
                     push_history_event(&events, AIHistoryEvent::Global { snapshot });
                 }
                 push_history_event(

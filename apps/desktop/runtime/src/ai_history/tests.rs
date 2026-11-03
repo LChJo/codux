@@ -24,6 +24,7 @@ fn stats_view_owns_display_token_mode_and_project_filtering() {
             request_count: 2,
         }],
         heatmap: vec![AIHeatmapDay {
+            is_partial: false,
             day: today_start,
             input_tokens: 20,
             output_tokens: 10,

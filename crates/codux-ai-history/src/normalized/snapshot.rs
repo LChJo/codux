@@ -56,9 +56,11 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
             });
         session.first_seen_at = min_nonzero(session.first_seen_at, event.timestamp);
         session.last_seen_at = session.last_seen_at.max(event.timestamp);
-        session.active_duration_seconds = session
-            .active_duration_seconds
-            .max(active_duration.map(|duration| duration.total_seconds).unwrap_or(0));
+        session.active_duration_seconds = session.active_duration_seconds.max(
+            active_duration
+                .map(|duration| duration.total_seconds)
+                .unwrap_or(0),
+        );
         if event.kind == HistoryEventKind::Request {
             session.request_count += 1;
         }
@@ -111,9 +113,11 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
         session.cached_input_tokens += entry.cached_input_tokens;
         session.reasoning_output_tokens += entry.reasoning_output_tokens;
         merge_usage_amounts(&mut session.usage_amounts, &entry.usage_amounts);
-        session.active_duration_seconds = session
-            .active_duration_seconds
-            .max(active_duration.map(|duration| duration.total_seconds).unwrap_or(0));
+        session.active_duration_seconds = session.active_duration_seconds.max(
+            active_duration
+                .map(|duration| duration.total_seconds)
+                .unwrap_or(0),
+        );
         if entry.timestamp >= today_start {
             session.today_tokens += total_tokens;
             session.today_cached_input_tokens += entry.cached_input_tokens;
@@ -149,6 +153,7 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
         let day = local_day_start_seconds(entry.timestamp);
         let day_key = day as i64;
         let day_item = heatmap.entry(day_key).or_insert(AIHeatmapDay {
+            is_partial: false,
             day,
             input_tokens: 0,
             output_tokens: 0,
@@ -190,6 +195,7 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
                 heatmap.insert(
                     day as i64,
                     AIHeatmapDay {
+                        is_partial: false,
                         day,
                         input_tokens: 0,
                         output_tokens: 0,

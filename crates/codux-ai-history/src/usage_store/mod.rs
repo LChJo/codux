@@ -22,6 +22,7 @@ include!("store_project.rs");
 include!("store_loaders.rs");
 include!("connection.rs");
 include!("external_summary.rs");
+include!("statistics_migration.rs");
 include!("buckets.rs");
 include!("snapshot.rs");
 include!("helpers.rs");
