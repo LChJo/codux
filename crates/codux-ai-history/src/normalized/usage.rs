@@ -72,6 +72,7 @@ fn accumulate_breakdown(
     usage_amounts: &[AIUsageAmount],
 ) {
     let item = map.entry(key.to_string()).or_insert(AIUsageBreakdownItem {
+        unattributed_tokens: 0,
         key: key.to_string(),
         total_tokens: 0,
         cached_input_tokens: 0,

@@ -68,6 +68,7 @@ pub(super) fn load_sessions(
                 .cloned()
                 .unwrap_or_default();
             Ok(AISessionSummary {
+                unattributed_tokens: 0,
                 id: deterministic_uuid(&history_group_key(
                     &source,
                     &session_key,
@@ -161,6 +162,7 @@ pub(super) fn load_global_recent_sessions(
                 .cloned()
                 .unwrap_or_default();
             Ok(AISessionSummary {
+                unattributed_tokens: 0,
                 id: deterministic_uuid(&history_group_key(
                     &source,
                     &session_key,
@@ -334,6 +336,7 @@ pub(super) fn load_global_project_totals(
     let rows = statement
         .query_map([today_start, today_start], |row| {
             Ok(AIProjectUsageSummary {
+                unattributed_tokens: 0,
                 project_id: row.get(0)?,
                 project_path: row.get(1)?,
                 project_name: row.get(2)?,
@@ -741,6 +744,7 @@ fn load_breakdown(
     let rows = statement
         .query_map([project_path], |row| {
             Ok(AIUsageBreakdownItem {
+                unattributed_tokens: 0,
                 key: row.get(0)?,
                 total_tokens: row.get(1)?,
                 cached_input_tokens: row.get(2)?,

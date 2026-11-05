@@ -10,6 +10,7 @@ use std::{
 #[test]
 fn restore_command_uses_interactive_session_flags() {
     let mut session = AISessionSummary {
+        unattributed_tokens: 0,
         id: "local-id".to_string(),
         session_key: "session key".to_string(),
         external_session_id: Some("external-1".to_string()),

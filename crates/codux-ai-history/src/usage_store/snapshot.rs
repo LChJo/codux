@@ -211,6 +211,7 @@ fn build_snapshot_from_rows(
                 || !session.usage_amounts.is_empty()
         })
         .map(|session| AISessionSummary {
+            unattributed_tokens: 0,
             session_id: deterministic_uuid(&history_group_key(
                 &session.source,
                 &session.session_key,
@@ -245,6 +246,7 @@ fn build_snapshot_from_rows(
         project_id: project.id.clone(),
         project_name: project.name.clone(),
         project_summary: AIProjectUsageSummary {
+            unattributed_tokens: 0,
             project_id: project.id,
             project_name: project.name,
             current_session_tokens: latest_session

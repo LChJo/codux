@@ -1684,6 +1684,7 @@ mod tests {
         total_tokens: i64,
     ) -> AISessionSummary {
         AISessionSummary {
+            unattributed_tokens: 0,
             session_id: "logical-session".to_string(),
             external_session_id: Some("logical-session".to_string()),
             project_id: project_id.to_string(),

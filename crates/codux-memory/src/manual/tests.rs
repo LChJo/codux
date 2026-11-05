@@ -71,6 +71,7 @@ fn runtime_session(
 
 fn history_session(project_path: &str) -> AISessionSummary {
     AISessionSummary {
+        unattributed_tokens: 0,
         session_id: "history-a".to_string(),
         external_session_id: Some("external-a".to_string()),
         project_id: "project-a".to_string(),

@@ -262,6 +262,7 @@ impl AIUsageStore {
                 params![today_start, today_end, today_start, today_end],
                 |row| {
                     Ok(AIProjectUsageTotal {
+                        unattributed_tokens: 0,
                         project_id: row.get(0)?,
                         project_name: row.get(1)?,
                         project_path: row.get(2)?,
@@ -351,6 +352,7 @@ impl AIUsageStore {
         let rows = statement
             .query_map([], |row| {
                 Ok(AIUsageBreakdownItem {
+                    unattributed_tokens: 0,
                     key: row.get(0)?,
                     total_tokens: row.get::<_, i64>(1)?.max(0),
                     cached_input_tokens: row.get::<_, i64>(2)?.max(0),
@@ -389,7 +391,8 @@ impl AIUsageStore {
         }
         let tool_breakdown = self.indexed_global_breakdown_since(conn, "source", cutoff)?;
         let model_breakdown = self.indexed_global_breakdown_since(conn, "model", cutoff)?;
-        Ok(AIGlobalHistoryRangeSummary {
+        let mut snapshot = AIGlobalHistoryRangeSummary {
+            unattributed_tokens: 0,
             key,
             input_tokens: totals.input_tokens,
             output_tokens: totals.output_tokens,
@@ -402,7 +405,11 @@ impl AIUsageStore {
             project_totals,
             tool_breakdown,
             model_breakdown,
-        })
+        };
+        if cutoff.is_none() {
+            self.apply_recovered_range(conn, &mut snapshot)?;
+        }
+        Ok(snapshot)
     }
 
     pub fn indexed_global_range_totals(
@@ -589,6 +596,7 @@ impl AIUsageStore {
                 ],
                 |row| {
                     Ok(AIProjectUsageTotal {
+                        unattributed_tokens: 0,
                         project_id: row.get(0)?,
                         project_name: row.get(1)?,
                         project_path: row.get(2)?,
@@ -637,6 +645,7 @@ impl AIUsageStore {
                 params![cutoff, cutoff, cutoff, cutoff, cutoff, cutoff],
                 |row| {
                     Ok(AIUsageBreakdownItem {
+                        unattributed_tokens: 0,
                         key: row.get(0)?,
                         total_tokens: row.get::<_, i64>(1)?.max(0),
                         cached_input_tokens: row.get::<_, i64>(2)?.max(0),
@@ -792,6 +801,7 @@ impl AIUsageStore {
                     let first_seen_at: f64 = row.get(7)?;
                     let last_seen_at: f64 = row.get(8)?;
                     Ok(AISessionSummary {
+                        unattributed_tokens: 0,
                         session_id: deterministic_uuid(&history_group_key(
                             &source,
                             &session_key,
@@ -820,7 +830,11 @@ impl AIUsageStore {
                 },
             )?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(merge_logical_sessions(rows))
+        let mut sessions = merge_logical_sessions(rows);
+        if cutoff.is_none() {
+            merge_recovered_sessions(&mut sessions, &self.recovered_session_gaps(conn, None)?);
+        }
+        Ok(sessions)
     }
 }
 

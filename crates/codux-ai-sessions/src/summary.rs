@@ -96,6 +96,7 @@ impl AIHistoryService {
             .unwrap_or_else(|_| Default::default());
 
         AIHistorySummary {
+            unattributed_tokens: 0,
             indexed: indexed_at.is_some(),
             indexed_at,
             is_loading: false,
@@ -217,6 +218,7 @@ impl AIHistoryService {
             });
 
         AIGlobalHistorySummary {
+            unattributed_tokens: 0,
             indexed_project_count: project_totals.len(),
             session_count,
             total_tokens,
@@ -240,6 +242,7 @@ pub fn global_summary_from_normalized_snapshot(
     snapshot: codux_ai_history::normalized::AIGlobalHistorySnapshot,
 ) -> AIGlobalHistorySummary {
     AIGlobalHistorySummary {
+        unattributed_tokens: snapshot.unattributed_tokens,
         indexed_project_count: snapshot.project_count,
         session_count: snapshot.sessions.len(),
         total_tokens: snapshot.total_tokens,
@@ -275,6 +278,7 @@ pub fn project_summary_from_normalized_snapshot(
     snapshot: codux_ai_history::normalized::AIHistorySnapshot,
 ) -> AIHistorySummary {
     AIHistorySummary {
+        unattributed_tokens: snapshot.project_summary.unattributed_tokens,
         indexed: true,
         indexed_at: Some(snapshot.indexed_at),
         is_loading: false,
@@ -312,6 +316,7 @@ fn normalized_project_total_to_summary(
     project: codux_ai_history::normalized::AIProjectUsageTotal,
 ) -> AIProjectUsageSummary {
     AIProjectUsageSummary {
+        unattributed_tokens: project.unattributed_tokens,
         project_id: project.project_id,
         project_path: project.project_path,
         project_name: project.project_name,
@@ -331,6 +336,7 @@ fn normalized_range_summary_to_summary(
     summary: codux_ai_history::normalized::AIGlobalHistoryRangeSummary,
 ) -> AIGlobalHistoryRangeSummary {
     AIGlobalHistoryRangeSummary {
+        unattributed_tokens: summary.unattributed_tokens,
         key: summary.key,
         input_tokens: summary.input_tokens,
         output_tokens: summary.output_tokens,
@@ -358,6 +364,7 @@ fn normalized_session_to_summary(
     session: codux_ai_history::normalized::AISessionSummary,
 ) -> super::AISessionSummary {
     super::AISessionSummary {
+        unattributed_tokens: session.unattributed_tokens,
         id: session.session_id.clone(),
         session_key: session
             .external_session_id

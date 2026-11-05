@@ -16,6 +16,8 @@ fn migrate_statistics_history(conn: &Connection) -> Result<()> {
         conn.execute_batch(
             "INSERT OR IGNORE INTO ai_history_reindex_project (project_path)
              SELECT project_path FROM ai_history_file_state WHERE source IN ('claude', 'codex');
+             INSERT OR IGNORE INTO ai_history_reindex_project (project_path)
+             SELECT project_path FROM ai_history_project_index_state;
              DELETE FROM ai_history_file_checkpoint WHERE source IN ('claude', 'codex');",
         )?;
         for (key, value) in [

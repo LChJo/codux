@@ -36,6 +36,9 @@ pub struct AIHistorySnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIGlobalHistorySnapshot {
+    /// Inclusive usage recovered without a reliable breakdown or event date.
+    #[serde(default)]
+    pub unattributed_tokens: i64,
     pub total_tokens: i64,
     pub cached_input_tokens: i64,
     pub today_total_tokens: i64,
@@ -62,6 +65,8 @@ pub struct AIGlobalHistorySnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIProjectUsageTotal {
+    #[serde(default)]
+    pub unattributed_tokens: i64,
     pub project_id: String,
     pub project_name: String,
     pub project_path: String,
@@ -83,6 +88,8 @@ pub struct AIProjectUsageTotal {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIGlobalHistoryRangeSummary {
+    #[serde(default)]
+    pub unattributed_tokens: i64,
     pub key: String,
     pub input_tokens: i64,
     pub output_tokens: i64,
@@ -101,6 +108,8 @@ pub struct AIGlobalHistoryRangeSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIProjectUsageSummary {
+    #[serde(default)]
+    pub unattributed_tokens: i64,
     pub project_id: String,
     pub project_name: String,
     pub current_session_tokens: i64,
@@ -121,6 +130,8 @@ pub struct AIProjectUsageSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AISessionSummary {
+    #[serde(default)]
+    pub unattributed_tokens: i64,
     pub session_id: String,
     pub external_session_id: Option<String>,
     pub project_id: String,
@@ -178,6 +189,8 @@ pub struct AITimeBucket {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIUsageBreakdownItem {
+    #[serde(default)]
+    pub unattributed_tokens: i64,
     pub key: String,
     pub total_tokens: i64,
     pub cached_input_tokens: i64,

@@ -30,10 +30,29 @@
 // derived from the corrected event facts, so parser fixes also correct pet XP.
 // 16 preserves rich history across log pruning, repairs parser checkpoints and
 // recovers legacy event-only history with explicit incomplete-detail markers.
-const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "16";
+// 17 keeps source-index-only inclusive totals separate from dated usage facts.
+const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "17";
 const RECENT_HISTORY_SESSION_LIMIT: usize = 80;
 
 const SCHEMA_STATEMENTS: &[&str] = &[
+    r#"
+    CREATE TABLE IF NOT EXISTS ai_history_session_counter (
+        source TEXT NOT NULL,
+        session_key TEXT NOT NULL,
+        project_path TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        project_name TEXT NOT NULL,
+        session_title TEXT NOT NULL,
+        first_seen_at REAL NOT NULL,
+        last_seen_at REAL NOT NULL,
+        model TEXT,
+        inclusive_tokens INTEGER NOT NULL,
+        dismissed INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (source, session_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_history_session_counter_project
+        ON ai_history_session_counter(project_path);
+    "#,
     r#"
     CREATE TABLE IF NOT EXISTS ai_history_partial_file (
         source TEXT NOT NULL,

@@ -238,7 +238,7 @@ pub(super) fn heatmap_cell_tooltip(
             stats_text(
                 language,
                 "stats.heatmap.no_record",
-                "No recorded usage in this range"
+                "No recorded usage for this day"
             )
         );
     }
@@ -271,7 +271,7 @@ pub(super) fn heatmap_cell_tooltip(
     if cell.is_partial {
         tooltip.push('\n');
         tooltip.push_str(&stats_text(language, "stats.history.partial",
-            "Some historical usage details are unavailable. Input, output and cache show known records only."));
+            "Some historical usage lacks dates or details. Recovered totals are included with cache; input, output, cache and charts show known records only."));
     }
     tooltip
 }

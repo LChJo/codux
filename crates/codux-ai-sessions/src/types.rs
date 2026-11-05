@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIHistorySummary {
+    #[serde(default)]
+    pub unattributed_tokens: i64,
     pub indexed: bool,
     pub indexed_at: Option<f64>,
     pub is_loading: bool,
@@ -27,6 +29,8 @@ pub struct AIHistorySummary {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIGlobalHistorySummary {
+    #[serde(default)]
+    pub unattributed_tokens: i64,
     pub indexed_project_count: usize,
     pub session_count: usize,
     pub total_tokens: i64,
@@ -48,6 +52,8 @@ pub struct AIGlobalHistorySummary {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIProjectUsageSummary {
+    #[serde(default)]
+    pub unattributed_tokens: i64,
     #[serde(default)]
     pub project_id: String,
     pub project_path: String,
@@ -71,6 +77,8 @@ pub struct AIProjectUsageSummary {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIGlobalHistoryRangeSummary {
+    #[serde(default)]
+    pub unattributed_tokens: i64,
     pub key: String,
     pub input_tokens: i64,
     pub output_tokens: i64,
@@ -89,6 +97,8 @@ pub struct AIGlobalHistoryRangeSummary {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AISessionSummary {
+    #[serde(default)]
+    pub unattributed_tokens: i64,
     pub id: String,
     pub session_key: String,
     pub external_session_id: Option<String>,

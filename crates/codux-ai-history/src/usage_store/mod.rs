@@ -23,6 +23,7 @@ include!("store_loaders.rs");
 include!("connection.rs");
 include!("external_summary.rs");
 include!("statistics_migration.rs");
+include!("counter_recovery.rs");
 include!("buckets.rs");
 include!("snapshot.rs");
 include!("helpers.rs");

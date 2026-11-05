@@ -227,6 +227,7 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
                 tool_breakdown.insert(
                     tool_key.clone(),
                     AIUsageBreakdownItem {
+                        unattributed_tokens: 0,
                         key: tool_key,
                         total_tokens: 0,
                         cached_input_tokens: 0,
@@ -252,6 +253,7 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
             let total_tokens =
                 session.input_tokens + session.output_tokens + session.reasoning_output_tokens;
             AISessionSummary {
+                unattributed_tokens: 0,
                 session_id: deterministic_uuid(&history_key(&session.source, &session.session_id)),
                 external_session_id: session.external_session_id,
                 project_id: project.id.clone(),
@@ -287,6 +289,7 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
         project_id: project.id.clone(),
         project_name: project.name.clone(),
         project_summary: AIProjectUsageSummary {
+            unattributed_tokens: 0,
             project_id: project.id,
             project_name: project.name,
             current_session_tokens: latest_session

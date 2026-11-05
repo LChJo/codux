@@ -5,6 +5,7 @@ impl AIUsageStore {
         project: AIHistoryProjectRequest,
     ) -> Result<AIHistorySnapshot> {
         let project = canonical_project_request(project);
+        let project_path = project.path.clone();
         let links = self.project_session_links(conn, &project.path)?;
         let buckets = self.project_usage_buckets(conn, &project.path)?;
         let partial_days = partial_history_days(conn, Some(&project.path))?;
@@ -12,6 +13,7 @@ impl AIUsageStore {
         for day in &mut snapshot.heatmap {
             day.is_partial = partial_days.contains(&(day.day as i64));
         }
+        self.apply_recovered_project(conn, &mut snapshot, &project_path)?;
         Ok(snapshot)
     }
 
@@ -54,8 +56,7 @@ impl AIUsageStore {
             return Ok(false);
         }
         let project_path = &canonical_project_path(project_path);
-        let links = self.project_session_links(conn, project_path)?;
-        let matched = matching_session_keys(&links, session_id);
+        let matched = self.matching_project_session_keys(conn, project_path, session_id)?;
         if matched.is_empty() {
             return Ok(false);
         }
@@ -67,6 +68,10 @@ impl AIUsageStore {
                 SET session_title = ?1
                 WHERE project_path = ?2 AND source = ?3 AND session_key = ?4;
                 "#,
+                params![title, project_path, source, session_key],
+            )?;
+            tx.execute(
+                "UPDATE ai_history_session_counter SET session_title=?1 WHERE project_path=?2 AND source=?3 AND session_key=?4",
                 params![title, project_path, source, session_key],
             )?;
         }
@@ -81,8 +86,7 @@ impl AIUsageStore {
         session_id: &str,
     ) -> Result<bool> {
         let project_path = &canonical_project_path(project_path);
-        let links = self.project_session_links(conn, project_path)?;
-        let matched = matching_session_keys(&links, session_id);
+        let matched = self.matching_project_session_keys(conn, project_path, session_id)?;
         if matched.is_empty() {
             return Ok(false);
         }
@@ -94,6 +98,10 @@ impl AIUsageStore {
                 WHERE project_path = ?1 AND source = ?2 AND session_key = ?3;
                 "#,
                 params![project_path, source, session_key],
+            )?;
+            tx.execute(
+                "UPDATE ai_history_session_counter SET dismissed=1 WHERE source=?1 AND session_key=?2 AND project_path=?3",
+                params![source, session_key, project_path],
             )?;
             tx.execute(
                 r#"

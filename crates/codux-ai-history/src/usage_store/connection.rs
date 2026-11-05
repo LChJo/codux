@@ -17,9 +17,9 @@ fn initialize_connection(conn: &Connection) -> Result<()> {
     if stored_version.as_deref() != Some(NORMALIZED_HISTORY_SCHEMA_VERSION)
         || !usage_event_schema_is_current(conn)?
     {
-        // Version 15 already has rich normalized buckets. Never drop those:
+        // Versions 15+ already have rich normalized buckets. Never drop those:
         // some transcripts have been rotated and cannot be parsed again.
-        if stored_version.as_deref() != Some("15") {
+        if !matches!(stored_version.as_deref(), Some("15" | "16" | "17")) {
             migrate_schema(conn)?;
         }
         migrate_statistics_history(conn)?;
@@ -35,6 +35,7 @@ fn create_project_scope_views(conn: &Connection, scoped: bool) -> Result<()> {
         r#"
         DROP VIEW IF EXISTS temp.scoped_file_usage_bucket;
         DROP VIEW IF EXISTS temp.scoped_file_session_link;
+        DROP VIEW IF EXISTS temp.scoped_session_counter;
         "#,
     )?;
     let filter = if scoped {
@@ -48,6 +49,8 @@ fn create_project_scope_views(conn: &Connection, scoped: bool) -> Result<()> {
             SELECT * FROM ai_history_file_usage_bucket{filter};
         CREATE TEMP VIEW scoped_file_session_link AS
             SELECT * FROM ai_history_file_session_link{filter};
+        CREATE TEMP VIEW scoped_session_counter AS
+            SELECT * FROM ai_history_session_counter{filter};
         "#
     ))?;
     Ok(())

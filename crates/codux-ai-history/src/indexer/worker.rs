@@ -6,8 +6,8 @@ use super::state::{
 use super::types::{AIHistoryEvent, AIHistoryIndexerState, AIHistoryJob};
 use crate::normalized::{
     AIGlobalHistorySnapshot, AIHistoryProjectRequest, AIHistorySnapshot,
-    index_global_history_fresh_at, index_project_history_fresh_at, load_indexed_global_history_at,
-    load_indexed_project_history_at, project_history_source_fingerprint,
+    index_global_history_fresh_at, index_project_history_fresh_at, load_indexed_project_history_at,
+    load_workspace_global_history_at, project_history_source_fingerprint,
 };
 use crate::trace::{runtime_trace, runtime_trace_elapsed};
 use crate::usage_store::AIUsageStore;
@@ -152,7 +152,7 @@ fn run_global_snapshot(
     database_path: PathBuf,
     projects: Vec<AIHistoryProjectRequest>,
 ) -> Result<AIGlobalHistorySnapshot, String> {
-    load_indexed_global_history_at(database_path, projects)
+    load_workspace_global_history_at(database_path, projects)
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "AI history is not indexed yet.".to_string())
 }

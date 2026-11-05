@@ -154,6 +154,7 @@ fn test_snapshot() -> AIHistorySnapshot {
         project_id: "project-1".to_string(),
         project_name: "Project".to_string(),
         project_summary: AIProjectUsageSummary {
+            unattributed_tokens: 0,
             project_id: "project-1".to_string(),
             project_name: "Project".to_string(),
             current_session_tokens: 0,

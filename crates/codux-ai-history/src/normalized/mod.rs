@@ -35,3 +35,6 @@ include!("tests.rs");
 
 #[cfg(test)]
 include!("accuracy_tests.rs");
+
+#[cfg(test)]
+include!("counter_recovery_tests.rs");

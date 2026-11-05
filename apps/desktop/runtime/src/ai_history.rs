@@ -20,6 +20,21 @@ pub fn display_tokens(total_tokens: i64, cached_input_tokens: i64, include_cache
         }
 }
 
+pub fn display_tokens_with_unattributed(
+    total_tokens: i64,
+    cached_input_tokens: i64,
+    unattributed_tokens: i64,
+    include_cached: bool,
+) -> i64 {
+    display_tokens(total_tokens, cached_input_tokens, include_cached).saturating_add(
+        if include_cached {
+            unattributed_tokens.max(0)
+        } else {
+            0
+        },
+    )
+}
+
 pub fn stats_view(
     history: &AIHistorySummary,
     runtime_state: &crate::ai_runtime_state::AIRuntimeStateSummary,
@@ -29,9 +44,10 @@ pub fn stats_view(
 ) -> AIHistoryStatsView {
     let include_cached = statistics_mode.trim() == "includingCache";
     AIHistoryStatsView {
-        project_total_tokens: display_tokens(
+        project_total_tokens: display_tokens_with_unattributed(
             history.project_total_tokens,
             history.project_cached_input_tokens,
+            history.unattributed_tokens,
             include_cached,
         ),
         today_total_tokens: display_tokens(
@@ -45,13 +61,23 @@ pub fn stats_view(
         tool_rows: rank_rows(history.tool_breakdown.iter().map(|item| {
             (
                 item.key.as_str(),
-                display_tokens(item.total_tokens, item.cached_input_tokens, include_cached),
+                display_tokens_with_unattributed(
+                    item.total_tokens,
+                    item.cached_input_tokens,
+                    item.unattributed_tokens,
+                    include_cached,
+                ),
             )
         })),
         model_rows: rank_rows(history.model_breakdown.iter().map(|item| {
             (
                 item.key.as_str(),
-                display_tokens(item.total_tokens, item.cached_input_tokens, include_cached),
+                display_tokens_with_unattributed(
+                    item.total_tokens,
+                    item.cached_input_tokens,
+                    item.unattributed_tokens,
+                    include_cached,
+                ),
             )
         })),
     }

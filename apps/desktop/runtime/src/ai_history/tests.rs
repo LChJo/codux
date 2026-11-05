@@ -7,6 +7,28 @@ use crate::ai_history_normalized::{AIHeatmapDay, AITimeBucket, AIUsageBreakdownI
 use crate::ai_runtime_state::{AIRuntimeSessionSummary, AIRuntimeStateSummary};
 
 #[test]
+fn recovered_counters_only_change_inclusive_all_time_totals() {
+    let history = AIHistorySummary {
+        unattributed_tokens: 1000,
+        project_total_tokens: 100,
+        project_cached_input_tokens: 40,
+        ..Default::default()
+    };
+    let runtime = AIRuntimeStateSummary::default();
+    let inclusive = stats_view(&history, &runtime, None, "includingCache", 2000.0);
+    let normalized = stats_view(&history, &runtime, None, "normalized", 2000.0);
+    assert_eq!(inclusive.project_total_tokens, 1140);
+    assert_eq!(normalized.project_total_tokens, 100);
+    assert_eq!(inclusive.today_total_tokens, 0);
+    assert!(
+        inclusive
+            .today_buckets
+            .iter()
+            .all(|bucket| bucket.value == 0)
+    );
+}
+
+#[test]
 fn stats_view_owns_display_token_mode_and_project_filtering() {
     let today_start = crate::ai_history_normalized::local_day_start_seconds(2_000.0);
     let history = AIHistorySummary {
@@ -33,6 +55,7 @@ fn stats_view_owns_display_token_mode_and_project_filtering() {
             request_count: 2,
         }],
         tool_breakdown: vec![AIUsageBreakdownItem {
+            unattributed_tokens: 0,
             key: "codex".to_string(),
             total_tokens: 100,
             cached_input_tokens: 40,
@@ -40,6 +63,7 @@ fn stats_view_owns_display_token_mode_and_project_filtering() {
             usage_amounts: Vec::new(),
         }],
         model_breakdown: vec![AIUsageBreakdownItem {
+            unattributed_tokens: 0,
             key: "gpt-5".to_string(),
             total_tokens: 80,
             cached_input_tokens: 20,

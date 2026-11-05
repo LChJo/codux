@@ -54,9 +54,10 @@ pub(super) fn stats_breakdown_rows(
             if label.is_empty() || label.eq_ignore_ascii_case("unknown") {
                 return None;
             }
-            let value = codux_runtime::ai_history::display_tokens(
+            let value = codux_runtime::ai_history::display_tokens_with_unattributed(
                 row.total_tokens,
                 row.cached_input_tokens,
+                row.unattributed_tokens,
                 include_cached,
             );
             (value > 0 || row.request_count > 0)
@@ -96,9 +97,10 @@ pub(super) fn stats_project_table_rows(
         .map(|project| {
             let no_cache_tokens = project.total_tokens.max(0);
             let cached_input_tokens = project.cached_input_tokens.max(0);
-            let total_tokens = codux_runtime::ai_history::display_tokens(
+            let total_tokens = codux_runtime::ai_history::display_tokens_with_unattributed(
                 no_cache_tokens,
                 cached_input_tokens,
+                project.unattributed_tokens,
                 include_cached,
             );
             let project_label = if project.project_name.trim().is_empty() {
@@ -134,24 +136,17 @@ pub(super) fn stats_project_table_rows(
 pub(super) fn stats_global_heatmap(
     global: &codux_runtime::ai_history::AIGlobalHistorySummary,
     include_cached: bool,
-    range: StatsTimeRange,
 ) -> Vec<codux_runtime::ai_history::AIHistoryHeatmapCellView> {
-    stats_global_heatmap_at(global, include_cached, range, app_now_seconds())
+    stats_global_heatmap_at(global, include_cached, app_now_seconds())
 }
 
 pub(super) fn stats_global_heatmap_at(
     global: &codux_runtime::ai_history::AIGlobalHistorySummary,
     include_cached: bool,
-    range: StatsTimeRange,
     now: f64,
 ) -> Vec<codux_runtime::ai_history::AIHistoryHeatmapCellView> {
     use codux_runtime::ai_history_normalized::local_day_start_days_ago;
-    let (columns, cutoff) = match range {
-        StatsTimeRange::Today => (1, Some(local_day_start_days_ago(now, 0))),
-        StatsTimeRange::SevenDays => (1, Some(local_day_start_days_ago(now, 6))),
-        StatsTimeRange::ThirtyDays => (5, Some(local_day_start_days_ago(now, 29))),
-        StatsTimeRange::All => (STATS_HEATMAP_MAX_COLUMNS, None),
-    };
+    let columns = STATS_HEATMAP_MAX_COLUMNS;
     let mut values = (0..columns)
         .flat_map(|column| {
             (0..STATS_HEATMAP_ROWS).map(move |row| {
@@ -182,9 +177,6 @@ pub(super) fn stats_global_heatmap_at(
 
     for day in &global.heatmap {
         let day_start = codux_runtime::ai_history_normalized::local_day_start_seconds(day.day);
-        if cutoff.is_some_and(|cutoff| day_start < cutoff) {
-            continue;
-        }
         if let Some(&index) = indices.get(&(day_start as i64)) {
             values[index].value += codux_runtime::ai_history::display_tokens(
                 day.total_tokens,

@@ -1,6 +1,6 @@
 use crate::normalized::{
     AIGlobalHistorySnapshot, AIHistoryProjectRequest, AIHistorySnapshot,
-    load_indexed_global_history_at, load_indexed_project_history_at,
+    load_indexed_project_history_at, load_workspace_global_history_at,
 };
 use crate::trace::runtime_trace_elapsed;
 use std::path::Path;
@@ -39,7 +39,7 @@ pub fn indexed_global_snapshot(
 ) -> Result<Option<AIGlobalHistorySnapshot>, String> {
     let started_at = Instant::now();
     let project_count = projects.len();
-    load_indexed_global_history_at(database_path.to_path_buf(), projects)
+    load_workspace_global_history_at(database_path.to_path_buf(), projects)
         .map_err(|error| error.to_string())
         .inspect(|snapshot| {
             runtime_trace_elapsed(

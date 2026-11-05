@@ -115,6 +115,7 @@ mod tests {
             indexed: true,
             indexed_at: Some(indexed_at),
             sessions: vec![AISessionSummary {
+                unattributed_tokens: 0,
                 id: "session".to_string(),
                 session_key: "session".to_string(),
                 external_session_id: Some("session".to_string()),

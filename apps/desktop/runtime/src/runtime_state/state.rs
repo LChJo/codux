@@ -223,6 +223,7 @@ fn ai_history_geometry_fingerprint(history: &AIHistorySummary, statistics_mode: 
     (crate::ai_history_normalized::local_day_start_seconds(now) as i64).hash(&mut hasher);
     history.project_total_tokens.hash(&mut hasher);
     history.project_cached_input_tokens.hash(&mut hasher);
+    history.unattributed_tokens.hash(&mut hasher);
     history.today_total_tokens.hash(&mut hasher);
     history.today_cached_input_tokens.hash(&mut hasher);
     history.today_time_buckets.len().hash(&mut hasher);
@@ -261,6 +262,7 @@ fn ai_history_geometry_fingerprint(history: &AIHistorySummary, statistics_mode: 
             &item.key,
             item.total_tokens,
             item.cached_input_tokens,
+            item.unattributed_tokens,
             item.request_count,
         )
             .hash(&mut hasher);
@@ -271,6 +273,17 @@ fn ai_history_geometry_fingerprint(history: &AIHistorySummary, statistics_mode: 
 #[cfg(test)]
 mod statistics_regressions {
     use super::*;
+
+    #[test]
+    fn recovered_counters_invalidate_project_statistics_geometry() {
+        let mut history = AIHistorySummary::default();
+        let before = ai_history_geometry_fingerprint(&history, "includingCache");
+        history.unattributed_tokens = 1000;
+        assert_ne!(
+            before,
+            ai_history_geometry_fingerprint(&history, "includingCache")
+        );
+    }
 
     #[test]
     fn geometry_changes_when_usage_moves_to_a_different_day_without_changing_totals() {

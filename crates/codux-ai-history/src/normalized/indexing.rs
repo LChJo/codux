@@ -37,6 +37,11 @@ fn project_history_source_fingerprint_with_home(
     for driver in history_sources::history_source_drivers() {
         collect_source_fingerprints(driver.source, driver.paths(project, home), &mut files);
     }
+    // Counters can change even after a rollout has moved out of the JSONL tree.
+    let codex_index = home.join(".codex/state_5.sqlite");
+    if codex_index.is_file() {
+        collect_source_fingerprints("codex", vec![codex_index], &mut files);
+    }
     files.sort_by(|left, right| {
         left.source
             .cmp(&right.source)
@@ -173,24 +178,43 @@ pub fn index_global_history_fresh_at(
     projects: Vec<AIHistoryProjectRequest>,
     store: AIUsageStore,
 ) -> AIGlobalHistorySnapshot {
+    index_global_history_fresh_with_home_at(projects, store, &home_dir())
+}
+
+/// Explicit source root for deterministic replay and migration verification.
+pub fn index_global_history_fresh_with_home_at(
+    projects: Vec<AIHistoryProjectRequest>,
+    store: AIUsageStore,
+    home: &Path,
+) -> AIGlobalHistorySnapshot {
     let mut total_tokens = 0;
     let mut cached_input_tokens = 0;
     let mut today_total_tokens = 0;
     let mut today_cached_input_tokens = 0;
     let mut project_count = 0;
-    let home = home_dir();
-    let projects = projects
+    let mut projects = projects
         .into_iter()
         .filter(|project| !project.path.trim().is_empty())
         .collect::<Vec<_>>();
-    let project_paths = projects
-        .iter()
-        .map(|project| project.path.clone())
-        .collect::<Vec<_>>();
+    if let Ok(conn) = store.connect()
+        && let Ok(recorded) = store.recorded_history_projects(&conn)
+    {
+        let mut seen = projects
+            .iter()
+            .map(|project| {
+                codux_runtime_core::path::local_path_identity_key(Path::new(&project.path))
+            })
+            .collect::<HashSet<_>>();
+        projects.extend(recorded.into_iter().filter(|project| {
+            seen.insert(codux_runtime_core::path::local_path_identity_key(
+                Path::new(&project.path),
+            ))
+        }));
+    }
 
     for project in projects {
         let snapshot =
-            load_project_history_with_store_or_fallback(project, &home, &store, &mut |_, _| {});
+            load_project_history_with_store_or_fallback(project, home, &store, &mut |_, _| {});
         total_tokens += snapshot.project_summary.project_total_tokens;
         cached_input_tokens += snapshot.project_summary.project_cached_input_tokens;
         today_total_tokens += snapshot.project_summary.today_total_tokens;
@@ -198,12 +222,12 @@ pub fn index_global_history_fresh_at(
         project_count += 1;
     }
 
-    if let Ok(Some(snapshot)) = load_indexed_global_history_with_store(Some(project_paths), &store)
-    {
+    if let Ok(Some(snapshot)) = load_indexed_global_history_with_store(None, &store) {
         return snapshot;
     }
 
     AIGlobalHistorySnapshot {
+        unattributed_tokens: 0,
         total_tokens,
         cached_input_tokens,
         today_total_tokens,
@@ -240,6 +264,30 @@ pub fn load_all_indexed_global_history_at(
     database_path: PathBuf,
 ) -> Result<Option<AIGlobalHistorySnapshot>> {
     let store = AIUsageStore::at_path(database_path);
+    load_indexed_global_history_with_store(None, &store)
+}
+
+/// Workspace statistics retain archived projects; explicit scoped queries above
+/// remain available for consumers that intentionally request a project subset.
+pub fn load_workspace_global_history_at(
+    database_path: PathBuf,
+    projects: Vec<AIHistoryProjectRequest>,
+) -> Result<Option<AIGlobalHistorySnapshot>> {
+    let store = AIUsageStore::at_path(database_path);
+    let conn = store.connect()?;
+    let requested = project_paths(projects)
+        .iter()
+        .map(|path| crate::usage_store::canonical_project_path(path))
+        .collect::<HashSet<_>>();
+    let pending: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM ai_history_reindex_project)",
+        [],
+        |row| row.get(0),
+    )?;
+    if pending || !requested.is_subset(&store.indexed_project_paths(&conn)?) {
+        return Ok(None);
+    }
+    drop(conn);
     load_indexed_global_history_with_store(None, &store)
 }
 
@@ -290,7 +338,8 @@ fn load_indexed_global_history_with_store(
         );
     let range_summaries = indexed_global_range_summaries(store, &conn, now)?;
     let project_count = project_totals.len();
-    Ok(Some(AIGlobalHistorySnapshot {
+    let mut snapshot = AIGlobalHistorySnapshot {
+        unattributed_tokens: 0,
         total_tokens,
         cached_input_tokens,
         today_total_tokens,
@@ -305,11 +354,14 @@ fn load_indexed_global_history_with_store(
         range_summaries,
         project_count,
         indexed_at: now,
-    }))
+    };
+    store.apply_recovered_global(&conn, &mut snapshot)?;
+    Ok(Some(snapshot))
 }
 
 fn empty_global_history_snapshot(now: f64) -> AIGlobalHistorySnapshot {
     AIGlobalHistorySnapshot {
+        unattributed_tokens: 0,
         total_tokens: 0,
         cached_input_tokens: 0,
         today_total_tokens: 0,
@@ -464,6 +516,10 @@ fn load_project_history_with_store(
             history_sources::history_source_progress(driver.source),
             "readingSources",
         );
+    }
+    if let Err(error) = store.recover_codex_session_counters(&conn, &project, home) {
+        // Optional source metadata must not discard otherwise readable history.
+        crate::trace::runtime_trace("ai-history", &format!("counter recovery failed: {error}"));
     }
     on_progress(0.96, "aggregating");
     let project_path = project.path.clone();

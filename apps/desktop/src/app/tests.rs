@@ -758,6 +758,7 @@ fn restored_live_active_terminal_id_preserves_focused_top_pane() {
 #[test]
 fn ai_session_restore_command_matches_tauri_history_restore() {
     let mut session = AISessionSummary {
+        unattributed_tokens: 0,
         id: "local-id".to_string(),
         session_key: "session key".to_string(),
         external_session_id: Some("external-1".to_string()),

@@ -7,6 +7,7 @@ fn accumulate_breakdown(
     usage_amounts: &[AIUsageAmount],
 ) {
     let item = map.entry(key.to_string()).or_insert(AIUsageBreakdownItem {
+        unattributed_tokens: 0,
         key: key.to_string(),
         total_tokens: 0,
         cached_input_tokens: 0,
@@ -145,6 +146,10 @@ fn merge_logical_sessions(sessions: Vec<AISessionSummary>) -> Vec<AISessionSumma
             current.cached_input_tokens = current
                 .cached_input_tokens
                 .saturating_add(session.cached_input_tokens);
+            // A recovered remainder belongs to the logical session, not each
+            // file alias of that session.
+            current.unattributed_tokens =
+                current.unattributed_tokens.max(session.unattributed_tokens);
             current.active_duration_seconds = current
                 .active_duration_seconds
                 .max(session.active_duration_seconds);
@@ -279,7 +284,10 @@ fn history_file_version(path: &Path, metadata: &fs::Metadata) -> (f64, i64) {
     let mut modified_at = modified_seconds(metadata);
     let mut file_size = metadata.len().min(i64::MAX as u64) as i64;
     if is_sqlite_history_database_path(path) {
-        for sidecar in [path_with_suffix(path, "-wal"), path_with_suffix(path, "-shm")] {
+        for sidecar in [
+            path_with_suffix(path, "-wal"),
+            path_with_suffix(path, "-shm"),
+        ] {
             let Ok(metadata) = fs::metadata(sidecar) else {
                 continue;
             };
