@@ -643,6 +643,37 @@ apply_configured_codex_effort_arg() {
   launch_args=(-c "model_reasoning_effort=\"${configured_effort}\"" "${launch_args[@]}")
 }
 
+apply_codex_embedded_mode() {
+  # Per-launch configuration already requires embedded mode. Older CLIs do not
+  # advertise --no-daemon, so leave their arguments untouched.
+  local overrides=false command_name="" arg help_text
+  local -a scan_args=("${launch_args[@]}")
+  while [[ ${#scan_args[@]} -gt 0 ]]; do
+    arg="${scan_args[1]}"
+    scan_args=("${scan_args[@]:1}")
+    case "$arg" in
+      --) break ;;
+      --no-daemon|--remote|--remote=*|--help|-h|--version|-V) return 0 ;;
+      -c|--config|--config=*|-c?*|--enable|--enable=*|--disable|--disable=*|--search) overrides=true ;;
+    esac
+    case "$arg" in
+      -c|--config|--enable|--disable|-p|--profile|--profile-v2|-m|--model|-C|--cd|-s|--sandbox|-a|--ask-for-approval|-i|--image|--add-dir|--local-provider|--remote-auth-token-env)
+        scan_args=("${scan_args[@]:1}") ;;
+      -*) ;;
+      *) [[ -n "$command_name" ]] || command_name="$arg" ;;
+    esac
+  done
+  [[ "$overrides" == true ]] || return 0
+  case "$command_name" in
+    agents|exec|e|review|login|logout|mcp|plugin|app-server|remote-control|app|completion|update|doctor|sandbox|debug|apply|a|queue|archive|delete|migrate-rollouts|unarchive|cloud|exec-server|features|help) return 0 ;;
+  esac
+  help_text="$(PATH="$search_path" "$real_bin" --help 2>/dev/null)" || return 0
+  if [[ "$help_text" =~ '(^|[[:space:]])--no-daemon([[:space:]]|$)' ]]; then
+    launch_args=(--no-daemon "${launch_args[@]}")
+    log_line 'codex embedded mode selected for per-launch configuration'
+  fi
+}
+
 codex_allows_additional_writable_roots() {
   local previous=""
   local arg
@@ -1216,11 +1247,13 @@ if [[ "$tool_name" == "codex" ]]; then
     apply_default_codex_memory_sandbox_arg
     apply_codex_memory_workspace_args
     apply_codex_memory_developer_instructions
+    launch_args=(--enable hooks "${launch_args[@]}")
+    apply_codex_embedded_mode
     launch_model="$(extract_model_target "${launch_args[@]}" || true)"
     resume_target=""
     resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
     write_runtime_binding "${resume_target}" "${launch_model}" "" "$(runtime_session_origin_for_resume "${resume_target}")"
-    run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" DMUX_EXTERNAL_SESSION_ID="${resume_target}" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" --enable hooks "${launch_args[@]}"
+    run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" DMUX_EXTERNAL_SESSION_ID="${resume_target}" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
     exit $?
   fi
 fi

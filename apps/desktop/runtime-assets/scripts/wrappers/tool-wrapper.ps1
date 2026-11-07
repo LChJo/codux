@@ -664,6 +664,40 @@ function Codex-Hooks-Feature-Flag([string]$Binary, [string]$SearchPath) {
   return "hooks"
 }
 
+function Add-Codex-Embedded-Mode([string]$Binary, [string[]]$CommandArgs, [string]$SearchPath) {
+  # Per-launch instructions, effort and hooks already require embedded mode.
+  # Select it explicitly on supporting CLIs to avoid an automatic-fallback warning.
+  $valueOptions = @('-c','--config','--enable','--disable','-p','--profile','--profile-v2','-m','--model','-C','--cd','-s','--sandbox','-a','--ask-for-approval','-i','--image','--add-dir','--local-provider','--remote-auth-token-env')
+  $serverCommands = @('agents','exec','e','review','login','logout','mcp','plugin','app-server','remote-control','app','completion','update','doctor','sandbox','debug','apply','a','queue','archive','delete','migrate-rollouts','unarchive','cloud','exec-server','features','help')
+  $command = $null
+  $overrides = $false
+  for ($index = 0; $index -lt $CommandArgs.Count; $index++) {
+    $arg = $CommandArgs[$index]
+    if ($arg -ceq '--') { break }
+    if ($arg -cin @('--no-daemon','--remote','--help','-h','--version','-V') -or $arg.StartsWith('--remote=')) { return $CommandArgs }
+    if ($arg -cin @('-c','--config','--enable','--disable','--search') -or
+        $arg.StartsWith('--config=') -or $arg.StartsWith('--enable=') -or
+        $arg.StartsWith('--disable=') -or ($arg.StartsWith('-c') -and $arg.Length -gt 2)) {
+      $overrides = $true
+    }
+    if ($arg -cin $valueOptions) { $index++; continue }
+    if (-not $arg.StartsWith('-') -and $null -eq $command) { $command = $arg }
+  }
+  if (-not $overrides -or $command -cin $serverCommands) { return $CommandArgs }
+  $previousPath = $env:PATH
+  try {
+    $env:PATH = $SearchPath
+    $helpText = (& $Binary --help 2>$null) -join "`n"
+    if ($LASTEXITCODE -eq 0 -and $helpText -match '(?m)^\s+--no-daemon(?:\s|$)') {
+      Write-Live-Log 'codex embedded mode selected for per-launch configuration'
+      return @('--no-daemon') + $CommandArgs
+    }
+  } finally {
+    $env:PATH = $previousPath
+  }
+  return $CommandArgs
+}
+
 function Invoke-Real-Binary([string]$Binary, [string[]]$CommandArgs, [string]$SearchPath, [string]$LaunchDir) {
   $previousPath = $env:PATH
   try {
@@ -931,6 +965,10 @@ if ($Tool -eq "codex" -and -not (Is-Metadata-Invocation $launchArgs) -and -not (
   $launchArgs = @("--enable", $hooksFeature) + $launchArgs
 } else {
   $hooksFeature = ""
+}
+
+if ($Tool -eq 'codex') {
+  $launchArgs = @(Add-Codex-Embedded-Mode $realBin $launchArgs $searchPath)
 }
 
 if ($permissionMode -eq "fullAccess") {

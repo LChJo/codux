@@ -402,6 +402,36 @@ fn codewhale_context_keeps_profile_instructions_and_managed_hooks_scoped_to_term
     std::fs::remove_dir_all(root).unwrap();
 }
 
+#[cfg(not(windows))]
+#[test]
+fn zsh_codex_selects_embedded_mode_only_for_supported_local_interactive_overrides() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!("codux-codex-mode-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let fake = root.join("codex");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\n[ \"$#\" -eq 1 ] && [ \"$1\" = --help ] || exit 2\ncase \"$CODEX_TEST_HELP\" in\nmodern) echo '      --no-daemon    Run without the shared background server' ;;\nold) echo '      --no-alt-screen' ;;\n*) exit 1 ;;\nesac\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let output = Command::new("zsh")
+        .arg("-f")
+        .arg(manifest.join("tests/support/codex_embedded_mode.zsh"))
+        .arg(manifest.join("../desktop/runtime-assets/scripts/wrappers/tool-wrapper.sh"))
+        .arg(&fake)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "checked=54");
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 #[cfg(windows)]
 fn powershell_wrapper_functions(body: &str) -> Value {
     let root =
@@ -415,7 +445,7 @@ fn powershell_wrapper_functions(body: &str) -> Value {
 $tokens=$null;$errors=$null
 $ast=[System.Management.Automation.Language.Parser]::ParseFile($env:TEST_WRAPPER_PATH,[ref]$tokens,[ref]$errors)
 if($errors.Count){throw 'wrapper parse failed'}
-$names=@('Has-Arg','Has-Prefix-Arg','Has-Option-Value','Has-Config-Key','Extract-Model','Get-Memory-Prompt-File','Invoke-Managed-Instructions','Apply-Append-System-Prompt','Apply-Managed-CodeWhale-Context')
+$names=@('Has-Arg','Has-Prefix-Arg','Has-Option-Value','Has-Config-Key','Extract-Model','Get-Memory-Prompt-File','Invoke-Managed-Instructions','Apply-Append-System-Prompt','Apply-Managed-CodeWhale-Context','Add-Codex-Embedded-Mode')
 $ast.FindAll({param($node)$node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $names -contains $node.Name},$true) | ForEach-Object {Invoke-Expression $_.Extent.Text}
 function Write-Live-Log([string]$Message){}
 $wrapperDir=$env:TEST_HELPER_DIRECTORY
@@ -455,6 +485,56 @@ $env:DMUX_AI_MEMORY_PROMPT_FILE=$env:TEST_CONTEXT_FILE
     std::fs::remove_dir_all(root).unwrap();
     value
 }
+#[cfg(windows)]
+#[test]
+fn powershell_codex_selects_embedded_mode_only_for_supported_local_interactive_overrides() {
+    let result = powershell_wrapper_functions(
+        r#"
+$fake=Join-Path (Split-Path $env:TEST_CONTEXT_FILE) 'codex.ps1'
+[IO.File]::WriteAllText($fake, @'
+if($args.Count -ne 1 -or $args[0] -ne '--help'){throw 'unexpected probe'}
+if($env:TEST_CODEX_HELP -eq 'fail'){exit 1}
+if($env:TEST_CODEX_HELP -eq 'modern'){'      --no-daemon    Run without the shared background server'}else{'      --no-alt-screen'}
+exit 0
+'@)
+$cases=@(
+  @{args=@('--enable','hooks');add=$true},
+  @{args=@('-c','developer_instructions="中文"','--profile','work','Initial "task"');add=$true},
+  @{args=@('--config=model_reasoning_effort="high"','resume','--last');add=$true},
+  @{args=@('-cmodel="mine"','fork','session-id');add=$true},
+  @{args=@('--disable=plugins','--','--remote');add=$true},
+  @{args=@('--search');add=$true},
+  @{args=@('--enable','hooks','--profile','exec','Initial task');add=$true},
+  @{args=@('--enable','hooks','--no-daemon');add=$false},
+  @{args=@('--enable','hooks','--remote','ws://localhost:1234');add=$false},
+  @{args=@('--enable','hooks','--remote=ws://localhost:1234');add=$false},
+  @{args=@('--enable','hooks','--profile','work','agents');add=$false},
+  @{args=@('--enable','hooks','exec','Initial task');add=$false},
+  @{args=@('--enable','hooks','review');add=$false},
+  @{args=@('--enable','hooks','app-server');add=$false},
+  @{args=@('--enable','hooks','debug','prompt-input');add=$false},
+  @{args=@('--enable','hooks','--help');add=$false},
+  @{args=@('--model','mine','Initial task');add=$false},
+  @{args=@('--','--enable','hooks');add=$false}
+)
+$before=$env:PATH
+$reports=@(foreach($mode in @('modern','old','fail')){
+  $env:TEST_CODEX_HELP=$mode
+  foreach($case in $cases){
+    $actual=@(Add-Codex-Embedded-Mode $fake $case.args $env:PATH)
+    $expected=@($case.args)
+    if($mode -eq 'modern' -and $case.add){$expected=@('--no-daemon')+$expected}
+    if((ConvertTo-Json -InputObject $actual -Compress) -cne (ConvertTo-Json -InputObject $expected -Compress)){throw "incorrect launch arguments: $mode $($case.args)"}
+    if($env:PATH -cne $before){throw 'probe changed PATH'}
+    @{mode=$mode;args=$actual}
+  }
+})
+@{checked=$reports.Count} | ConvertTo-Json -Compress
+"#,
+    );
+    assert_eq!(result["checked"], 54);
+}
+
 #[cfg(windows)]
 #[test]
 fn powershell_preserves_model_flags_and_appends_rules_to_user_prompt() {
