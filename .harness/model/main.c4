@@ -1,0 +1,622 @@
+specification {
+  element system
+  element component
+  relationship uses
+}
+model {
+  app = system "Codux" {
+    description "Local-first AI coding workspace with desktop, mobile controller and headless host. Initial model covers app/crate boundaries and the verified terminal hyperlink flow."
+    metadata {
+      harness_id "128ed217-fb19-4dfe-bd27-02a18e92a906"
+      brief "Local-first AI coding workspace with desktop, mobile controller and headless host. Initial model covers app/crate boundaries and the verified terminal hyperlink flow."
+      source "fact"
+      status "verified"
+      evidence "9be201d7-4917-434b-9845-4987d91c2e62"
+      version "1"
+    }
+    desktop = component "Codux Desktop" {
+      description "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration."
+      metadata {
+        harness_id "42a580c4-143d-4093-9051-4601fc90d4a3"
+        brief "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration."
+        source "fact"
+        status "verified"
+        evidence "f01500b8-70ac-404d-879d-535593dcff91"
+        version "1"
+      }
+      terminal_links = component "Terminal Hyperlinks" {
+        description "Prefers the OSC 8 URI stored on a screen cell over plain URL detection and passes the complete target with the label column range."
+        metadata {
+          harness_id "df1d8550-9658-4875-adfd-6e26f1965590"
+          brief "Prefers the OSC 8 URI stored on a screen cell over plain URL detection and passes the complete target with the label column range."
+          source "fact"
+          status "verified"
+          evidence "431c1b31-6c67-41df-920e-c9e56f49808e"
+          version "1"
+        }
+      }
+    }
+    runtime = component "Desktop Runtime" {
+      description "Desktop runtime services and platform adapters for files, settings, updates, remote hosting and the shared Git, AI, memory and terminal engines."
+      metadata {
+        harness_id "fd9e63c2-396e-49db-8696-de8ace866d2c"
+        brief "Desktop runtime services and platform adapters for files, settings, updates, remote hosting and the shared Git, AI, memory and terminal engines."
+        source "fact"
+        status "verified"
+        evidence "7573f9b2-3925-4756-a26e-c48047c97ab6"
+        version "1"
+      }
+      url_open = component "Native URL Opener" {
+        description "Validates http, https and file URLs. Windows opens the full UTF-16 URL/path with ShellExecuteExW and reports launch failures without cmd parsing."
+        metadata {
+          harness_id "ce104158-bc15-4de0-bafb-3ea627a85dac"
+          brief "Validates http, https and file URLs. Windows opens the full UTF-16 URL/path with ShellExecuteExW and reports launch failures without cmd parsing."
+          source "fact"
+          status "verified"
+          evidence "e4b0ec07-e8e8-4414-a750-710153932ad6"
+          version "1"
+        }
+      }
+    }
+    agent = component "Headless Host" {
+      description "Cross-platform CLI host with pairing, service lifecycle and remote projects, terminals, Git, AI history and memory."
+      metadata {
+        harness_id "e5417061-d84e-45a2-a29f-680965f765a0"
+        brief "Cross-platform CLI host with pairing, service lifecycle and remote projects, terminals, Git, AI history and memory."
+        source "fact"
+        status "verified"
+        evidence "a9a99a24-907b-4e1d-8d79-f0d508bf9f51"
+        version "1"
+      }
+    }
+    mobile = component "Mobile Controller" {
+      description "Flutter controller renders host-owned workspace and terminal state and sends user intent through the Rust FFI bridge."
+      metadata {
+        harness_id "97d6923a-fe65-4682-9314-d2f402bdcab5"
+        brief "Flutter controller renders host-owned workspace and terminal state and sends user intent through the Rust FFI bridge."
+        source "fact"
+        status "verified"
+        evidence "6a03da36-d2a9-4075-a57b-db9d9b0ab68a"
+        version "1"
+      }
+    }
+    wrapper = component "Wrapper Helper" {
+      description "Small process entry point delegates CLI wrapper commands to the shared live runtime helper."
+      metadata {
+        harness_id "3bfce6e4-5ec5-4f27-82be-7f998436d595"
+        brief "Small process entry point delegates CLI wrapper commands to the shared live runtime helper."
+        source "fact"
+        status "verified"
+        evidence "62009264-9d4d-4d8e-bc27-4999150a2ee7"
+        version "1"
+      }
+    }
+    protocol = component "Remote Protocol" {
+      description "Shared protocol DTOs, capabilities, relay envelopes, resource routing and terminal buffer chunking rules."
+      metadata {
+        harness_id "c536725a-9625-4bd0-87bf-1049e12d08ba"
+        brief "Shared protocol DTOs, capabilities, relay envelopes, resource routing and terminal buffer chunking rules."
+        source "fact"
+        status "verified"
+        evidence "b26a0ba9-87c4-4477-8d64-3b733bddc4fa"
+        version "1"
+      }
+    }
+    transport = component "Remote Transport" {
+      description "Iroh host/controller and in-memory transports plus a separate Web Tunnel ALPN for HTTP, CONNECT and upgraded browser streams."
+      metadata {
+        harness_id "136253bb-151c-45fa-961c-6467c3d27c9b"
+        brief "Iroh host/controller and in-memory transports plus a separate Web Tunnel ALPN for HTTP, CONNECT and upgraded browser streams."
+        source "fact"
+        status "verified"
+        evidence "8aabd7cc-b167-4e6f-8fa4-7d99a92a3283"
+        version "1"
+      }
+    }
+    ffi = component "Protocol and Terminal FFI" {
+      description "C ABI with opaque transport, terminal and remote runtime handles and JSON payloads for Dart consumers."
+      metadata {
+        harness_id "4b8b5556-8b0f-4a94-8140-902a13b0740a"
+        brief "C ABI with opaque transport, terminal and remote runtime handles and JSON payloads for Dart consumers."
+        source "fact"
+        status "verified"
+        evidence "1f214683-7945-42ea-b920-7786191a9f46"
+        version "1"
+      }
+    }
+    runtime_core = component "Runtime Core" {
+      description "Reusable host/project/file/Git/worktree/upload/terminal payload rules and resource subscription routing without UI or process spawning."
+      metadata {
+        harness_id "ad564db4-07d9-41ff-8553-81078270f04f"
+        brief "Reusable host/project/file/Git/worktree/upload/terminal payload rules and resource subscription routing without UI or process spawning."
+        source "fact"
+        status "verified"
+        evidence "f84aa5f5-982b-465b-b17a-6c27f3af6d34"
+        version "1"
+      }
+    }
+    live = component "Live Runtime" {
+      description "Shared AI supervisor, enhanced PTY manager, remote terminal dispatch, wrapper helpers, runtime paths and host metrics."
+      metadata {
+        harness_id "92983e4d-b1ce-457e-b7c8-482627a4767d"
+        brief "Shared AI supervisor, enhanced PTY manager, remote terminal dispatch, wrapper helpers, runtime paths and host metrics."
+        source "fact"
+        status "verified"
+        evidence "b81f773d-bb5f-485c-9936-d020d4e56e62"
+        version "1"
+      }
+    }
+    terminal_core = component "Terminal Core" {
+      description "Platform-neutral terminal model uses alacritty_terminal for headless screen cells, OSC 8 target URIs, snapshots and keyframe replay. No process spawning."
+      metadata {
+        harness_id "bd790928-19ac-499e-814a-0ce81f2f9e17"
+        brief "Platform-neutral terminal model uses alacritty_terminal for headless screen cells, OSC 8 target URIs, snapshots and keyframe replay. No process spawning."
+        source "fact"
+        status "verified"
+        evidence "30ed9f76-3fd0-4d25-832e-26ec27981f36"
+        version "1"
+      }
+    }
+    pty = component "Terminal PTY" {
+      description "Local TerminalDriver backed by portable_pty owns shell spawning, input, resize, output capture and bounded history."
+      metadata {
+        harness_id "e8b98821-d823-402a-954b-704422261521"
+        brief "Local TerminalDriver backed by portable_pty owns shell spawning, input, resize, output capture and bounded history."
+        source "fact"
+        status "verified"
+        evidence "9cbea364-53a6-48ab-8c6f-c661c7e79f7c"
+        version "1"
+      }
+    }
+    git = component "Git Engine" {
+      description "Shared git2 and notify Git service, watchers, worktree operations and remote wire dispatch."
+      metadata {
+        harness_id "947052ad-bc73-4e0f-be44-da71b25ff455"
+        brief "Shared git2 and notify Git service, watchers, worktree operations and remote wire dispatch."
+        source "fact"
+        status "verified"
+        evidence "48b50b45-19dc-4dae-aadb-47e47cef6703"
+        version "1"
+      }
+    }
+    llm = component "LLM Completion Core" {
+      description "Shared genai provider completion and normalized provider/options types; app layers own provider selection."
+      metadata {
+        harness_id "6b37075b-d935-463c-b8ba-e639135edb2e"
+        brief "Shared genai provider completion and normalized provider/options types; app layers own provider selection."
+        source "fact"
+        status "verified"
+        evidence "9a922b0a-28e8-4771-81ba-7fbb758fb524"
+        version "1"
+      }
+    }
+    memory = component "Memory Engine" {
+      description "Shared project/session memory engine owns configuration and calls the LLM completion bridge on desktop or headless hosts."
+      metadata {
+        harness_id "09530396-7514-4f0f-bba6-aee1353e78de"
+        brief "Shared project/session memory engine owns configuration and calls the LLM completion bridge on desktop or headless hosts."
+        source "fact"
+        status "verified"
+        evidence "902d9f9c-3b8a-4ae7-8734-12742802a706"
+        version "1"
+      }
+    }
+    blackboard = component "Project Blackboard" {
+      description "Project-scoped storage and dispatch shared by desktop, agent and terminal tools, including terminal ownership."
+      metadata {
+        harness_id "90972566-9314-483b-95ea-3abceeaf6446"
+        brief "Project-scoped storage and dispatch shared by desktop, agent and terminal tools, including terminal ownership."
+        source "fact"
+        status "verified"
+        evidence "74398c55-67f8-4748-b803-cffc468c4ffd"
+        version "1"
+      }
+    }
+    ai_history = component "AI Usage History" {
+      description "Parses CLI session histories, normalizes usage, indexes SQLite and serves project/global usage snapshots."
+      metadata {
+        harness_id "a71a7c85-21f9-4f55-ba5c-5a935dc82380"
+        brief "Parses CLI session histories, normalizes usage, indexes SQLite and serves project/global usage snapshots."
+        source "fact"
+        status "verified"
+        evidence "b2a07822-1b1f-4373-a0a4-96953bed1e7e"
+        version "1"
+      }
+    }
+    sessions = component "AI Session History" {
+      description "Shared session summaries, detail, restore, rename and removal operate on the usage database populated by the indexer."
+      metadata {
+        harness_id "4722473a-5273-4b13-a004-c798edb77098"
+        brief "Shared session summaries, detail, restore, rename and removal operate on the usage database populated by the indexer."
+        source "fact"
+        status "verified"
+        evidence "3c9a658e-3e18-4ea3-8b7d-033c780bf3eb"
+        version "1"
+      }
+    }
+  }
+  browser = system "System Browser" {
+    description "External default browser. The opt-in Windows loopback probe checks its location.href including query, fragment, ampersands and percent-encoded data."
+    metadata {
+      harness_id "36b9f68d-2a75-4c50-91cb-98c375d33962"
+      brief "External default browser. The opt-in Windows loopback probe checks its location.href including query, fragment, ampersands and percent-encoded data."
+      source "fact"
+      status "verified"
+      evidence "81f957fb-140a-4235-ab32-b3349e1355cc"
+      version "1"
+    }
+  }
+  app.desktop -[uses]-> app.runtime "Uses workspace services" {
+    metadata {
+      harness_id "63624770-36b0-4d17-9019-299b9c575db0"
+      brief "Uses workspace services"
+      source "fact"
+      status "verified"
+      evidence "7cd638d9-f35c-44f7-9652-61e8333f0702"
+      version "1"
+    }
+  }
+  app.desktop -[uses]-> app.terminal_core "Uses shared terminal snapshots" {
+    metadata {
+      harness_id "0c98de69-7846-4cfd-8499-14e6672ad2d3"
+      brief "Uses shared terminal snapshots"
+      source "fact"
+      status "verified"
+      evidence "7cd638d9-f35c-44f7-9652-61e8333f0702"
+      version "1"
+    }
+  }
+  app.mobile -[uses]-> app.ffi "Uses C ABI for transport and terminal state" {
+    metadata {
+      harness_id "643fe11c-11ef-4037-b0ac-19b8aef64490"
+      brief "Uses C ABI for transport and terminal state"
+      source "fact"
+      status "verified"
+      evidence "6a03da36-d2a9-4075-a57b-db9d9b0ab68a"
+      version "1"
+    }
+  }
+  app.agent -[uses]-> app.runtime_core "Uses runtime domain rules" {
+    metadata {
+      harness_id "634da992-c709-4648-b727-4e7084653ab4"
+      brief "Uses runtime domain rules"
+      source "fact"
+      status "verified"
+      evidence "9d28ab23-9257-45a6-bfbb-b4756c01533c"
+      version "1"
+    }
+  }
+  app.agent -[uses]-> app.live "Hosts shared live runtime" {
+    metadata {
+      harness_id "f14b5324-40da-4c25-8ab3-c8b08c133848"
+      brief "Hosts shared live runtime"
+      source "fact"
+      status "verified"
+      evidence "9d28ab23-9257-45a6-bfbb-b4756c01533c"
+      version "1"
+    }
+  }
+  app.agent -[uses]-> app.transport "Connects remote peers" {
+    metadata {
+      harness_id "fb679659-3917-466f-807d-3afa41b18f80"
+      brief "Connects remote peers"
+      source "fact"
+      status "verified"
+      evidence "9d28ab23-9257-45a6-bfbb-b4756c01533c"
+      version "1"
+    }
+  }
+  app.agent -[uses]-> app.pty "Runs local PTYs" {
+    metadata {
+      harness_id "d4b83565-2e6f-4bb0-b68b-9ad3f30ada9f"
+      brief "Runs local PTYs"
+      source "fact"
+      status "verified"
+      evidence "9d28ab23-9257-45a6-bfbb-b4756c01533c"
+      version "1"
+    }
+  }
+  app.agent -[uses]-> app.git "Serves Git operations" {
+    metadata {
+      harness_id "1a8e89c7-6d68-4fae-80ee-0230437ee55a"
+      brief "Serves Git operations"
+      source "fact"
+      status "verified"
+      evidence "9d28ab23-9257-45a6-bfbb-b4756c01533c"
+      version "1"
+    }
+  }
+  app.agent -[uses]-> app.memory "Hosts memory engine" {
+    metadata {
+      harness_id "a5fd8b60-21aa-4615-878b-105915b354b4"
+      brief "Hosts memory engine"
+      source "fact"
+      status "verified"
+      evidence "9d28ab23-9257-45a6-bfbb-b4756c01533c"
+      version "1"
+    }
+  }
+  app.agent -[uses]-> app.ai_history "Indexes usage history" {
+    metadata {
+      harness_id "d57f9e6c-5fc3-4164-8338-55def16c8778"
+      brief "Indexes usage history"
+      source "fact"
+      status "verified"
+      evidence "9d28ab23-9257-45a6-bfbb-b4756c01533c"
+      version "1"
+    }
+  }
+  app.agent -[uses]-> app.sessions "Serves AI session history" {
+    metadata {
+      harness_id "86a6c487-6bd0-4982-884e-347e4920226b"
+      brief "Serves AI session history"
+      source "fact"
+      status "verified"
+      evidence "9d28ab23-9257-45a6-bfbb-b4756c01533c"
+      version "1"
+    }
+  }
+  app.agent -[uses]-> app.blackboard "Shares project blackboard" {
+    metadata {
+      harness_id "8bd37788-687f-4676-8859-26aa17104e70"
+      brief "Shares project blackboard"
+      source "fact"
+      status "verified"
+      evidence "9d28ab23-9257-45a6-bfbb-b4756c01533c"
+      version "1"
+    }
+  }
+  app.wrapper -[uses]-> app.live "Dispatches wrapper helper commands" {
+    metadata {
+      harness_id "f71e4e80-ab28-4771-8e24-bd77dc7ab2f0"
+      brief "Dispatches wrapper helper commands"
+      source "fact"
+      status "verified"
+      evidence "62009264-9d4d-4d8e-bc27-4999150a2ee7"
+      version "1"
+    }
+  }
+  app.runtime -[uses]-> app.live "Reexports live AI and PTY runtime" {
+    metadata {
+      harness_id "f3fb47d1-cc9f-4845-9499-c81c1c81286b"
+      brief "Reexports live AI and PTY runtime"
+      source "fact"
+      status "verified"
+      evidence "7573f9b2-3925-4756-a26e-c48047c97ab6"
+      version "1"
+    }
+  }
+  app.runtime -[uses]-> app.git "Reexports Git engine" {
+    metadata {
+      harness_id "82c32bb6-1d4d-443d-bf1e-e47bc11ef4ea"
+      brief "Reexports Git engine"
+      source "fact"
+      status "verified"
+      evidence "7573f9b2-3925-4756-a26e-c48047c97ab6"
+      version "1"
+    }
+  }
+  app.runtime -[uses]-> app.memory "Uses shared memory engine" {
+    metadata {
+      harness_id "b8571c51-7870-441e-8ce4-d786416b0eae"
+      brief "Uses shared memory engine"
+      source "fact"
+      status "verified"
+      evidence "32503d30-a00d-4574-b21c-78eea1a34d4a"
+      version "1"
+    }
+  }
+  app.runtime -[uses]-> app.ai_history "Reexports usage history" {
+    metadata {
+      harness_id "e5316248-5dfb-411e-82df-a26e9480ab0f"
+      brief "Reexports usage history"
+      source "fact"
+      status "verified"
+      evidence "7573f9b2-3925-4756-a26e-c48047c97ab6"
+      version "1"
+    }
+  }
+  app.runtime -[uses]-> app.sessions "Uses session history" {
+    metadata {
+      harness_id "0652f726-ac4a-4730-b81d-5baa0b9b61ea"
+      brief "Uses session history"
+      source "fact"
+      status "verified"
+      evidence "32503d30-a00d-4574-b21c-78eea1a34d4a"
+      version "1"
+    }
+  }
+  app.runtime -[uses]-> app.blackboard "Reexports project blackboard" {
+    metadata {
+      harness_id "0c206c8a-6f8a-4c03-8ac8-fdcbd007d138"
+      brief "Reexports project blackboard"
+      source "fact"
+      status "verified"
+      evidence "7573f9b2-3925-4756-a26e-c48047c97ab6"
+      version "1"
+    }
+  }
+  app.runtime -[uses]-> app.llm "Uses provider completion" {
+    metadata {
+      harness_id "9549268d-ce8d-4e1b-989f-e5fe7b76ae0f"
+      brief "Uses provider completion"
+      source "fact"
+      status "verified"
+      evidence "32503d30-a00d-4574-b21c-78eea1a34d4a"
+      version "1"
+    }
+  }
+  app.runtime -[uses]-> app.protocol "Uses remote protocol" {
+    metadata {
+      harness_id "33160331-4d4f-45c7-a42b-a4618e11bb9b"
+      brief "Uses remote protocol"
+      source "fact"
+      status "verified"
+      evidence "32503d30-a00d-4574-b21c-78eea1a34d4a"
+      version "1"
+    }
+  }
+  app.runtime -[uses]-> app.transport "Hosts and controls remote links" {
+    metadata {
+      harness_id "d866a8a7-a6c8-41b3-ba88-7a2bff6ad610"
+      brief "Hosts and controls remote links"
+      source "fact"
+      status "verified"
+      evidence "32503d30-a00d-4574-b21c-78eea1a34d4a"
+      version "1"
+    }
+  }
+  app.runtime -[uses]-> app.runtime_core "Uses runtime domain rules" {
+    metadata {
+      harness_id "5db442ee-b9dc-4ea8-9496-10c3b43c757f"
+      brief "Uses runtime domain rules"
+      source "fact"
+      status "verified"
+      evidence "32503d30-a00d-4574-b21c-78eea1a34d4a"
+      version "1"
+    }
+  }
+  app.ffi -[uses]-> app.protocol "Exposes protocol helpers" {
+    metadata {
+      harness_id "9df13079-a992-4797-a574-788ea8f9d0a1"
+      brief "Exposes protocol helpers"
+      source "fact"
+      status "verified"
+      evidence "8bc4f168-dfcb-42e8-8291-42d85d6c36b8"
+      version "1"
+    }
+  }
+  app.ffi -[uses]-> app.transport "Exposes opaque controller transport handles" {
+    metadata {
+      harness_id "524742bd-49c8-4749-a0d4-4e48830e3785"
+      brief "Exposes opaque controller transport handles"
+      source "fact"
+      status "verified"
+      evidence "8bc4f168-dfcb-42e8-8291-42d85d6c36b8"
+      version "1"
+    }
+  }
+  app.ffi -[uses]-> app.terminal_core "Exposes remote terminal models" {
+    metadata {
+      harness_id "d9d4793b-6853-4b20-a8ef-1e19edf8b1d8"
+      brief "Exposes remote terminal models"
+      source "fact"
+      status "verified"
+      evidence "8bc4f168-dfcb-42e8-8291-42d85d6c36b8"
+      version "1"
+    }
+  }
+  app.pty -[uses]-> app.terminal_core "Implements TerminalDriver" {
+    metadata {
+      harness_id "ee24f167-d077-4b32-aa70-61864454a5cb"
+      brief "Implements TerminalDriver"
+      source "fact"
+      status "verified"
+      evidence "9cbea364-53a6-48ab-8c6f-c661c7e79f7c"
+      version "1"
+    }
+  }
+  app.live -[uses]-> app.pty "Uses shared PTY driver" {
+    metadata {
+      harness_id "5e327319-ce2b-438b-9ab8-0a784e6fc9ad"
+      brief "Uses shared PTY driver"
+      source "fact"
+      status "verified"
+      evidence "0b0bb9f6-dd27-4b27-8057-fab650e0989f"
+      version "1"
+    }
+  }
+  app.live -[uses]-> app.terminal_core "Uses shared terminal model" {
+    metadata {
+      harness_id "2be7d484-9b25-474a-9038-7a1a0d1468d3"
+      brief "Uses shared terminal model"
+      source "fact"
+      status "verified"
+      evidence "0b0bb9f6-dd27-4b27-8057-fab650e0989f"
+      version "1"
+    }
+  }
+  app.live -[uses]-> app.ai_history "Uses AI usage indexer" {
+    metadata {
+      harness_id "d17220aa-6f50-40b9-b12e-500a2c7f03d6"
+      brief "Uses AI usage indexer"
+      source "fact"
+      status "verified"
+      evidence "0b0bb9f6-dd27-4b27-8057-fab650e0989f"
+      version "1"
+    }
+  }
+  app.live -[uses]-> app.blackboard "Uses project blackboard" {
+    metadata {
+      harness_id "32130761-a8be-413b-aaed-9f5bea93296c"
+      brief "Uses project blackboard"
+      source "fact"
+      status "verified"
+      evidence "0b0bb9f6-dd27-4b27-8057-fab650e0989f"
+      version "1"
+    }
+  }
+  app.live -[uses]-> app.git "Uses shared Git engine" {
+    metadata {
+      harness_id "413b6276-a406-4401-a0c7-b0d22ca82147"
+      brief "Uses shared Git engine"
+      source "fact"
+      status "verified"
+      evidence "0b0bb9f6-dd27-4b27-8057-fab650e0989f"
+      version "1"
+    }
+  }
+  app.memory -[uses]-> app.llm "Calls shared completion bridge" {
+    metadata {
+      harness_id "070efad5-cfab-4617-bcf6-f80b075f036b"
+      brief "Calls shared completion bridge"
+      source "fact"
+      status "verified"
+      evidence "902d9f9c-3b8a-4ae7-8734-12742802a706"
+      version "1"
+    }
+  }
+  app.terminal_core -[uses]-> app.desktop.terminal_links "Provides OSC 8 URI cell metadata" {
+    metadata {
+      harness_id "a177e0e9-41d5-4d5f-ac21-65ea257541de"
+      brief "Provides OSC 8 URI cell metadata"
+      source "fact"
+      status "verified"
+      evidence "30ed9f76-3fd0-4d25-832e-26ec27981f36"
+      version "1"
+    }
+  }
+  app.desktop.terminal_links -[uses]-> app.runtime.url_open "Forwards clicked link URI via app_open_url" {
+    metadata {
+      harness_id "7fb286fb-274a-4a9f-8851-3ad62a5672af"
+      brief "Forwards clicked link URI via app_open_url"
+      source "fact"
+      status "verified"
+      evidence "646980a8-12db-45c3-9f88-afaf82f30c3b"
+      version "1"
+    }
+  }
+  app.runtime.url_open -[uses]-> browser "Opens complete URL through platform association" {
+    metadata {
+      harness_id "f7828ac6-9b30-42f3-a0fc-dbd7c432431e"
+      brief "Opens complete URL through platform association"
+      source "fact"
+      status "verified"
+      evidence "e4b0ec07-e8e8-4414-a750-710153932ad6"
+      version "1"
+    }
+  }
+}
+views {
+  view overview {
+    include app
+    include app.*
+    include browser
+  }
+  view terminal_links {
+    include app.terminal_core
+    include app.desktop.terminal_links
+    include app.runtime.url_open
+    include browser
+  }
+}

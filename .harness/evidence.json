@@ -1,0 +1,285 @@
+{
+    "evidence":  [
+                     {
+                         "id":  "9be201d7-4917-434b-9845-4987d91c2e62",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "5650717ce7768736ed8c0c0d522f27f8fa296f5e2367792b0222180bc2d4c331",
+                         "claim":  "Local-first AI coding workspace with desktop, mobile controller and headless host. Initial model covers app/crate boundaries and the verified terminal hyperlink flow.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "Cargo.toml"
+                                      }
+                     },
+                     {
+                         "id":  "f01500b8-70ac-404d-879d-535593dcff91",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "89e55f29c17bc8706ed85f88ba1f2fc6c57851ab7fc95916a6dd3d6434c5f7d1",
+                         "claim":  "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration.",
+                         "kind":  "document",
+                         "location":  {
+                                          "path":  "apps/desktop/README.md"
+                                      }
+                     },
+                     {
+                         "id":  "7573f9b2-3925-4756-a26e-c48047c97ab6",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "f528f839db989f54e7d54b8fdc7715738dbd02867af5cbc3ef2664b60ceaa13b",
+                         "claim":  "Desktop runtime services and platform adapters for files, settings, updates, remote hosting and the shared Git, AI, memory and terminal engines.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/desktop/runtime/src/lib.rs"
+                                      }
+                     },
+                     {
+                         "id":  "a9a99a24-907b-4e1d-8d79-f0d508bf9f51",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "c81416f513b6acfb4c4359fa20bb9f7ff70d1a0956d9a4ecdd9d83e1b7bd1c1a",
+                         "claim":  "Cross-platform CLI host with pairing, service lifecycle and remote projects, terminals, Git, AI history and memory.",
+                         "kind":  "document",
+                         "location":  {
+                                          "path":  "apps/agent/README.md"
+                                      }
+                     },
+                     {
+                         "id":  "6a03da36-d2a9-4075-a57b-db9d9b0ab68a",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "fb0d5628ab523cc76eba045a4d6b2efa9d4a3be7d1ca0826a7a7ceee00a89a24",
+                         "claim":  "Flutter controller renders host-owned workspace and terminal state and sends user intent through the Rust FFI bridge.",
+                         "kind":  "document",
+                         "location":  {
+                                          "path":  "apps/mobile/README.md"
+                                      }
+                     },
+                     {
+                         "id":  "62009264-9d4d-4d8e-bc27-4999150a2ee7",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "0ca6643dd0900e5d81fac8543b1d413eb43a91837f2b0e8be4d66e7b5bb18eec",
+                         "claim":  "Small process entry point delegates CLI wrapper commands to the shared live runtime helper.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/wrapper-helper/src/main.rs"
+                                      }
+                     },
+                     {
+                         "id":  "b26a0ba9-87c4-4477-8d64-3b733bddc4fa",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "84439d596d58ef816c2befeaf91a15446984d3641e196ef405e025bb99d5ab40",
+                         "claim":  "Shared protocol DTOs, capabilities, relay envelopes, resource routing and terminal buffer chunking rules.",
+                         "kind":  "document",
+                         "location":  {
+                                          "path":  "crates/codux-protocol/README.md"
+                                      }
+                     },
+                     {
+                         "id":  "8aabd7cc-b167-4e6f-8fa4-7d99a92a3283",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "a35b3d5bbe43b13f5bd115b4e72c899eb3de1e2e1034aaebf70d31900e75aa87",
+                         "claim":  "Iroh host/controller and in-memory transports plus a separate Web Tunnel ALPN for HTTP, CONNECT and upgraded browser streams.",
+                         "kind":  "document",
+                         "location":  {
+                                          "path":  "crates/codux-remote-transport/README.md"
+                                      }
+                     },
+                     {
+                         "id":  "1f214683-7945-42ea-b920-7786191a9f46",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "279af262dccbc8f9eec82120082b1e3a353ca5748b235c222ccdfee003bb33be",
+                         "claim":  "C ABI with opaque transport, terminal and remote runtime handles and JSON payloads for Dart consumers.",
+                         "kind":  "document",
+                         "location":  {
+                                          "path":  "crates/codux-protocol-ffi/README.md"
+                                      }
+                     },
+                     {
+                         "id":  "f84aa5f5-982b-465b-b17a-6c27f3af6d34",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "dec7be0bf1261e0ae3559e5b3615ecc62c19b25a49f384faf516501dc9aa57e9",
+                         "claim":  "Reusable host/project/file/Git/worktree/upload/terminal payload rules and resource subscription routing without UI or process spawning.",
+                         "kind":  "document",
+                         "location":  {
+                                          "path":  "crates/codux-runtime-core/README.md"
+                                      }
+                     },
+                     {
+                         "id":  "b81f773d-bb5f-485c-9936-d020d4e56e62",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "449444f74da8d2cde6462d7acdc44023ab076cc9e1d9d84b13aaa3ab5d7d60ad",
+                         "claim":  "Shared AI supervisor, enhanced PTY manager, remote terminal dispatch, wrapper helpers, runtime paths and host metrics.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "crates/codux-runtime-live/src/lib.rs"
+                                      }
+                     },
+                     {
+                         "id":  "30ed9f76-3fd0-4d25-832e-26ec27981f36",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "496c1eba45f95d286e0963bda730d055440e2d3c6ab6b128738a4c62d64c2eef",
+                         "claim":  "Platform-neutral terminal model uses alacritty_terminal for headless screen cells, OSC 8 target URIs, snapshots and keyframe replay. No process spawning.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "crates/codux-terminal-core/src/headless_screen.rs"
+                                      }
+                     },
+                     {
+                         "id":  "9cbea364-53a6-48ab-8c6f-c661c7e79f7c",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "149ffeb95ce94068be90478bb66fe0dc0382040ef7fb97491f89722a9f57e06c",
+                         "claim":  "Local TerminalDriver backed by portable_pty owns shell spawning, input, resize, output capture and bounded history.",
+                         "kind":  "document",
+                         "location":  {
+                                          "path":  "crates/codux-terminal-pty/README.md"
+                                      }
+                     },
+                     {
+                         "id":  "48b50b45-19dc-4dae-aadb-47e47cef6703",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "07bbddf906f13d1b96253d2ff7a7b42a308234b6039351ca38e7097e8ff6a2f8",
+                         "claim":  "Shared git2 and notify Git service, watchers, worktree operations and remote wire dispatch.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "crates/codux-git/src/lib.rs"
+                                      }
+                     },
+                     {
+                         "id":  "9a922b0a-28e8-4771-81ba-7fbb758fb524",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "c7686fa68f8fba630b9177ed40ce97a6f13c0ce2b90b9550d45bfbf6cd069814",
+                         "claim":  "Shared genai provider completion and normalized provider/options types; app layers own provider selection.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "crates/codux-llm/src/lib.rs"
+                                      }
+                     },
+                     {
+                         "id":  "902d9f9c-3b8a-4ae7-8734-12742802a706",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "b2728839cf6eb3f2a6a660784a1d3e7c40cb8852d39dff31f786c2793451f1d5",
+                         "claim":  "Shared project/session memory engine owns configuration and calls the LLM completion bridge on desktop or headless hosts.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "crates/codux-memory/src/lib.rs"
+                                      }
+                     },
+                     {
+                         "id":  "74398c55-67f8-4748-b803-cffc468c4ffd",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "424443637188ddafc27cd3eb5ca00419f64d3ed7ee07d51230dd71e697947088",
+                         "claim":  "Project-scoped storage and dispatch shared by desktop, agent and terminal tools, including terminal ownership.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "crates/codux-blackboard/src/lib.rs"
+                                      }
+                     },
+                     {
+                         "id":  "b2a07822-1b1f-4373-a0a4-96953bed1e7e",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "7d40e9f006402df354dbb1dcdddd8054647cbc8493c9d22d6ad2548d0379fd65",
+                         "claim":  "Parses CLI session histories, normalizes usage, indexes SQLite and serves project/global usage snapshots.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "crates/codux-ai-history/src/lib.rs"
+                                      }
+                     },
+                     {
+                         "id":  "3c9a658e-3e18-4ea3-8b7d-033c780bf3eb",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "8419c6e4298afa6a9120bb10356984cf18bf761d97b6004ab934a5ad26da1659",
+                         "claim":  "Shared session summaries, detail, restore, rename and removal operate on the usage database populated by the indexer.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "crates/codux-ai-sessions/src/lib.rs"
+                                      }
+                     },
+                     {
+                         "id":  "431c1b31-6c67-41df-920e-c9e56f49808e",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "46374e34e31d45aec2add6580856c1e0c608fe2ac896a788f96a5b2b41b8c5cd",
+                         "claim":  "Prefers the OSC 8 URI stored on a screen cell over plain URL detection and passes the complete target with the label column range.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/desktop/src/terminal/content.rs"
+                                      }
+                     },
+                     {
+                         "id":  "e4b0ec07-e8e8-4414-a750-710153932ad6",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "448bd1399fabc4ae44f7bd5c6a8ae6f6cf4e8551b5c3944a1a2842c824a5031d",
+                         "claim":  "Validates http, https and file URLs. Windows opens the full UTF-16 URL/path with ShellExecuteExW and reports launch failures without cmd parsing.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/desktop/runtime/src/app_info.rs"
+                                      }
+                     },
+                     {
+                         "id":  "81f957fb-140a-4235-ab32-b3349e1355cc",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "4c3786097d3b935f0a920d9279bb07b105f18e55dfabbebd81653d695c93fbc7",
+                         "claim":  "External default browser. The opt-in Windows loopback probe checks its location.href including query, fragment, ampersands and percent-encoded data.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/desktop/runtime/tests/open_url_windows.rs"
+                                      }
+                     },
+                     {
+                         "id":  "7cd638d9-f35c-44f7-9652-61e8333f0702",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "68f1beb61cd05d9b14d118e6ff085deb9282ae73985b1002e9ac18cce472463b",
+                         "claim":  "Declared dependencies or calls: Uses workspace services",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/desktop/Cargo.toml"
+                                      }
+                     },
+                     {
+                         "id":  "9d28ab23-9257-45a6-bfbb-b4756c01533c",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "5224cd9bc4e565fa31732586bd1ba37bf9c2c4d9906ac25cd10c3a750590b817",
+                         "claim":  "Declared dependencies or calls: Uses runtime domain rules",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/agent/Cargo.toml"
+                                      }
+                     },
+                     {
+                         "id":  "32503d30-a00d-4574-b21c-78eea1a34d4a",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "8264f03f76189fe71588e150cea8f9bcd0fa44e9fb7647dc60c3d8e43f98eee0",
+                         "claim":  "Declared dependencies or calls: Uses shared memory engine",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/desktop/runtime/Cargo.toml"
+                                      }
+                     },
+                     {
+                         "id":  "8bc4f168-dfcb-42e8-8291-42d85d6c36b8",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "ee80cb2b1139381e831d2ffcdd0371886484032a6340e2a6dc6ca94b12d30fa1",
+                         "claim":  "Declared dependencies or calls: Exposes protocol helpers",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "crates/codux-protocol-ffi/Cargo.toml"
+                                      }
+                     },
+                     {
+                         "id":  "0b0bb9f6-dd27-4b27-8057-fab650e0989f",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "cb761fe1af7842c914d3d93ae6b23325e6d5a0fe53996ee7c9830844addb8322",
+                         "claim":  "Declared dependencies or calls: Uses shared PTY driver",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "crates/codux-runtime-live/Cargo.toml"
+                                      }
+                     },
+                     {
+                         "id":  "646980a8-12db-45c3-9f88-afaf82f30c3b",
+                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
+                         "hash":  "2dcd6c987c96f61bf1e2f48af77214bf6f86e2eab27af9e7512a78a5f8fe5120",
+                         "claim":  "Declared dependencies or calls: Forwards clicked link URI via app_open_url",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/desktop/src/terminal/view.rs"
+                                      }
+                     }
+                 ],
+    "schemaVersion":  1
+}
