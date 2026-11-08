@@ -202,9 +202,9 @@
                      },
                      {
                          "id":  "e4b0ec07-e8e8-4414-a750-710153932ad6",
-                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
-                         "hash":  "448bd1399fabc4ae44f7bd5c6a8ae6f6cf4e8551b5c3944a1a2842c824a5031d",
-                         "claim":  "Validates http, https and file URLs. Windows opens the full UTF-16 URL/path with ShellExecuteExW and reports launch failures without cmd parsing.",
+                         "observedAt":  "2026-11-08T12:56:41.8528476Z",
+                         "hash":  "814a07448b8278dbdf7389c5a4a1cf527283b4057b991134efeb2e752914a4b0",
+                         "claim":  "Validates http, https and file URLs. Windows opens the full UTF-16 URL/path on a dedicated STA shell thread, avoiding GPUI message-loop reentrancy and preserving synchronous launch errors.",
                          "kind":  "source-code",
                          "location":  {
                                           "path":  "apps/desktop/runtime/src/app_info.rs"
@@ -278,6 +278,16 @@
                          "kind":  "source-code",
                          "location":  {
                                           "path":  "apps/desktop/src/terminal/view.rs"
+                                      }
+                     },
+                     {
+                         "id":  "6b22e619-c9c2-4e44-aec7-20b78f62c4cb",
+                         "observedAt":  "2026-11-08T12:56:41.8528476Z",
+                         "hash":  "6c39cb454b8b09a79e7dab8b6e33ae3c3938d2ed1b589fa6fc6d7a0637983ecf",
+                         "claim":  "Opt-in native GPUI child-process regression: queues an entity update before opening a full URL while the application is borrowed, then checks the callback success marker and process exit.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/desktop/tests/open_url_windows.rs"
                                       }
                      }
                  ],

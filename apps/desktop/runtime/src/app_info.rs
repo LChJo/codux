@@ -836,7 +836,25 @@ fn open_target(target: &str) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn open_windows_target(target: &str) -> Result<(), String> {
-    use windows_sys::Win32::Foundation::RPC_E_CHANGED_MODE;
+    if target.contains('\0') {
+        return Err("Open target cannot contain a NUL character.".to_string());
+    }
+    // ShellExecuteExW (and COM teardown) can dispatch window messages. Doing
+    // that inside a GPUI callback re-enters its borrowed AppCell and aborts.
+    // Isolate shell handlers on a fresh STA thread, even for callers that do
+    // not already dispatch opening to a background executor. Joining preserves
+    // the synchronous launch-error contract without pumping the caller's UI.
+    let target = target.to_owned();
+    std::thread::Builder::new()
+        .name("codux-shell-open".to_string())
+        .spawn(move || shell_execute_windows_target(&target))
+        .map_err(|error| format!("Failed to start shell opener: {error}"))?
+        .join()
+        .map_err(|_| "Shell opener thread panicked.".to_string())?
+}
+
+#[cfg(target_os = "windows")]
+fn shell_execute_windows_target(target: &str) -> Result<(), String> {
     use windows_sys::Win32::System::Com::{
         COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx, CoUninitialize,
     };
@@ -845,9 +863,6 @@ fn open_windows_target(target: &str) -> Result<(), String> {
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
-    if target.contains('\0') {
-        return Err("Open target cannot contain a NUL character.".to_string());
-    }
     let target: Vec<u16> = target.encode_utf16().chain(std::iter::once(0)).collect();
     let mut info = SHELLEXECUTEINFOW {
         cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
@@ -860,15 +875,14 @@ fn open_windows_target(target: &str) -> Result<(), String> {
         ..Default::default()
     };
 
-    // Shell handlers may use COM. Keep an existing apartment if the caller
-    // already initialized one, and balance only our successful initialization.
+    // This dedicated thread owns its STA apartment and has no GPUI callbacks.
     let com_status = unsafe {
         CoInitializeEx(
             std::ptr::null(),
             (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
         )
     };
-    if com_status < 0 && com_status != RPC_E_CHANGED_MODE {
+    if com_status < 0 {
         return Err(format!(
             "Failed to initialize COM: 0x{:08X}",
             com_status as u32
@@ -884,9 +898,7 @@ fn open_windows_target(target: &str) -> Result<(), String> {
             std::io::Error::last_os_error()
         ))
     };
-    if com_status >= 0 {
-        unsafe { CoUninitialize() };
-    }
+    unsafe { CoUninitialize() };
     result
 }
 

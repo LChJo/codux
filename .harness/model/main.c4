@@ -47,14 +47,14 @@ model {
         version "1"
       }
       url_open = component "Native URL Opener" {
-        description "Validates http, https and file URLs. Windows opens the full UTF-16 URL/path with ShellExecuteExW and reports launch failures without cmd parsing."
+        description "Validates http, https and file URLs. Windows opens the full UTF-16 URL/path on a dedicated STA shell thread, avoiding GPUI message-loop reentrancy and preserving synchronous launch errors."
         metadata {
           harness_id "ce104158-bc15-4de0-bafb-3ea627a85dac"
-          brief "Validates http, https and file URLs. Windows opens the full UTF-16 URL/path with ShellExecuteExW and reports launch failures without cmd parsing."
+          brief "Validates http, https and file URLs. Windows opens the full UTF-16 URL/path on a dedicated STA shell thread, avoiding GPUI message-loop reentrancy and preserving synchronous launch errors."
           source "fact"
           status "verified"
-          evidence "e4b0ec07-e8e8-4414-a750-710153932ad6"
-          version "1"
+          evidence "e4b0ec07-e8e8-4414-a750-710153932ad6 6b22e619-c9c2-4e44-aec7-20b78f62c4cb"
+          version "2"
         }
       }
     }
