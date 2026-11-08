@@ -43,6 +43,30 @@ fn detects_plain_terminal_urls_at_cell() {
     assert_eq!(link.range, 5..33);
     assert!(terminal_link_at_cell(&snapshot, TerminalCellPoint { row: 0, col: 2 }).is_none());
 }
+
+#[test]
+fn osc8_link_detection_preserves_complete_target_with_ampersands() {
+    let url = concat!(
+        "http://127.0.0.1:61999/#code=",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "&worktree=11111111-2222-3333-4444-555555555555",
+        "&task=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    );
+    let mut state = TerminalModel::new_for_test(80, 4, 100);
+    state.process_bytes(format!("\x1b]8;;{url}\x1b\\docs\x1b]8;;\x1b\\ plain").as_bytes());
+    state.handle.publish_snapshot();
+    let snapshot = state.handle.snapshot();
+
+    for col in 0..4 {
+        let link = terminal_link_at_cell(&snapshot, TerminalCellPoint { row: 0, col })
+            .expect("OSC 8 link under the label");
+        assert_eq!(link.url, url);
+        assert_eq!(link.line, 0);
+        assert_eq!(link.range, 0..4);
+    }
+    assert!(terminal_link_at_cell(&snapshot, TerminalCellPoint { row: 0, col: 5 }).is_none());
+}
+
 #[test]
 fn plain_url_detection_uses_terminal_columns() {
     let row_text = vec![

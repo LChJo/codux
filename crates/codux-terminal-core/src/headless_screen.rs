@@ -2321,6 +2321,41 @@ mod tests {
     }
 
     #[test]
+    fn osc8_hyperlinks_preserve_ampersands_in_targets_and_keyframes() {
+        let urls = [
+            concat!(
+                "http://127.0.0.1:61999/#code=",
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "&worktree=11111111-2222-3333-4444-555555555555",
+                "&task=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+            ),
+            "https://example.com/a&b?first=1&second=2#one=1&two=2",
+            "https://example.com/~_.+;=-/?first=a%26b&second=2#one=~_.+;=-/?&two=2",
+        ];
+        for url in urls {
+            for terminator in ["\x07", "\x1b\\"] {
+                let mut screen = HeadlessTerminalScreen::new(40, 4, 100);
+                let output = format!("\x1b]8;;{url}{terminator}docs\x1b]8;;{terminator} plain");
+                screen.process(output.as_bytes());
+                let snapshot = screen.snapshot();
+                let mut replay = HeadlessTerminalScreen::new(40, 4, 100);
+                replay.process_replay(snapshot.data.as_bytes());
+                let replay_snapshot = replay.snapshot();
+
+                for snapshot in [&snapshot, &replay_snapshot] {
+                    for (col, ch) in "docs".chars().enumerate() {
+                        let cell = snapshot.cells.iter().find(|cell| cell.col == col).unwrap();
+                        assert_eq!(cell.text, ch.to_string());
+                        assert_eq!(cell.link.as_deref(), Some(url));
+                    }
+                    let plain = snapshot.cells.iter().find(|cell| cell.text == "p").unwrap();
+                    assert_eq!(plain.link, None);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn engine_events_reach_sink_only_for_live_output() {
         let stored = Arc::new(std::sync::Mutex::new(Vec::<TerminalScreenEvent>::new()));
         let sink_stored = stored.clone();

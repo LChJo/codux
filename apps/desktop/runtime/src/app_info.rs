@@ -826,12 +826,68 @@ fn open_target(target: &str) -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
-        return spawn_open_command("cmd", &["/C", "start", "", target]);
+        open_windows_target(target)
     }
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
     {
         return spawn_open_command("xdg-open", &[target]);
     }
+}
+
+#[cfg(target_os = "windows")]
+fn open_windows_target(target: &str) -> Result<(), String> {
+    use windows_sys::Win32::Foundation::RPC_E_CHANGED_MODE;
+    use windows_sys::Win32::System::Com::{
+        COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx, CoUninitialize,
+    };
+    use windows_sys::Win32::UI::Shell::{
+        SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SHELLEXECUTEINFOW, ShellExecuteExW,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    if target.contains('\0') {
+        return Err("Open target cannot contain a NUL character.".to_string());
+    }
+    let target: Vec<u16> = target.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI,
+        lpVerb: windows_sys::w!("open"),
+        // Pass the URL/path as data. `cmd /C start` treats an unquoted `&`
+        // as a command separator and truncates query and fragment parameters.
+        lpFile: target.as_ptr(),
+        nShow: SW_SHOWNORMAL,
+        ..Default::default()
+    };
+
+    // Shell handlers may use COM. Keep an existing apartment if the caller
+    // already initialized one, and balance only our successful initialization.
+    let com_status = unsafe {
+        CoInitializeEx(
+            std::ptr::null(),
+            (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
+        )
+    };
+    if com_status < 0 && com_status != RPC_E_CHANGED_MODE {
+        return Err(format!(
+            "Failed to initialize COM: 0x{:08X}",
+            com_status as u32
+        ));
+    }
+    // The UTF-16 target and verb stay valid through the call. NOASYNC also
+    // supports callers without a message loop; no process handle is requested.
+    let result = if unsafe { ShellExecuteExW(&mut info) } != 0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "Failed to open target: {}",
+            std::io::Error::last_os_error()
+        ))
+    };
+    if com_status >= 0 {
+        unsafe { CoUninitialize() };
+    }
+    result
 }
 
 fn open_target_with_http_proxy(
@@ -921,8 +977,8 @@ fn spawn_open_command(program: &str, args: &[&str]) -> Result<(), String> {
 }
 
 /// On Windows, launch the helper process without flashing a console window.
-/// Opening a log/file goes through `cmd /C start ...`, and without this flag
-/// `cmd.exe` briefly pops a console window before the associated app appears.
+/// Console helpers such as the update-installer launcher otherwise flash a
+/// window before the associated app appears.
 fn apply_no_window(command: &mut Command) {
     #[cfg(target_os = "windows")]
     {
@@ -1019,6 +1075,24 @@ mod tests {
         let parsed = Url::parse(url).unwrap();
         let path = parsed.to_file_path().unwrap();
         assert_eq!(path, PathBuf::from(expected));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_open_target_rejects_embedded_nul() {
+        let result = open_windows_target("https://example.com/\0?first=1&second=2");
+        assert!(result.unwrap_err().contains("NUL"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_open_target_reports_launch_failures() {
+        let missing = std::env::temp_dir()
+            .join(format!("codux-missing-{}", uuid::Uuid::new_v4()))
+            .join("missing.txt");
+        assert!(!missing.exists());
+        let result = open_windows_target(&missing.to_string_lossy());
+        assert!(result.unwrap_err().starts_with("Failed to open target:"));
     }
 
     #[test]
