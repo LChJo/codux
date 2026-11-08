@@ -222,8 +222,8 @@
                      },
                      {
                          "id":  "7cd638d9-f35c-44f7-9652-61e8333f0702",
-                         "observedAt":  "2026-11-08T08:02:06.3771064Z",
-                         "hash":  "d4384a9d5ff0450c086365c5c2278342d1b5f012439057bdb8da160ab22027fe",
+                         "observedAt":  "2026-11-08T13:07:07.9497513Z",
+                         "hash":  "85aacedf91920a8189ca92853a7296b9d642fb4b3f6ba2bab0c1fd8c7b23bbfb",
                          "claim":  "Declared dependencies or calls: Uses workspace services",
                          "kind":  "source-code",
                          "location":  {
@@ -232,8 +232,8 @@
                      },
                      {
                          "id":  "9d28ab23-9257-45a6-bfbb-b4756c01533c",
-                         "observedAt":  "2026-11-08T08:02:06.3841232Z",
-                         "hash":  "3fff90fe93e1b77009940d5eae5afc12eae06a06595de102e29eee3892ec336f",
+                         "observedAt":  "2026-11-08T13:07:07.9557679Z",
+                         "hash":  "2715f318ac439efa2c5c47399389697c9ea644ad4443d91101737a119d8f933d",
                          "claim":  "Declared dependencies or calls: Uses runtime domain rules",
                          "kind":  "source-code",
                          "location":  {
@@ -242,8 +242,8 @@
                      },
                      {
                          "id":  "32503d30-a00d-4574-b21c-78eea1a34d4a",
-                         "observedAt":  "2026-11-08T08:02:06.3841232Z",
-                         "hash":  "06fde4fde4578f8408876bb283f070e13a333c7172fb909c2508d0a0f9bcb045",
+                         "observedAt":  "2026-11-08T13:07:07.9577739Z",
+                         "hash":  "6e8934f3e10771178eeefc2a9f1649bde2f42f57d191ae3a6fdd90689fcd1253",
                          "claim":  "Declared dependencies or calls: Uses shared memory engine",
                          "kind":  "source-code",
                          "location":  {
