@@ -528,10 +528,6 @@ impl CoduxApp {
             );
             return;
         }
-        if let Err(error) = self.runtime_service.open_url(&url) {
-            self.status_message = "failed to open link".to_string();
-            self.show_system_error_alert("Open Link Failed".to_string(), error, cx);
-            self.invalidate_status_bar(cx);
-        }
+        self.open_url_in_background(url, "Open Link Failed".to_string(), None, cx);
     }
 }

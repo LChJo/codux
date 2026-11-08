@@ -353,6 +353,91 @@ impl CoduxApp {
     }
 }
 
+impl CoduxApp {
+    /// ShellExecuteExW runs shell extensions synchronously and those may pump
+    /// window messages. Calling it on the UI thread re-enters gpui while the
+    /// app RefCell is already borrowed, which aborts the process (clicking a
+    /// link in the terminal did exactly that). Keep URL launching on the
+    /// blocking pool; it also gives ShellExecuteEx the message-loop-free
+    /// thread its `SEE_MASK_NOASYNC` flag expects.
+    pub(in crate::app) fn open_url_in_background(
+        &mut self,
+        url: String,
+        error_title: String,
+        success_message: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let service = self.runtime_service.clone();
+        self.run_open_in_background(
+            move || service.open_url(&url),
+            error_title,
+            success_message,
+            cx,
+        );
+    }
+
+    pub(in crate::app) fn open_url_with_http_proxy_in_background(
+        &mut self,
+        url: String,
+        proxy_host: String,
+        proxy_port: u16,
+        error_title: String,
+        success_message: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let service = self.runtime_service.clone();
+        self.run_open_in_background(
+            move || service.open_url_with_http_proxy(&url, &proxy_host, proxy_port),
+            error_title,
+            success_message,
+            cx,
+        );
+    }
+
+    pub(in crate::app) fn run_open_in_background<Open>(
+        &mut self,
+        open: Open,
+        error_title: String,
+        success_message: Option<String>,
+        cx: &mut Context<Self>,
+    ) where
+        Open: FnOnce() -> Result<(), String> + Send + 'static,
+    {
+        cx.spawn(async move |this, cx| {
+            let result = codux_runtime::async_runtime::spawn_blocking(open).await;
+            Self::finish_open_url_in_background(this, result, error_title, success_message, cx);
+        })
+        .detach();
+    }
+
+    fn finish_open_url_in_background<JoinError: std::fmt::Display>(
+        this: gpui::WeakEntity<Self>,
+        result: Result<Result<(), String>, JoinError>,
+        error_title: String,
+        success_message: Option<String>,
+        cx: &mut gpui::AsyncApp,
+    ) {
+        let error = match result {
+            Ok(Ok(())) => {
+                if let Some(message) = success_message {
+                    let _ = this.update(cx, |app, cx| {
+                        app.status_message = message;
+                        app.invalidate_status_bar(cx);
+                    });
+                }
+                return;
+            }
+            Ok(Err(error)) => error,
+            Err(error) => error.to_string(),
+        };
+        let _ = this.update(cx, |app, cx| {
+            app.status_message = format!("failed to open link: {error}");
+            app.show_system_error_alert(error_title, error, cx);
+            app.invalidate_status_bar(cx);
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

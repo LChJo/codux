@@ -187,11 +187,12 @@ impl CoduxApp {
     }
 
     pub(in crate::app) fn open_codux_website(&mut self, cx: &mut Context<Self>) {
-        match self.runtime_service.open_url(CODUX_WEBSITE_URL) {
-            Ok(()) => self.status_message = "Codux website opened".to_string(),
-            Err(error) => self.status_message = format!("failed to open Codux website: {error}"),
-        }
-        self.invalidate_status_bar(cx);
+        self.open_url_in_background(
+            CODUX_WEBSITE_URL.to_string(),
+            "Open Codux Website Failed".to_string(),
+            Some("Codux website opened".to_string()),
+            cx,
+        );
     }
 
     pub(in crate::app) fn open_user_agreement(&mut self, cx: &mut Context<Self>) {
@@ -407,20 +408,24 @@ impl CoduxApp {
 
     pub(in crate::app) fn open_runtime_log(&mut self, cx: &mut Context<Self>) {
         self.runtime_trace("help", "open_runtime_log");
-        match self.runtime_service.open_runtime_log() {
-            Ok(()) => self.status_message = "runtime log opened".to_string(),
-            Err(error) => self.status_message = format!("failed to open runtime log: {error}"),
-        }
-        self.invalidate_status_bar(cx);
+        let service = self.runtime_service.clone();
+        self.run_open_in_background(
+            move || service.open_runtime_log(),
+            "Open Runtime Log Failed".to_string(),
+            Some("runtime log opened".to_string()),
+            cx,
+        );
     }
 
     pub(in crate::app) fn open_live_log(&mut self, cx: &mut Context<Self>) {
         self.runtime_trace("help", "open_live_log");
-        match self.runtime_service.open_live_log() {
-            Ok(()) => self.status_message = "live log opened".to_string(),
-            Err(error) => self.status_message = format!("failed to open live log: {error}"),
-        }
-        self.invalidate_status_bar(cx);
+        let service = self.runtime_service.clone();
+        self.run_open_in_background(
+            move || service.open_live_log(),
+            "Open Live Log Failed".to_string(),
+            Some("live log opened".to_string()),
+            cx,
+        );
     }
 
     pub(in crate::app) fn request_restart(&mut self, cx: &mut Context<Self>) {

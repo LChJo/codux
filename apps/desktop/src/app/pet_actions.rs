@@ -1031,10 +1031,12 @@ impl CoduxApp {
     }
 
     pub(super) fn open_pet_market(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        match self.runtime_service.open_url("https://petdex.crafter.run") {
-            Ok(_) => self.status_message = "Petdex opened".to_string(),
-            Err(error) => self.status_message = format!("failed to open Petdex: {error}"),
-        }
+        self.open_url_in_background(
+            "https://petdex.crafter.run".to_string(),
+            "Open Petdex Failed".to_string(),
+            Some("Petdex opened".to_string()),
+            cx,
+        );
         self.invalidate_ui_region(cx, UiRegion::Root);
     }
 

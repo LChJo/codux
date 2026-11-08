@@ -762,8 +762,27 @@ impl TerminalView {
         {
             if let Some(opener) = self.link_opener.clone() {
                 opener(link.url.clone(), window, cx);
-            } else if let Err(error) = codux_runtime::app_commands::app_open_url(link.url.clone()) {
-                eprintln!("failed to open terminal link {}: {error}", link.url);
+            } else {
+                // ShellExecuteEx can pump window messages from shell
+                // extensions; keep it off the UI thread.
+                let url = link.url.clone();
+                let log_url = url.clone();
+                cx.spawn(async move |_view, _cx| {
+                    let result = codux_runtime::async_runtime::spawn_blocking(move || {
+                        codux_runtime::app_commands::app_open_url(url)
+                    })
+                    .await;
+                    match result {
+                        Ok(Ok(())) => {}
+                        Ok(Err(error)) => {
+                            eprintln!("failed to open terminal link {log_url}: {error}")
+                        }
+                        Err(error) => {
+                            eprintln!("failed to open terminal link {log_url}: {error}")
+                        }
+                    }
+                })
+                .detach();
             }
             self.hover_link = Some(link);
             cx.stop_propagation();

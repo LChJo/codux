@@ -234,20 +234,15 @@ impl CoduxApp {
     ) {
         match self.runtime_service.open_host_browser_url(&device_id, &url) {
             Ok(opened) => {
-                match self.runtime_service.open_url_with_http_proxy(
-                    &opened.original_url,
-                    &opened.proxy_host,
+                let success_message = format!("opened through web tunnel: {}", opened.original_url);
+                self.open_url_with_http_proxy_in_background(
+                    opened.original_url,
+                    opened.proxy_host,
                     opened.proxy_port,
-                ) {
-                    Ok(()) => {
-                        self.status_message =
-                            format!("opened through web tunnel: {}", opened.original_url);
-                    }
-                    Err(error) => {
-                        self.status_message = "failed to open web tunnel".to_string();
-                        self.show_system_error_alert(title, error, cx);
-                    }
-                }
+                    title,
+                    Some(success_message),
+                    cx,
+                );
             }
             Err(error) => {
                 self.status_message = "web tunnel unavailable".to_string();
@@ -270,20 +265,15 @@ impl CoduxApp {
         );
         match self.runtime_service.open_host_browser_session(&device_id) {
             Ok(opened) => {
-                match self.runtime_service.open_url_with_http_proxy(
-                    &opened.original_url,
-                    &opened.proxy_host,
+                let success_message = format!("opened web tunnel browser: {}", opened.original_url);
+                self.open_url_with_http_proxy_in_background(
+                    opened.original_url,
+                    opened.proxy_host,
                     opened.proxy_port,
-                ) {
-                    Ok(()) => {
-                        self.status_message =
-                            format!("opened web tunnel browser: {}", opened.original_url);
-                    }
-                    Err(error) => {
-                        self.status_message = "failed to open web tunnel browser".to_string();
-                        self.show_system_error_alert(title.clone(), error, cx);
-                    }
-                }
+                    title,
+                    Some(success_message),
+                    cx,
+                );
             }
             Err(error) => {
                 self.status_message = "web tunnel unavailable".to_string();

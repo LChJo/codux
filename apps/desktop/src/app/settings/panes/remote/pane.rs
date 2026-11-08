@@ -403,8 +403,13 @@ pub(super) fn remote_mobile_download_banner(
         .gap(px(16.0))
         .cursor_pointer()
         .hover(|style| style.bg(color(theme::ACCENT).opacity(0.12)))
-        .on_click(cx.listener(|app, _event, _window, _cx| {
-            let _ = app.runtime_service.open_url(CODUX_MOBILE_DOWNLOAD_URL);
+        .on_click(cx.listener(|app, _event, _window, cx| {
+            app.open_url_in_background(
+                CODUX_MOBILE_DOWNLOAD_URL.to_string(),
+                "Open Link Failed".to_string(),
+                None,
+                cx,
+            );
         }))
         .child(
             div()
