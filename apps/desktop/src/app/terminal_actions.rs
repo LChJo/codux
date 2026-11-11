@@ -788,7 +788,7 @@ impl CoduxApp {
             return;
         };
         if self.terminals[tab_index].panes.len() <= 1 {
-            self.reset_terminal_pane(pane_index, window, cx);
+            self.stop_terminal_pane(pane_index, window, cx);
             return;
         }
         if pane_index >= self.terminals[tab_index].panes.len() {
@@ -859,10 +859,10 @@ impl CoduxApp {
         self.invalidate_terminal_workspace(cx);
     }
 
-    fn reset_terminal_pane(
+    pub(in crate::app) fn stop_terminal_pane(
         &mut self,
         pane_index: usize,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(tab_index) = (!self.terminals.is_empty()).then_some(0) else {
@@ -871,7 +871,6 @@ impl CoduxApp {
         if pane_index >= self.terminals[tab_index].panes.len() {
             return;
         }
-        self.refresh_terminal_slot_snapshots();
         let terminal_id = self.terminals[tab_index].panes[pane_index]
             .terminal_id
             .clone()
@@ -882,33 +881,32 @@ impl CoduxApp {
             self.invalidate_terminal_workspace(cx);
             return;
         }
+        // Wait for startup to settle before closing so an in-flight attach
+        // cannot create a new process after cleanup.
+        if self.terminal_attach_in_flight.contains(&terminal_id) {
+            return;
+        }
+        let cleanup = match self.kill_terminal_session_if_present(&terminal_id) {
+            Ok(cleanup) => cleanup,
+            Err(error) => {
+                self.status_message = format!("failed to close terminal: {error}");
+                self.invalidate_terminal_workspace(cx);
+                return;
+            }
+        };
         self.terminals[tab_index].panes[pane_index].pane = None;
         self.terminals[tab_index].panes[pane_index].restored_output_bytes = 0;
         self.terminals[tab_index].panes[pane_index]
             .restored_output_tail
             .clear();
-        let kill_result = self.kill_terminal_session_if_present(&terminal_id);
+        self.pending_terminal_close = None;
         self.select_active_terminal_runtime_id(Some(&terminal_id));
-        let mount_result = self.ensure_active_terminal_mounted(cx);
-        self.refresh_terminal_slot_snapshots();
-        self.focus_active_terminal(window, cx);
         self.sync_terminal_state_after_layout_change(cx);
-        match kill_result {
-            Ok(cleanup) => {
-                if cleanup.lifecycle_removed {
-                    self.sync_project_lifecycle_state(cx);
-                    self.invalidate_task_column(cx);
-                }
-                if let Err(error) = mount_result {
-                    self.status_message = format!("terminal reset; mount failed: {error}");
-                } else {
-                    self.status_message = "terminal reset".to_string();
-                }
-            }
-            Err(error) => {
-                self.status_message = format!("terminal reset; PTY cleanup failed: {error}");
-            }
+        if cleanup.lifecycle_removed {
+            self.sync_project_lifecycle_state(cx);
+            self.invalidate_task_column(cx);
         }
+        self.status_message = self.text("terminal.closed", "Closed terminal.");
         self.invalidate_terminal_workspace(cx);
     }
 

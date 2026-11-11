@@ -391,6 +391,81 @@ fn terminal_restore_plan_falls_back_to_single_terminal() {
 }
 
 #[test]
+fn terminal_restore_keeps_saved_panes_dormant_without_live_sessions() {
+    use super::terminal_state::{restore_terminal_tabs_skeleton, terminal_session_is_live};
+    use codux_runtime::terminal_pty::TerminalManager;
+
+    let layout = TerminalLayoutSummary {
+        top_panes: vec![TerminalPaneSummary {
+            terminal_id: "saved-terminal".to_string(),
+            title: "Saved terminal".to_string(),
+        }],
+        ..Default::default()
+    };
+    let runtime = TerminalRuntimeSummary {
+        sessions: vec![TerminalRuntimeSessionSummary {
+            terminal_id: "saved-terminal".to_string(),
+            title: "Saved terminal".to_string(),
+            project_id: "project-1".to_string(),
+            project_name: "Codux".to_string(),
+            project_path: String::new(),
+            cwd: String::new(),
+            status: "running".to_string(),
+            is_running: true,
+            created_at: 1.0,
+            last_active_at: 2.0,
+            has_buffer: true,
+            buffer_characters: 21,
+            input_bytes: 0,
+            last_input_at: None,
+            input_history: Vec::new(),
+            output_bytes: 42,
+            output_tail: "previous shell output".to_string(),
+        }],
+        ..Default::default()
+    };
+    let plan = terminal_restore_plan(&layout, &runtime);
+    let (tabs, _, _) = restore_terminal_tabs_skeleton(&plan, None);
+    let manager = TerminalManager::new();
+
+    assert_eq!(tabs[0].panes.len(), 1);
+    assert!(tabs[0].panes[0].pane.is_none());
+    assert_eq!(tabs[0].panes[0].restored_output_bytes, 42);
+    assert!(!terminal_session_is_live(&manager, Some("saved-terminal")));
+    assert!(!terminal_session_is_live(&manager, None));
+    assert!(manager.list().is_empty());
+}
+
+#[test]
+fn terminal_restore_recognizes_live_sessions_and_releases_closed_sessions() {
+    use super::terminal_state::terminal_session_is_live;
+    use codux_runtime::terminal_pty::{TerminalManager, TerminalPtyConfig};
+
+    let manager = TerminalManager::new();
+    let id = manager
+        .create(
+            TerminalPtyConfig {
+                terminal_id: Some("restore-live-terminal".to_string()),
+                shell: Some(if cfg!(windows) { "cmd.exe" } else { "/bin/sh" }.to_string()),
+                ..Default::default()
+            },
+            |_| {},
+        )
+        .expect("create test shell");
+    let was_live = terminal_session_is_live(&manager, Some(&id));
+    manager
+        .kill_and_wait(&id, std::time::Duration::from_secs(5))
+        .expect("stop and reap test shell");
+
+    assert!(was_live, "an existing live shell may be reattached");
+    assert!(!terminal_session_is_live(&manager, Some(&id)));
+    assert!(
+        manager.list().is_empty(),
+        "closing releases the PTY session"
+    );
+}
+
+#[test]
 fn restored_terminal_preview_lines_use_last_non_empty_rows() {
     assert_eq!(
         restored_terminal_preview_lines("one\n\ntwo\nthree\nfour\nfive\n"),

@@ -245,9 +245,8 @@ pub(in crate::app) fn prepare_boot_terminal_state(
         TerminalRuntimeSummary::default(),
         language,
     );
-    // Local boot attaches synchronously, so it does not pass through the async
-    // restore callback that normally saves pane identities. Commit them before
-    // spawning a shell so even an interrupted first launch restores the same IDs.
+    // Save identities even while panes are dormant, before the user starts a
+    // shell, so an interrupted first launch restores the same IDs.
     if let Some(key) = storage_key
         && !layout.top_panes.is_empty()
     {
@@ -1046,6 +1045,11 @@ where
             slot.pane = Some(pane);
             continue;
         }
+        // Restoring a layout must never launch a shell for a dormant pane.
+        // Existing views were reused above; only attach a known local session.
+        if !terminal_session_is_live(&terminal_manager, slot.terminal_id.as_deref()) {
+            continue;
+        }
         // A remote-hosted project's terminal must open on the host. When the
         // caller can drive the async attach chokepoint (`pending_out`), build a
         // pending pane and defer — opening it inline would block the UI thread
@@ -1075,6 +1079,18 @@ where
         )?);
     }
     Ok(())
+}
+
+pub(in crate::app) fn terminal_session_is_live(
+    terminal_manager: &TerminalManager,
+    terminal_id: Option<&str>,
+) -> bool {
+    terminal_id.is_some_and(|id| {
+        terminal_manager
+            .list()
+            .iter()
+            .any(|session| session.id == id && session.is_running)
+    })
 }
 
 pub(in crate::app) fn refresh_terminal_pane_config<C>(

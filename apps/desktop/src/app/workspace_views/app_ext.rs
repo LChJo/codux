@@ -260,6 +260,10 @@ impl CoduxApp {
                                 .unwrap_or_else(|| slot.title.clone()),
                             active: terminal_id.as_deref()
                                 == Some(self.state.terminal_layout.active_terminal_id.as_str()),
+                            can_stop: slot.pane.is_some()
+                                && terminal_id
+                                    .as_deref()
+                                    .is_some_and(|id| !self.terminal_attach_in_flight.contains(id)),
                             terminal_id,
                             view: slot.pane.as_ref().map(|pane| pane.view.clone()),
                             search_open,

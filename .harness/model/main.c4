@@ -15,14 +15,14 @@ model {
       version "1"
     }
     desktop = component "Codux Desktop" {
-      description "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration."
+      description "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration. Terminal layouts restore dormant panes; explicit selection starts shells and the power control stops sessions while retaining their panes."
       metadata {
         harness_id "42a580c4-143d-4093-9051-4601fc90d4a3"
-        brief "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration."
+        brief "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration. Terminal layouts restore dormant panes; explicit selection starts shells and the power control stops sessions while retaining their panes."
         source "fact"
         status "verified"
-        evidence "f01500b8-70ac-404d-879d-535593dcff91"
-        version "1"
+        evidence "f01500b8-70ac-404d-879d-535593dcff91 52962a4d-75b5-42ef-8e63-6b07d57beed2 995870f7-d95d-46f7-9613-70210b3db7b4"
+        version "2"
       }
       terminal_links = component "Terminal Hyperlinks" {
         description "Prefers the OSC 8 URI stored on a screen cell over plain URL detection and passes the complete target with the label column range."

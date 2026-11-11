@@ -348,6 +348,9 @@ impl CoduxApp {
                     .enumerate()
                     .filter_map(|(pane_index, slot)| {
                         let terminal_id = Self::terminal_slot_terminal_id(tab, pane_index, slot)?;
+                        if !self.terminal_slot_has_session(&terminal_id, slot) {
+                            return None;
+                        }
                         Some(self.lightweight_session_summary_for_slot(
                             terminal_id,
                             slot,
@@ -362,6 +365,9 @@ impl CoduxApp {
             let Some(terminal_id) = Self::collapsed_slot_terminal_id(slot) else {
                 continue;
             };
+            if !self.terminal_slot_has_session(&terminal_id, slot) {
+                continue;
+            }
             if sessions
                 .iter()
                 .any(|session| session.terminal_id == terminal_id)
@@ -400,6 +406,9 @@ impl CoduxApp {
                     .enumerate()
                     .filter_map(|(pane_index, slot)| {
                         let terminal_id = Self::terminal_slot_terminal_id(tab, pane_index, slot)?;
+                        if !self.terminal_slot_has_session(&terminal_id, slot) {
+                            return None;
+                        }
                         Some(self.terminal_session_input_for_slot(
                             terminal_id,
                             slot,
@@ -412,6 +421,9 @@ impl CoduxApp {
             let Some(terminal_id) = Self::collapsed_slot_terminal_id(slot) else {
                 continue;
             };
+            if !self.terminal_slot_has_session(&terminal_id, slot) {
+                continue;
+            }
             if sessions
                 .iter()
                 .any(|session| session.terminal_id == terminal_id)
@@ -425,6 +437,15 @@ impl CoduxApp {
             ));
         }
         (active_terminal_id, sessions)
+    }
+
+    fn terminal_slot_has_session(&self, terminal_id: &str, slot: &TerminalPaneSlot) -> bool {
+        slot.pane.is_some()
+            || self.terminal_pane_registry.contains_key(terminal_id)
+            || super::super::terminal_state::terminal_session_is_live(
+                &self.terminal_manager,
+                Some(terminal_id),
+            )
     }
 
     /// Trimmed stable terminal id of a collapsed slot, if it has one.

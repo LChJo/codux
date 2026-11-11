@@ -78,6 +78,7 @@ impl CoduxApp {
             })
             .children(active.panes.iter().enumerate().map(|(index, slot)| {
                 let close_id = SharedString::from(format!("terminal-pane-close-{index}"));
+                let stop_id = SharedString::from(format!("terminal-pane-stop-{index}"));
                 let float_id = SharedString::from(format!("terminal-pane-float-{index}"));
                 let add_id = SharedString::from(format!("terminal-pane-add-{index}"));
                 div()
@@ -111,7 +112,7 @@ impl CoduxApp {
                                 .on_click(cx.listener(move |app, _event, window, cx| {
                                     app.select_terminal_pane(index, window, cx);
                                 }))
-                                .child("Click to open terminal")
+                                .child(self.text("terminal.start", "Click to start terminal"))
                                 .into_any_element(),
                         }),
                     )
@@ -140,6 +141,19 @@ impl CoduxApp {
                                 true,
                                 cx,
                                 |app, _event, window, cx| app.split_terminal(window, cx),
+                            ))
+                            .child(terminal_pane_control_button(
+                                stop_id,
+                                HeroIconName::Power,
+                                "关闭终端",
+                                slot.pane.is_some()
+                                    && slot.terminal_id.as_deref().is_some_and(|id| {
+                                        !self.terminal_attach_in_flight.contains(id)
+                                    }),
+                                cx,
+                                move |app, _event, window, cx| {
+                                    app.stop_terminal_pane(index, window, cx)
+                                },
                             ))
                             .child(terminal_pane_control_button(
                                 close_id,

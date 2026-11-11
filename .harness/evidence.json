@@ -289,6 +289,26 @@
                          "location":  {
                                           "path":  "apps/desktop/tests/open_url_windows.rs"
                                       }
+                     },
+                     {
+                         "id":  "52962a4d-75b5-42ef-8e63-6b07d57beed2",
+                         "observedAt":  "2026-11-11T10:46:01.4837542Z",
+                         "hash":  "a3a31eb1677b1871974f819b83003ee5150d5b38cb9b465652ed86e89e63996e",
+                         "claim":  "Terminal layout restoration keeps dormant pane identities without launching shells and only mounts existing live sessions.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/desktop/src/app/terminal_state.rs"
+                                      }
+                     },
+                     {
+                         "id":  "995870f7-d95d-46f7-9613-70210b3db7b4",
+                         "observedAt":  "2026-11-11T10:46:01.4837542Z",
+                         "hash":  "ca6262bae1347fee52876669c7b1314af55cff50fd1243b6a2c43ba8ecc2b45f",
+                         "claim":  "Explicit pane selection starts a terminal; stopping kills its session, clears output and retains the dormant pane and identity.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/desktop/src/app/terminal_actions.rs"
+                                      }
                      }
                  ],
     "schemaVersion":  1

@@ -553,10 +553,13 @@ fn terminal_pane(
     cx: &mut Context<TerminalWorkspaceView>,
 ) -> AnyElement {
     let close_id = SharedString::from(format!("terminal-pane-close-{index}"));
+    let stop_id = SharedString::from(format!("terminal-pane-stop-{index}"));
+    let start_id = SharedString::from(format!("terminal-pane-start-{index}"));
     let float_id = SharedString::from(format!("terminal-pane-float-{index}"));
     let collapse_id = SharedString::from(format!("terminal-pane-collapse-{index}"));
     let add_id = SharedString::from(format!("terminal-pane-add-{index}"));
     let command_drop_entity = app_entity.clone();
+    let start_entity = app_entity.clone();
     let pane_view = slot.view.clone();
     let drop_terminal_id = slot.terminal_id.clone();
     // The search bar floats over the same top-right corner as the controls.
@@ -591,7 +594,7 @@ fn terminal_pane(
                 .items_center()
                 .gap_2()
                 .pl_3()
-                .pr(px(158.0))
+                .pr(px(194.0))
                 .bg(theme::vibrancy(color(theme::BG_HEADER)))
                 .border_b_1()
                 .border_color(cx.theme().border)
@@ -621,15 +624,37 @@ fn terminal_pane(
                     None => div()
                         .size_full()
                         .flex()
+                        .flex_col()
                         .items_center()
                         .justify_center()
+                        .gap_3()
                         .bg(theme::terminal_fill(color(theme::BG_TERMINAL)))
                         .text_color(color(theme::TEXT_DIM))
                         .child(workspace_i18n(
                             language,
-                            "terminal.detached.mounting",
-                            "Mounting terminal...",
+                            "terminal.not_started",
+                            "Terminal is not running",
                         ))
+                        .child(
+                            Button::new(start_id)
+                                .secondary()
+                                .icon(HeroIconName::Play)
+                                .child(workspace_i18n(
+                                    language,
+                                    "terminal.start",
+                                    "Click to start terminal",
+                                ))
+                                .on_click(cx.listener(move |_view, _event, window, cx| {
+                                    defer_terminal_workspace_app_update(
+                                        start_entity.clone(),
+                                        window,
+                                        cx,
+                                        move |app, window, cx| {
+                                            app.select_terminal_pane(index, window, cx);
+                                        },
+                                    );
+                                })),
+                        )
                         .into_any_element(),
                 }),
         )
@@ -684,6 +709,19 @@ fn terminal_pane(
                         index,
                         open_split_menu_pane,
                         cx,
+                    ))
+                    .child(terminal_pane_control_button(
+                        app_entity.clone(),
+                        stop_id,
+                        HeroIconName::Power,
+                        SharedString::from(workspace_i18n(
+                            language,
+                            "terminal.close.title",
+                            "Close Terminal",
+                        )),
+                        slot.can_stop,
+                        cx,
+                        move |app, window, cx| app.stop_terminal_pane(index, window, cx),
                     ))
                     .child(terminal_pane_control_button(
                         app_entity,

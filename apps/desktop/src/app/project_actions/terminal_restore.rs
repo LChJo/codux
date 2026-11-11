@@ -185,6 +185,12 @@ impl CoduxApp {
                     slot.pane = Some(pane);
                     continue;
                 }
+                if !super::super::terminal_state::terminal_session_is_live(
+                    &self.terminal_manager,
+                    slot.terminal_id.as_deref(),
+                ) {
+                    continue;
+                }
                 let (pane, attach) = TerminalPane::pending_with_restored_output(
                     cx,
                     pty_config.clone(),

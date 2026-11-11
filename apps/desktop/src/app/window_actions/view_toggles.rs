@@ -125,11 +125,7 @@ impl CoduxApp {
             }
             WorkspaceView::Terminal => {
                 self.activate_first_terminal();
-                if let Err(error) = self.ensure_active_terminal_mounted(cx) {
-                    self.status_message = format!("failed to focus terminal: {error}");
-                } else {
-                    self.focus_active_terminal(window, cx);
-                }
+                self.focus_active_terminal(window, cx);
             }
         }
         self.invalidate_workspace(cx);

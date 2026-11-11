@@ -74,12 +74,8 @@ impl CoduxApp {
         runtime_service.set_terminal_query_colors(terminal_config.colors.query_colors());
         let terminal_manager = runtime_service.terminal_manager();
         let terminal_pane_registry = HashMap::new();
-        // Boot restore runs during App construction, before a `Context<Self>`
-        // exists to drive the async attach chokepoint. Local terminals spawn
-        // their PTY synchronously here; remote-hosted ones are collected as
-        // pending and attached once the entity exists, in
-        // `attach_boot_pending_terminals` (see `CoduxApp::new`'s caller). This is
-        // empty for the common local-only boot.
+        // Restore pane identities without launching shells. Only sessions that
+        // already exist can be mounted; dormant panes start on user action.
         let mut boot_pending_terminals = Vec::new();
         let (terminals, active_terminal_id, next_terminal_index) = spawn_terminal_tabs(
             SpawnTerminalTabsInput {

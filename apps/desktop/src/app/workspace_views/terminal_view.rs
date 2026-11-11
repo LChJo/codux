@@ -36,6 +36,7 @@ pub(super) struct TerminalPaneViewSnapshot {
     pub(super) terminal_id: Option<String>,
     pub(super) view: Option<gpui::Entity<TerminalView>>,
     pub(super) search_open: bool,
+    pub(super) can_stop: bool,
 }
 
 impl PartialEq for TerminalPaneViewSnapshot {
@@ -44,6 +45,7 @@ impl PartialEq for TerminalPaneViewSnapshot {
             || self.search_open != other.search_open
             || self.title != other.title
             || self.active != other.active
+            || self.can_stop != other.can_stop
         {
             return false;
         }
