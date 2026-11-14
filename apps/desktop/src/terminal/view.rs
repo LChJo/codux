@@ -697,7 +697,7 @@ impl TerminalView {
         self.search_match_index = index;
         self.selection.lock().set_range(range);
         self.model.update(cx, |model, _| {
-            model.selection.set_range(range);
+            model.set_selection_range(range);
             model.scroll_line_to_center(range.start.line);
         });
     }

@@ -1,6 +1,119 @@
 use super::super::*;
 
 #[test]
+fn selected_text_remains_copyable_during_tui_redraw_gap() {
+    let mut state = TerminalModel::new_for_test(20, 4, 100);
+    state.process_bytes(b"\x1b[?1049hcopy this answer");
+    state.handle.publish_snapshot();
+    state.start_selection(TerminalSelectionPoint { line: 0, col: 0 });
+    state.update_selection(TerminalSelectionPoint { line: 0, col: 9 });
+    assert_eq!(state.selected_text(), Some("copy this".to_string()));
+
+    // A TUI may clear and repaint in separate PTY output batches while a
+    // selection remains highlighted. This is the same non-empty-text check
+    // that determines whether the context menu enables Copy.
+    state.process_bytes(b"\x1b[2J\x1b[H");
+    state.handle.publish_snapshot();
+    assert_eq!(
+        state.selected_text().filter(|text| !text.is_empty()),
+        Some("copy this".to_string()),
+        "TUI redraw must not disable Copy for an existing text selection"
+    );
+}
+
+#[test]
+fn selected_text_survives_atomic_tui_repaint() {
+    let mut state = TerminalModel::new_for_test(20, 4, 100);
+    state.process_bytes(b"\x1b[?1049hcopy this answer");
+    state.handle.publish_snapshot();
+    state.start_selection(TerminalSelectionPoint { line: 0, col: 0 });
+    state.update_selection(TerminalSelectionPoint { line: 0, col: 9 });
+
+    state.process_bytes(b"\x1b[2J\x1b[Hcopy this answer");
+    state.handle.publish_snapshot();
+
+    assert_eq!(state.selected_text(), Some("copy this".to_string()));
+}
+
+#[test]
+fn selected_text_keeps_the_original_words_when_tui_overwrites_the_row() {
+    let mut state = TerminalModel::new_for_test(20, 4, 100);
+    state.process_bytes(b"\x1b[?1049hfirst answer");
+    state.handle.publish_snapshot();
+    state.start_selection(TerminalSelectionPoint { line: 0, col: 0 });
+    let end = TerminalSelectionPoint { line: 0, col: 5 };
+    state.update_selection(end);
+
+    state.process_bytes(b"\x1b[H\x1b[2Kother answer");
+    state.handle.publish_snapshot();
+    // Mouse release commonly repeats the final drag coordinate after output
+    // has arrived; it must not replace the selection with the repainted row.
+    state.update_selection(end);
+
+    assert_eq!(state.selected_text(), Some("first".to_string()));
+}
+
+#[test]
+fn selected_text_preserves_wrapped_cjk_and_hard_breaks_during_redraw() {
+    let mut state = TerminalModel::new_for_test(10, 5, 100);
+    state.process_bytes("\x1b[?1049h中文回答abcdefghi\r\nsecond".as_bytes());
+    state.handle.publish_snapshot();
+    state.start_selection(TerminalSelectionPoint { line: 0, col: 0 });
+    state.update_selection(TerminalSelectionPoint { line: 2, col: 6 });
+    let expected = Some("中文回答abcdefghi\nsecond".to_string());
+    assert_eq!(state.selected_text(), expected);
+
+    state.process_bytes(b"\x1b[2J\x1b[H");
+    state.handle.publish_snapshot();
+
+    assert_eq!(state.selected_text(), expected);
+}
+
+#[test]
+fn selected_text_resets_on_new_selection_and_explicit_clear() {
+    let mut state = TerminalModel::new_for_test(20, 4, 100);
+    state.process_bytes(b"first answer");
+    state.handle.publish_snapshot();
+    state.start_selection(TerminalSelectionPoint { line: 0, col: 0 });
+    state.update_selection(TerminalSelectionPoint { line: 0, col: 5 });
+
+    state.clear_selection();
+    assert_eq!(state.selected_text(), None);
+    state.process_bytes(b"\x1b[H\x1b[2Kother answer");
+    state.handle.publish_snapshot();
+    state.select_word_at(TerminalSelectionPoint { line: 0, col: 1 });
+    assert_eq!(state.selected_text(), Some("other".to_string()));
+
+    state.start_selection(TerminalSelectionPoint { line: 0, col: 15 });
+    assert_eq!(
+        state.selected_text(),
+        None,
+        "a caret must not reuse old text"
+    );
+    state.update_selection(TerminalSelectionPoint { line: 0, col: 18 });
+    assert_eq!(state.selected_text().filter(|text| !text.is_empty()), None);
+
+    state.select_word_at(TerminalSelectionPoint { line: 0, col: 1 });
+    state.clear_screen();
+    assert_eq!(state.selected_text(), None);
+}
+
+#[test]
+fn selected_text_follows_tui_relocation_without_changing_copy_contents() {
+    let mut state = TerminalModel::new_for_test(20, 4, 100);
+    state.process_bytes(b"\x1b[?1049hcopy this");
+    state.handle.publish_snapshot();
+    state.start_selection(TerminalSelectionPoint { line: 0, col: 0 });
+    state.update_selection(TerminalSelectionPoint { line: 0, col: 9 });
+
+    state.process_bytes(b"\x1b[2J\x1b[3;1Hcopy this");
+    state.handle.publish_snapshot();
+
+    assert_eq!(state.selected_text(), Some("copy this".to_string()));
+    assert_eq!(state.selection_range().unwrap().start.line, 2);
+}
+
+#[test]
 fn search_buffer_finds_case_insensitive_matches_across_scrollback() {
     let mut state = TerminalModel::new_for_test(10, 3, 100);
     state.process_bytes(b"alpha\r\nbeta\r\nALPHA x\r\ngamma\r\nalphabet\r\n1\r\n2\r\n3");

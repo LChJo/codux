@@ -207,7 +207,8 @@ fn terminal_context_menu(
             return menu;
         }
     }
-    let has_selection = view.read(cx).selected_text(cx).is_some();
+    let selected_text = view.read(cx).selected_text(cx);
+    let has_selection = selected_text.is_some();
     let translate =
         |key: &str, default: &str| codux_runtime::i18n::translate(language, key, default);
     let copy_view = view.clone();
@@ -215,6 +216,9 @@ fn terminal_context_menu(
     let select_all_view = view.clone();
     let clear_view = view.clone();
     let save_view = view.clone();
+    // The menu can stay open while the TUI continues repainting. Both the
+    // enabled state and the action must use the same selection snapshot.
+    let copy_text = selected_text.clone();
     let can_save = has_selection && view.read(cx).favorite_command_saver.is_some();
     menu.item(
         PopupMenuItem::new(translate("terminal.menu.copy", "Copy"))
@@ -222,7 +226,9 @@ fn terminal_context_menu(
             .disabled(!has_selection)
             .on_click(move |_, window, cx| {
                 cx.update_entity(&copy_view, |view, cx| {
-                    view.copy_selected_text(cx);
+                    if let Some(text) = &copy_text {
+                        cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
+                    }
                     window.focus(&view.focus_handle, cx);
                 });
             }),
@@ -264,7 +270,7 @@ fn terminal_context_menu(
         .disabled(!can_save)
         .on_click(move |_, window, cx| {
             cx.update_entity(&save_view, |view, cx| {
-                if let Some(text) = view.selected_text(cx)
+                if let Some(text) = selected_text.clone()
                     && let Some(saver) = view.favorite_command_saver.clone()
                 {
                     saver(text, window, cx);

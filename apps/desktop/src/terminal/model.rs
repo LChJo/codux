@@ -36,6 +36,9 @@ struct TerminalModel {
     paste_images_as_paths: bool,
     window_size: TerminalWindowSize,
     selection: SelectionState,
+    // The text the user selected, independent of subsequent TUI redraws.
+    // Only an explicit selection change replaces or clears this snapshot.
+    selection_text: Option<String>,
     #[cfg(test)]
     written_bytes: Option<Arc<Mutex<Vec<u8>>>>,
     _reader_task: Task<()>,
@@ -201,6 +204,7 @@ impl TerminalModel {
                 cell_height: 1,
             },
             selection: SelectionState::default(),
+            selection_text: None,
             #[cfg(test)]
             written_bytes: None,
             _reader_task: reader_task,
@@ -422,10 +426,7 @@ impl TerminalModel {
     }
 
     fn process_bytes(&mut self, bytes: &[u8]) {
-        let before_selection = self.selection_range().and_then(|range| {
-            let text = self.handle.selected_text_for_range(range);
-            (!text.is_empty()).then_some((range, text))
-        });
+        let before_selection = self.selection_range().zip(self.selected_text());
         self.handle.screen.lock().process(bytes);
         if let Some((range, text)) = before_selection {
             let content = self.live_snapshot();
@@ -898,26 +899,44 @@ impl TerminalModel {
 
     fn start_selection(&mut self, point: TerminalSelectionPoint) {
         self.selection.start(point);
+        self.selection_text = None;
     }
 
     fn update_selection(&mut self, point: TerminalSelectionPoint) {
-        if self.selection.dragging || self.selection.anchor.is_some() {
-            self.selection.update(point);
+        if self.selection.update(point) {
+            self.capture_selection_text();
         }
     }
 
     fn extend_selection(&mut self, point: TerminalSelectionPoint) {
+        let previous = self.selection_range();
         self.selection.extend(point);
+        if self.selection_range() != previous {
+            self.capture_selection_text();
+        }
     }
 
     fn clear_selection(&mut self) {
         self.selection.clear();
+        self.selection_text = None;
+    }
+
+    fn set_selection_range(&mut self, range: SelectionRange) {
+        self.selection.set_range(range);
+        self.capture_selection_text();
+    }
+
+    fn capture_selection_text(&mut self) {
+        self.selection_text = self
+            .selection_range()
+            .map(|range| self.handle.selected_text_for_range(range))
+            .filter(|text| !text.is_empty());
     }
 
     /// Wipe screen and scrollback but keep the prompt row (iTerm-style clear).
     fn clear_screen(&mut self) {
         self.handle.screen.lock().clear_keep_prompt();
-        self.selection.clear();
+        self.clear_selection();
         self.snapshot_dirty = true;
     }
 
@@ -953,7 +972,7 @@ impl TerminalModel {
                 col: content.columns,
             },
         };
-        self.selection.set_range(range);
+        self.set_selection_range(range);
         range
     }
 
@@ -990,13 +1009,13 @@ impl TerminalModel {
                 col: span.end_col,
             },
         };
-        self.selection.set_range(range);
+        self.set_selection_range(range);
         Some(range)
     }
 
     fn selected_text(&self) -> Option<String> {
-        self.selection_range()
-            .map(|range| self.handle.selected_text_for_range(range))
+        self.selection_range()?;
+        self.selection_text.clone()
     }
 
     fn selection_range(&self) -> Option<SelectionRange> {
@@ -1144,6 +1163,7 @@ impl TerminalModel {
                 cell_height: 1,
             },
             selection: SelectionState::default(),
+            selection_text: None,
             written_bytes: Some(written_bytes),
             _reader_task: Task::ready(()),
         }

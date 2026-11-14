@@ -272,8 +272,8 @@
                      },
                      {
                          "id":  "646980a8-12db-45c3-9f88-afaf82f30c3b",
-                         "observedAt":  "2026-11-08T07:39:19.4671481Z",
-                         "hash":  "2dcd6c987c96f61bf1e2f48af77214bf6f86e2eab27af9e7512a78a5f8fe5120",
+                         "observedAt":  "2026-11-14T12:53:09.1694662Z",
+                         "hash":  "d41dc54d9aa2cbba51a0c5f125b68b1709cf95b0893a7089dc0e610cd93dd4c1",
                          "claim":  "Declared dependencies or calls: Forwards clicked link URI via app_open_url",
                          "kind":  "source-code",
                          "location":  {
@@ -308,6 +308,36 @@
                          "kind":  "source-code",
                          "location":  {
                                           "path":  "apps/desktop/src/app/terminal_actions.rs"
+                                      }
+                     },
+                     {
+                         "id":  "bb227975-e5d0-4a9e-8255-90c1c285e0bf",
+                         "observedAt":  "2026-11-14T12:53:09.1694662Z",
+                         "hash":  "71c23d9fe46dcafc48e751885f2d6bb2e1f588bb7785dcdc908f09a7781c2254",
+                         "claim":  "Selection text is captured on explicit user selection changes and retained across TUI erase, repaint and relocation; empty selections and explicit clear discard it.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/desktop/src/terminal/model.rs"
+                                      }
+                     },
+                     {
+                         "id":  "38e88cbb-fbfb-45fb-92ba-546df25d70f9",
+                         "observedAt":  "2026-11-14T12:53:09.1694662Z",
+                         "hash":  "8ec11b6bdc6757c2faa6e6ea262aee9e00de039b910a1383b64b838a5111ead9",
+                         "claim":  "Context-menu Copy availability and clipboard action use the same selection text snapshot captured when building the menu.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/desktop/src/terminal/render.rs"
+                                      }
+                     },
+                     {
+                         "id":  "ebce4727-61d5-4d44-9987-b586b0297257",
+                         "observedAt":  "2026-11-14T12:53:09.1694662Z",
+                         "hash":  "dcbad1285caea52b82c93ee837ad6618cb8b193aa3eb5d6be6b47bbae358b915",
+                         "claim":  "Regression reproduces Copy becoming disabled during a split TUI clear/repaint and wrong text after overwrite; tests cover retained CJK/wrapped text, relocation and explicit selection resets.",
+                         "kind":  "source-code",
+                         "location":  {
+                                          "path":  "apps/desktop/src/terminal/tests/selection.rs"
                                       }
                      }
                  ],
