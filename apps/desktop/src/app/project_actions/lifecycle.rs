@@ -154,12 +154,17 @@ impl CoduxApp {
             return;
         };
 
-        match self
-            .runtime_service
-            .project_reveal_in_file_manager(&project.path)
-        {
+        // Reveal the selected worktree's folder when one is active; the
+        // default worktree falls back to the project root path.
+        let selected_worktree = super::ai_runtime_status::selected_worktree_info(&self.state);
+        let (path, name) = match selected_worktree.as_ref() {
+            Some(worktree) => (worktree.path.as_str(), worktree.name.as_str()),
+            None => (project.path.as_str(), project.name.as_str()),
+        };
+
+        match self.runtime_service.project_reveal_in_file_manager(path) {
             Ok(()) => {
-                self.status_message = format!("revealed project: {}", project.name);
+                self.status_message = format!("revealed project: {name}");
             }
             Err(error) => self.status_message = format!("failed to reveal project: {error}"),
         }
