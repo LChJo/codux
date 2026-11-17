@@ -33,7 +33,6 @@ pub struct SettingsSummary {
     pub git_commit_language: String,
     pub git_commit_style_rules: String,
     pub git_commit_style_rules_chars: usize,
-    pub runtime_tool_count: usize,
     pub memory_enabled: bool,
     pub memory_automatic_injection_enabled: bool,
     pub memory_automatic_extraction_enabled: bool,

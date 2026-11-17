@@ -49,7 +49,6 @@ impl RuntimeStdioTerminals {
         let runtime_root = self.data_dir.join("runtime-root");
         config.support_dir = Some(self.data_dir.clone());
         config.runtime_root = Some(runtime_root.clone());
-        config.tool_permissions_file = Some(self.data_dir.join("tool_permissions.json"));
         crate::memory::prepare_terminal_launch_context(&mut config, &self.data_dir, &runtime_root)?;
         if config.terminal_id.is_none() {
             config.terminal_id = Some(uuid::Uuid::new_v4().to_string());

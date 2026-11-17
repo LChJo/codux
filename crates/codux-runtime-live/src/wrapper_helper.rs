@@ -51,9 +51,6 @@ pub fn handle_args(args: &[String]) -> Result<bool, String> {
     };
     match subcommand {
         "tool-memory-injection" => print_tool_memory_injection(),
-        "json-string-key" => print_json_string_key(),
-        "json-nested-string-key" => print_json_nested_string_key(),
-        "codex-effort" => print_codex_effort(),
         "toml-string" => print_toml_string(),
         "managed-instructions" => managed_instructions::run_cli(&args[2..]),
         "codex-startup-context" => managed_instructions::print_startup_context(&args[2..]),
@@ -117,75 +114,6 @@ fn tool_memory_injection_strategy(tool: &str) -> Option<&'static str> {
         AIRuntimeMemoryInjectionDriver::KiroHook => Some("kiroHook"),
         AIRuntimeMemoryInjectionDriver::OpenCodeSystemTransform => Some("opencodeSystemTransform"),
     }
-}
-
-fn print_json_string_key() -> Result<(), String> {
-    let path = env_value("CONFIG_PATH");
-    let key = env_value("CONFIG_KEY");
-    if path.is_empty() || key.is_empty() {
-        return Ok(());
-    }
-    if let Some(value) = read_json_file(&path)
-        .and_then(|root| root.get(&key).and_then(Value::as_str).map(str::to_string))
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    {
-        println!("{value}");
-    }
-    Ok(())
-}
-
-fn print_json_nested_string_key() -> Result<(), String> {
-    let path = env_value("CONFIG_PATH");
-    if path.is_empty() {
-        return Ok(());
-    }
-    let Some(root) = read_json_file(&path) else {
-        return Ok(());
-    };
-    let key_path = env_value("CONFIG_KEY_PATH");
-    if key_path.trim().is_empty() {
-        // Validity probe: callers pass an empty key path to distinguish
-        // "file parses as JSON" (prints `ok`) from "missing or corrupt".
-        println!("ok");
-        return Ok(());
-    }
-    if let Some(value) = nested_string_value(&root, &key_path) {
-        println!("{value}");
-    }
-    Ok(())
-}
-
-fn nested_string_value(root: &Value, key_path: &str) -> Option<String> {
-    let mut current = root;
-    for part in key_path.split('.').filter(|part| !part.is_empty()) {
-        current = current.get(part)?;
-    }
-    current
-        .as_str()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-}
-
-fn print_codex_effort() -> Result<(), String> {
-    let path = env_value("CONFIG_PATH");
-    if path.is_empty() {
-        return Ok(());
-    }
-    let allowed = ["none", "minimal", "low", "medium", "high", "xhigh"];
-    if let Some(value) = read_json_file(&path)
-        .and_then(|root| {
-            root.get("codexEffort")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        })
-        .map(|value| value.trim().to_string())
-        .filter(|value| allowed.contains(&value.as_str()))
-    {
-        println!("{value}");
-    }
-    Ok(())
 }
 
 fn print_toml_string() -> Result<(), String> {
@@ -1434,39 +1362,6 @@ mod tests {
         assert_eq!(tool_memory_injection_strategy("agy"), Some("agyHook"));
         assert_eq!(tool_memory_injection_strategy("kiro-cli"), Some("kiroHook"));
         assert_eq!(tool_memory_injection_strategy("unknown"), None);
-    }
-
-    #[test]
-    fn nested_string_value_traverses_dotted_key_paths() {
-        let root = serde_json::json!({
-            "ai": { "runtimeTools": { "claudeCode": "fullAccess", "claudeCodeModel": "" } },
-            "claudeCode": "top-level",
-        });
-        assert_eq!(
-            nested_string_value(&root, "ai.runtimeTools.claudeCode").as_deref(),
-            Some("fullAccess")
-        );
-        // Empty-string leaves are treated as absent (mirrors json-string-key).
-        assert_eq!(
-            nested_string_value(&root, "ai.runtimeTools.claudeCodeModel"),
-            None
-        );
-        assert_eq!(nested_string_value(&root, "ai.runtimeTools.missing"), None);
-        // Hopping through a non-object node fails cleanly.
-        assert_eq!(nested_string_value(&root, "ai.missing.claudeCode"), None);
-        // A single segment reads a top-level key.
-        assert_eq!(
-            nested_string_value(&root, "claudeCode").as_deref(),
-            Some("top-level")
-        );
-        // Empty segments (e.g. a stray double dot) are ignored.
-        assert_eq!(
-            nested_string_value(&root, "ai..runtimeTools.claudeCode").as_deref(),
-            Some("fullAccess")
-        );
-        // Whitespace-only values are treated as absent.
-        let blank = serde_json::json!({ "a": { "b": "   " } });
-        assert_eq!(nested_string_value(&blank, "a.b"), None);
     }
 
     #[test]

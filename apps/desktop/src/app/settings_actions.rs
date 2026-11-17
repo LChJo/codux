@@ -193,7 +193,6 @@ impl CoduxApp {
 
         self.settings_seen_revision = event.revision;
         let settings = self.runtime_service.reload_settings();
-        self.state.tool_permissions = self.runtime_service.sync_tool_permissions();
         if event.statistics_revision == event.revision {
             self.apply_settings_summary_local(settings);
             self.status_message = "AI statistics mode updated".to_string();
@@ -1739,86 +1738,6 @@ impl CoduxApp {
                 app.status_message = format!(
                     "Git commit language saved: {}",
                     app.state.settings.git_commit_language
-                );
-                app.invalidate_ui_region(cx, UiRegion::Root);
-            },
-            cx,
-        );
-        self.invalidate_ui_region(cx, UiRegion::Root);
-    }
-
-    pub(super) fn set_runtime_tool_permission(
-        &mut self,
-        tool_key: &'static str,
-        permission: String,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.run_settings_task_async(
-            "set_runtime_tool_permission",
-            "saving runtime tool permission",
-            move |service| {
-                let settings = service.set_runtime_tool_permission(tool_key, &permission)?;
-                let permissions = service.sync_tool_permissions();
-                Ok((settings, permissions))
-            },
-            move |app, (settings, permissions), cx| {
-                app.apply_async_settings_summary(settings);
-                app.state.tool_permissions = permissions;
-                app.status_message = format!("{tool_key} permission saved");
-                app.invalidate_ui_region(cx, UiRegion::Root);
-            },
-            cx,
-        );
-        self.invalidate_ui_region(cx, UiRegion::Root);
-    }
-
-    pub(super) fn set_runtime_tool_model(
-        &mut self,
-        model_key: &'static str,
-        model: String,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.run_settings_task_async(
-            "set_runtime_tool_model",
-            "saving runtime tool model",
-            move |service| {
-                let settings = service.set_runtime_tool_model(model_key, &model)?;
-                let permissions = service.sync_tool_permissions();
-                Ok((settings, permissions))
-            },
-            move |app, (settings, permissions), cx| {
-                app.apply_async_settings_summary(settings);
-                app.state.tool_permissions = permissions;
-                app.status_message = format!("{model_key} saved");
-                app.invalidate_ui_region(cx, UiRegion::Root);
-            },
-            cx,
-        );
-        self.invalidate_ui_region(cx, UiRegion::Root);
-    }
-
-    pub(super) fn set_codex_effort(
-        &mut self,
-        effort: String,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.run_settings_task_async(
-            "set_codex_effort",
-            "saving Codex effort",
-            move |service| {
-                let settings = service.set_codex_effort(&effort)?;
-                let permissions = service.sync_tool_permissions();
-                Ok((settings, permissions))
-            },
-            |app, (settings, permissions), cx| {
-                app.apply_async_settings_summary(settings);
-                app.state.tool_permissions = permissions;
-                app.status_message = format!(
-                    "Codex effort saved: {}",
-                    app.state.tool_permissions.codex_effort
                 );
                 app.invalidate_ui_region(cx, UiRegion::Root);
             },

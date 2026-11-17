@@ -3,6 +3,46 @@ mod tests {
     use super::*;
 
     #[test]
+    fn legacy_runtime_tools_are_ignored_and_removed_when_saving_settings() {
+        let support_dir = temp_dir("settings-retired-runtime-tools");
+        let path = support_dir.join("settings.json");
+        fs::write(&path, serde_json::json!({
+            "futureSetting": "keep-me",
+            "ai": {
+                "globalPrompt": "Keep project instructions.",
+                "runtimeTools": {"codex": "fullAccess", "codexModel": "old-model", "codexEffort": "high"}
+            }
+        }).to_string()).unwrap();
+        let service = SettingsService::new(support_dir.clone());
+        let ai = service.ai_settings();
+        assert_eq!(ai.global_prompt, "Keep project instructions.");
+        assert!(
+            serde_json::to_value(
+                AppSettingsStore::from_settings_file(path.clone())
+                    .snapshot()
+                    .ai
+            )
+            .unwrap()
+            .get("runtimeTools")
+            .is_none()
+        );
+        assert!(
+            serde_json::to_value(service.summary())
+                .unwrap()
+                .get("runtimeToolCount")
+                .is_none()
+        );
+        service.set_theme("Slate").unwrap();
+        crate::config::flush_all_config_writes();
+        let raw: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert!(raw["ai"].get("runtimeTools").is_none());
+        assert_eq!(raw["ai"]["globalPrompt"], "Keep project instructions.");
+        assert_eq!(raw["futureSetting"], "keep-me");
+        assert_eq!(raw["theme"], "Slate");
+        fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
     fn retired_terminal_themes_migrate_on_read_and_write() {
         for (old, new) in [
             ("Arctic Night", "Slate"),
@@ -90,31 +130,6 @@ mod tests {
         let summary = SettingsService::new(support_dir).summary();
         assert_eq!(summary.terminal_scrollback_lines, "2000");
         assert!(summary.wsl_enabled);
-    }
-
-    #[test]
-    fn defaults_codex_effort_to_none() {
-        let support_dir = temp_dir("settings-default-codex-effort");
-        let tool_permissions =
-            crate::tool_permissions::ToolPermissionsService::new(support_dir.clone()).summary();
-        assert_eq!(tool_permissions.codex_effort, "none");
-
-        let service = SettingsService::new(support_dir.clone());
-        service
-            .set_codex_effort("bad")
-            .expect("sanitize codex effort");
-        let tool_permissions =
-            crate::tool_permissions::ToolPermissionsService::new(support_dir.clone()).summary();
-        assert_eq!(tool_permissions.codex_effort, "none");
-
-        service
-            .set_codex_effort("medium")
-            .expect("accept medium codex effort");
-        let tool_permissions =
-            crate::tool_permissions::ToolPermissionsService::new(support_dir.clone()).summary();
-        assert_eq!(tool_permissions.codex_effort, "medium");
-
-        fs::remove_dir_all(support_dir).ok();
     }
 
     #[test]
@@ -280,27 +295,6 @@ mod tests {
                   "speechTemporaryMuteUntil": null,
                   "customPetSpeechField": "preserve"
                 },
-                "runtimeTools": {
-                  "codex": "default",
-                  "claudeCode": "default",
-                  "agy": "default",
-                  "omp": "default",
-                  "opencode": "default",
-                  "kiro": "default",
-                  "codewhale": "default",
-                  "kimi": "default",
-                  "mimo": "default",
-                  "codexModel": "",
-                  "claudeCodeModel": "",
-                  "agyModel": "",
-                  "ompModel": "",
-                  "opencodeModel": "",
-                  "kiroModel": "",
-                  "codewhaleModel": "",
-                  "kimiModel": "",
-                  "mimoModel": "",
-                  "codexEffort": "none"
-                },
                 "providers": [
                   {
                     "id": "api-openAICompatible-1",
@@ -363,7 +357,6 @@ mod tests {
             summary.git_commit_style_rules_chars,
             "Keep scope clear.".chars().count()
         );
-        assert_eq!(summary.runtime_tool_count, 9);
         assert_eq!(summary.memory_extraction_idle_delay_seconds, "300");
         assert_eq!(summary.memory_session_extraction_cooldown_seconds, "900");
         assert_eq!(summary.memory_max_index_sessions, "20");
@@ -862,108 +855,6 @@ mod tests {
             crate::remote::GLOBAL_RELAY_SERVER_URL
         );
         assert_eq!(remote.relay, crate::remote::GLOBAL_RELAY_SERVER_URL);
-
-        fs::remove_dir_all(support_dir).ok();
-    }
-
-    #[test]
-    fn runtime_tool_settings_round_trip_through_summary_and_tool_permissions() {
-        let support_dir = temp_dir("settings-runtime-tools-roundtrip");
-        let service = SettingsService::new(support_dir.clone());
-
-        let summary = service
-            .set_runtime_tool_permission("codex", "fullAccess")
-            .expect("set codex permission");
-        assert_eq!(summary.runtime_tool_count, 9);
-
-        service
-            .set_runtime_tool_permission("omp", "fullAccess")
-            .expect("set omp permission");
-        service
-            .set_runtime_tool_model("ompModel", "anthropic/claude-sonnet-4-5")
-            .expect("set omp model");
-
-        let summary = service
-            .set_runtime_tool_model("codexModel", "gpt-5.6")
-            .expect("set codex model");
-        assert_eq!(summary.runtime_tool_count, 9);
-
-        let summary = service.set_codex_effort("xhigh").expect("set codex effort");
-        assert_eq!(summary.runtime_tool_count, 9);
-
-        let tool_permissions =
-            crate::tool_permissions::ToolPermissionsService::new(support_dir.clone()).summary();
-        assert_eq!(tool_permissions.codex, "fullAccess");
-        assert_eq!(tool_permissions.codex_model, "gpt-5.6");
-        assert_eq!(tool_permissions.codex_effort, "xhigh");
-        assert_eq!(tool_permissions.omp, "fullAccess");
-        assert_eq!(tool_permissions.omp_model, "anthropic/claude-sonnet-4-5");
-
-        crate::config::flush_all_config_writes();
-        let saved = fs::read_to_string(support_dir.join("settings.json")).expect("saved settings");
-        let saved: serde_json::Value = serde_json::from_str(&saved).expect("saved json");
-        let tools = saved
-            .get("ai")
-            .and_then(|value| value.get("runtimeTools"))
-            .and_then(|value| value.as_object())
-            .expect("runtime tools object");
-        assert_eq!(
-            tools.get("codex").and_then(|value| value.as_str()),
-            Some("fullAccess")
-        );
-        assert_eq!(
-            tools.get("codexModel").and_then(|value| value.as_str()),
-            Some("gpt-5.6")
-        );
-        assert_eq!(
-            tools.get("codexEffort").and_then(|value| value.as_str()),
-            Some("xhigh")
-        );
-        assert_eq!(
-            tools.get("omp").and_then(|value| value.as_str()),
-            Some("fullAccess")
-        );
-        assert_eq!(
-            tools.get("ompModel").and_then(|value| value.as_str()),
-            Some("anthropic/claude-sonnet-4-5")
-        );
-
-        fs::remove_dir_all(support_dir).ok();
-    }
-
-    #[test]
-    fn unsupported_runtime_tool_permissions_stay_default() {
-        let support_dir = temp_dir("settings-runtime-tools-unsupported-permission");
-        let service = SettingsService::new(support_dir.clone());
-
-        service
-            .set_runtime_tool_permission("kiro", "fullAccess")
-            .expect("set kiro permission");
-        service
-            .set_runtime_tool_permission("kimi", "fullAccess")
-            .expect("set kimi permission");
-
-        let tool_permissions =
-            crate::tool_permissions::ToolPermissionsService::new(support_dir.clone()).sync();
-        assert_eq!(tool_permissions.kiro, "default");
-        assert_eq!(tool_permissions.kimi, "default");
-
-        crate::config::flush_all_config_writes();
-        let saved = fs::read_to_string(support_dir.join("settings.json")).expect("saved settings");
-        let saved: serde_json::Value = serde_json::from_str(&saved).expect("saved json");
-        let tools = saved
-            .get("ai")
-            .and_then(|value| value.get("runtimeTools"))
-            .and_then(|value| value.as_object())
-            .expect("runtime tools object");
-        assert_eq!(
-            tools.get("kiro").and_then(|value| value.as_str()),
-            Some("default")
-        );
-        assert_eq!(
-            tools.get("kimi").and_then(|value| value.as_str()),
-            Some("default")
-        );
 
         fs::remove_dir_all(support_dir).ok();
     }

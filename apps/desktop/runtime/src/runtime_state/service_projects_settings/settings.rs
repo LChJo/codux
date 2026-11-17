@@ -135,7 +135,6 @@ impl RuntimeService {
         self.update_settings_with_side_effects(|settings| settings.set_window_opacity(percent))
     }
 
-
     pub fn toggle_dock_badge(&self) -> Result<SettingsSummary, String> {
         self.update_settings_with_side_effects(|settings| settings.toggle_dock_badge())
     }
@@ -405,30 +404,6 @@ impl RuntimeService {
         self.update_settings_with_side_effects(|settings| {
             settings.set_git_commit_provider(provider_id)
         })
-    }
-
-    pub fn set_runtime_tool_permission(
-        &self,
-        tool_key: &str,
-        permission: &str,
-    ) -> Result<SettingsSummary, String> {
-        self.update_settings_with_side_effects(|settings| {
-            settings.set_runtime_tool_permission(tool_key, permission)
-        })
-    }
-
-    pub fn set_runtime_tool_model(
-        &self,
-        model_key: &str,
-        model: &str,
-    ) -> Result<SettingsSummary, String> {
-        self.update_settings_with_side_effects(|settings| {
-            settings.set_runtime_tool_model(model_key, model)
-        })
-    }
-
-    pub fn set_codex_effort(&self, effort: &str) -> Result<SettingsSummary, String> {
-        self.update_settings_with_side_effects(|settings| settings.set_codex_effort(effort))
     }
 
     pub fn cycle_git_commit_tone(&self) -> Result<SettingsSummary, String> {

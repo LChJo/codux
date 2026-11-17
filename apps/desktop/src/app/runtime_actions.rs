@@ -188,7 +188,6 @@ impl CoduxApp {
                 let started_at = std::time::Instant::now();
                 runtime_service
                     .runtime_trace_frontend("startup", "runtime background initialization start");
-                let tool_permissions = runtime_service.sync_tool_permissions();
                 // Bring up every paired host on launch so a saved device stays
                 // connected on its own — no project needs to be open to hold it.
                 runtime_service.ensure_saved_remote_hosts_connected();
@@ -197,9 +196,9 @@ impl CoduxApp {
                         let snapshot = runtime_service.ai_runtime_state_snapshot();
                         let summary =
                             runtime_service.summarize_ai_runtime_state_snapshot(&snapshot);
-                        Ok((tool_permissions, snapshot, summary))
+                        Ok((snapshot, summary))
                     }
-                    Err(error) => Err(Box::new((tool_permissions, error))),
+                    Err(error) => Err(error),
                 };
                 runtime_service.runtime_trace_frontend(
                     "startup",
@@ -215,8 +214,7 @@ impl CoduxApp {
             let _ = this.update(cx, |app, cx| {
                 app.runtime_ready = true;
                 match result {
-                    Ok(Ok((tool_permissions, snapshot, summary))) => {
-                        app.state.tool_permissions = tool_permissions;
+                    Ok(Ok((snapshot, summary))) => {
                         app.state.ai_runtime_state = summary;
                         app.state.refresh_ai_history_stats();
                         app.status_message = format!(
@@ -230,8 +228,6 @@ impl CoduxApp {
                         );
                     }
                     Ok(Err(error)) => {
-                        let (tool_permissions, error) = *error;
-                        app.state.tool_permissions = tool_permissions;
                         app.status_message =
                             format!("runtime ready with AI runtime error: {error}");
                     }

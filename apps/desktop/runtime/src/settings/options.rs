@@ -90,27 +90,6 @@ fn sanitize_opacity_percent(value: &str, default: i64) -> String {
         .to_string()
 }
 
-fn sanitize_tool_permission(value: &str) -> String {
-    match value.trim() {
-        "fullAccess" => "fullAccess",
-        _ => "default",
-    }
-    .to_string()
-}
-
-fn sanitize_codex_effort(value: &str) -> String {
-    match value.trim() {
-        "none" => "none",
-        "minimal" => "minimal",
-        "low" => "low",
-        "medium" => "medium",
-        "high" => "high",
-        "xhigh" => "xhigh",
-        _ => "none",
-    }
-    .to_string()
-}
-
 fn sanitize_git_commit_tone(value: &str) -> String {
     match value.trim() {
         "conventional" => "conventional",

@@ -92,17 +92,6 @@ fn zsh_runtime_hook_keeps_wrapper_bin_first_after_user_startup_files() {
     let mut permissions = fs::metadata(&fake_codex).unwrap().permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(&fake_codex, permissions).unwrap();
-    let permissions_file = dir.join("tool-permissions.json");
-    fs::write(
-        &permissions_file,
-        serde_json::json!({
-            "codex": "fullAccess",
-            "codexModel": "gpt-5.9",
-            "codexEffort": "medium"
-        })
-        .to_string(),
-    )
-    .unwrap();
 
     let home = dir.join("home");
     fs::create_dir_all(&home).unwrap();
@@ -142,7 +131,6 @@ fn zsh_runtime_hook_keeps_wrapper_bin_first_after_user_startup_files() {
         .env("DMUX_ZSH_HOOK_SCRIPT", bridge.zsh_hook_script())
         .env("DMUX_SESSION_ID", "terminal-1")
         .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
-        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
         .env(
             "DMUX_ORIGINAL_PATH",
             format!("{}:/usr/bin:/bin", real_bin.display()),
@@ -197,17 +185,6 @@ fn zsh_runtime_hook_restores_wrapper_bin_before_each_prompt() {
     let mut permissions = fs::metadata(&fake_codex).unwrap().permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(&fake_codex, permissions).unwrap();
-    let permissions_file = dir.join("tool-permissions.json");
-    fs::write(
-        &permissions_file,
-        serde_json::json!({
-            "codex": "fullAccess",
-            "codexModel": "gpt-5.9",
-            "codexEffort": "medium"
-        })
-        .to_string(),
-    )
-    .unwrap();
 
     let home = dir.join("home");
     fs::create_dir_all(&home).unwrap();
@@ -244,7 +221,6 @@ fn zsh_runtime_hook_restores_wrapper_bin_before_each_prompt() {
         .env("DMUX_ZSH_HOOK_SCRIPT", bridge.zsh_hook_script())
         .env("DMUX_SESSION_ID", "terminal-1")
         .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
-        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
         .env(
             "DMUX_ORIGINAL_PATH",
             format!("{}:/usr/bin:/bin", real_bin.display()),
@@ -296,18 +272,6 @@ fn zsh_runtime_hook_shims_codex_when_path_is_rewritten_after_prompt() {
     permissions.set_mode(0o755);
     fs::set_permissions(&fake_codex, permissions).unwrap();
 
-    let permissions_file = dir.join("tool-permissions.json");
-    fs::write(
-        &permissions_file,
-        serde_json::json!({
-            "codex": "fullAccess",
-            "codexModel": "gpt-5.9",
-            "codexEffort": "high"
-        })
-        .to_string(),
-    )
-    .unwrap();
-
     let home = dir.join("home");
     fs::create_dir_all(&home).unwrap();
     fs::write(home.join(".zshrc"), "").unwrap();
@@ -335,7 +299,6 @@ fn zsh_runtime_hook_shims_codex_when_path_is_rewritten_after_prompt() {
         .env("DMUX_ZSH_HOOK_SCRIPT", bridge.zsh_hook_script())
         .env("DMUX_SESSION_ID", "terminal-1")
         .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
-        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
         .env(
             "DMUX_ORIGINAL_PATH",
             format!("{}:/usr/bin:/bin", real_bin.display()),
@@ -350,12 +313,8 @@ fn zsh_runtime_hook_shims_codex_when_path_is_rewritten_after_prompt() {
         String::from_utf8_lossy(&output.stderr)
     );
     let args = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        args.lines()
-            .any(|arg| arg == "--dangerously-bypass-approvals-and-sandbox"),
-        "{args}"
-    );
-    assert!(args.lines().any(|arg| arg == "--model=gpt-5.9"), "{args}");
+    assert!(args.lines().any(|arg| arg == "--enable"), "{args}");
+    assert!(args.lines().any(|arg| arg == "hooks"), "{args}");
     assert!(
         args.lines()
             .any(|arg| arg == "model_reasoning_effort=\"high\""),
@@ -386,17 +345,6 @@ fn zsh_runtime_hook_suppresses_nested_terminal_integrations_in_user_startup() {
     let home = dir.join("home");
     let shell_dir = home.join("Library/Application Support/kiro-cli/shell");
     fs::create_dir_all(&shell_dir).unwrap();
-    let permissions_file = dir.join("tool-permissions.json");
-    fs::write(
-        &permissions_file,
-        serde_json::json!({
-            "codex": "fullAccess",
-            "codexModel": "gpt-5.9",
-            "codexEffort": "medium"
-        })
-        .to_string(),
-    )
-    .unwrap();
     fs::write(
         home.join(".zprofile"),
         r#"[[ -f "${HOME}/Library/Application Support/kiro-cli/shell/zprofile.pre.zsh" ]] && builtin source "${HOME}/Library/Application Support/kiro-cli/shell/zprofile.pre.zsh"
@@ -435,7 +383,6 @@ fi
         .env("DMUX_ZSH_HOOK_SCRIPT", bridge.zsh_hook_script())
         .env("DMUX_SESSION_ID", "terminal-1")
         .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
-        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
         .env(
             "DMUX_ORIGINAL_PATH",
             format!("{}:/usr/bin:/bin", real_bin.display()),

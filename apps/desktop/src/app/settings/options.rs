@@ -566,84 +566,12 @@ pub(super) fn pet_reminder_interval_options(language: &str) -> Vec<(String, Shar
         .collect()
 }
 
-pub(super) fn runtime_tool_permission_options(language: &str) -> Vec<(String, SharedString)> {
-    vec![
-        (
-            "default",
-            settings_text(language, "settings.tools.permission.default", "Default"),
-        ),
-        (
-            "fullAccess",
-            settings_text(
-                language,
-                "settings.tools.permission.full_access",
-                "Full Access",
-            ),
-        ),
-    ]
-    .into_iter()
-    .map(|(value, label)| (value.to_string(), SharedString::from(label)))
-    .collect()
-}
-
 pub(super) fn remote_relay_preset_options(language: &str) -> Vec<(String, SharedString)> {
     let _ = language;
     codux_runtime::remote::remote_relay_presets()
         .iter()
         .map(|preset| (preset.key.clone(), SharedString::from(preset.name.clone())))
         .collect()
-}
-pub(super) fn codex_effort_options(language: &str) -> Vec<(String, SharedString)> {
-    vec![
-        (
-            "none".to_string(),
-            SharedString::from(settings_text(
-                language,
-                "settings.ai.tool.reasoning_effort.default",
-                "Default",
-            )),
-        ),
-        (
-            "minimal".to_string(),
-            SharedString::from(settings_text(
-                language,
-                "settings.ai.tool.reasoning_effort.minimal",
-                "Minimal",
-            )),
-        ),
-        (
-            "low".to_string(),
-            SharedString::from(settings_text(
-                language,
-                "settings.ai.tool.reasoning_effort.low",
-                "Low",
-            )),
-        ),
-        (
-            "medium".to_string(),
-            SharedString::from(settings_text(
-                language,
-                "settings.ai.tool.reasoning_effort.medium",
-                "Medium",
-            )),
-        ),
-        (
-            "high".to_string(),
-            SharedString::from(settings_text(
-                language,
-                "settings.ai.tool.reasoning_effort.high",
-                "High",
-            )),
-        ),
-        (
-            "xhigh".to_string(),
-            SharedString::from(settings_text(
-                language,
-                "settings.ai.tool.reasoning_effort.xhigh",
-                "XHigh",
-            )),
-        ),
-    ]
 }
 
 pub(super) fn git_provider_options(

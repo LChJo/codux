@@ -88,56 +88,6 @@ function Find-Real-Binary([string]$Name, [string]$SearchPath) {
   return $null
 }
 
-function Read-Tool-Settings {
-  # Resolution chain: managed cache file (temp dir, can vanish or be
-  # mid-write) -> app support settings.json (source of truth, always
-  # readable) -> $null. Every branch logs so a silent "no injection" is
-  # diagnosable from DMUX_LOG_FILE. The fallback returns the
-  # ai.runtimeTools node, which has the same flat camelCase keys as the
-  # managed cache, so downstream $settings.<key> accesses are unchanged.
-  $managed = $env:DMUX_TOOL_PERMISSION_SETTINGS_FILE
-  if (-not [string]::IsNullOrWhiteSpace($managed)) {
-    if (Test-Path -LiteralPath $managed) {
-      try {
-        $parsed = Get-Content -LiteralPath $managed -Raw | ConvertFrom-Json
-        if ($null -ne $parsed) {
-          Write-Live-Log "tool settings source=managed path=$managed"
-          return $parsed
-        }
-        Write-Live-Log "tool settings managed cache empty path=$managed"
-      } catch {
-        Write-Live-Log "tool settings managed cache parse failure path=$managed error=$($_.Exception.Message)"
-      }
-    } else {
-      Write-Live-Log "tool settings managed cache missing path=$managed"
-    }
-  }
-  $supportRoot = $env:DMUX_APP_SUPPORT_ROOT
-  if (-not [string]::IsNullOrWhiteSpace($supportRoot)) {
-    $fallback = Join-Path $supportRoot "settings.json"
-    if (Test-Path -LiteralPath $fallback) {
-      try {
-        $root = Get-Content -LiteralPath $fallback -Raw | ConvertFrom-Json
-        $node = $null
-        if ($null -ne $root -and $null -ne $root.ai) {
-          $node = $root.ai.runtimeTools
-        }
-        if ($null -ne $node) {
-          Write-Live-Log "tool settings source=app-support path=$fallback"
-          return $node
-        }
-        Write-Live-Log "tool settings app-support node missing path=$fallback"
-      } catch {
-        Write-Live-Log "tool settings app-support parse failure path=$fallback error=$($_.Exception.Message)"
-      }
-    } else {
-      Write-Live-Log "tool settings app-support missing path=$fallback"
-    }
-  }
-  Write-Live-Log "tool settings source=none tool=$Tool (no tool-permission injection)"
-  return $null
-}
-
 function Tool-Memory-Injection-Strategy([string]$Name) {
   $path = Join-Path $wrapperDir "tool-drivers.json"
   if (-not (Test-Path -LiteralPath $path)) { return "" }
@@ -162,54 +112,8 @@ function Apply-Managed-Lifecycle-Env([string]$Name) {
   }
 }
 
-function Tool-Config-Key([string]$Name) {
-  switch ($Name) {
-    "codex" { "codex" }
-    "claude" { "claudeCode" }
-    "claude-code" { "claudeCode" }
-    "reclaude" { "claudeCode" }
-    "agy" { "agy" }
-    "omp" { "omp" }
-    "kimi" { "kimi" }
-    "kimi-code" { "kimi" }
-    "opencode" { "opencode" }
-    "mimo" { "mimo" }
-    "kiro-cli" { "kiro" }
-    "codewhale" { "codewhale" }
-    default { "" }
-  }
-}
-
-function Tool-Model-Key([string]$Name) {
-  switch ($Name) {
-    "codex" { "codexModel" }
-    "claude" { "claudeCodeModel" }
-    "claude-code" { "claudeCodeModel" }
-    "reclaude" { "claudeCodeModel" }
-    "agy" { "agyModel" }
-    "omp" { "ompModel" }
-    "kimi" { "kimiModel" }
-    "kimi-code" { "kimiModel" }
-    "opencode" { "opencodeModel" }
-    "mimo" { "mimoModel" }
-    "kiro-cli" { "kiroModel" }
-    "codewhale" { "codewhaleModel" }
-    default { "" }
-  }
-}
-
 function Has-Arg([string[]]$CommandArgs, [string]$Name) {
   return $CommandArgs -contains $Name
-}
-
-function Test-Elevated-Process {
-  try {
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-  } catch {
-    return $false
-  }
 }
 
 function Has-Prefix-Arg([string[]]$CommandArgs, [string]$Prefix) {
@@ -245,20 +149,6 @@ function Codex-Allows-Additional-Writable-Roots([string[]]$CommandArgs) {
         $arg -eq "--sandbox=danger-full-access" -or
         $arg -eq "-sworkspace-write" -or
         $arg -eq "-sdanger-full-access") {
-      return $true
-    }
-  }
-  return $false
-}
-
-function Codex-Has-Sandbox-Mode-Arg([string[]]$CommandArgs) {
-  foreach ($arg in $CommandArgs) {
-    if ($arg -eq "--dangerously-bypass-approvals-and-sandbox" -or
-        $arg -eq "--full-auto" -or
-        $arg -eq "--sandbox" -or
-        $arg -eq "-s" -or
-        $arg.StartsWith("--sandbox=", [StringComparison]::Ordinal) -or
-        $arg.StartsWith("-s", [StringComparison]::Ordinal)) {
       return $true
     }
   }
@@ -879,50 +769,15 @@ if (Is-Passthrough-Invocation $ToolArgs) {
   exit $exitCode
 }
 
-$settings = Read-Tool-Settings
 $memoryInjectionStrategy = Tool-Memory-Injection-Strategy $Tool
-$permissionKey = Tool-Config-Key $Tool
-$modelKey = Tool-Model-Key $Tool
-$permissionMode = if ($settings -and $permissionKey) {
-  [string]$settings.$permissionKey
-} else {
-  ""
-}
-$configuredModel = if ($settings -and $modelKey) { [string]$settings.$modelKey } else { "" }
-$codexEffort = if ($settings) { [string]$settings.codexEffort } else { "" }
-if ($codexEffort -notin @("minimal", "low", "medium", "high", "xhigh")) {
-  $codexEffort = ""
-}
-
 $launchArgs = @($ToolArgs)
-if ($Tool -ne "kiro-cli" -and -not [string]::IsNullOrWhiteSpace($configuredModel) -and -not (Has-Option-Value $launchArgs @("--model", "-m"))) {
-  if ($Tool -eq "codex") {
-    $launchArgs = @("--model=$configuredModel") + $launchArgs
-  } else {
-    $launchArgs = @("--model", $configuredModel) + $launchArgs
-  }
-}
-
-if ($Tool -eq "codex" -and -not [string]::IsNullOrWhiteSpace($codexEffort) -and -not (Has-Config-Key $launchArgs "model_reasoning_effort")) {
-  $launchArgs = @("-c", "model_reasoning_effort=`"$codexEffort`"") + $launchArgs
-}
-
-if ($memoryInjectionStrategy -eq "codexDeveloperInstructions" -and
-    $permissionMode -ne "fullAccess" -and
-    -not [string]::IsNullOrWhiteSpace($env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
-    (Test-Path -LiteralPath $env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
-    -not [string]::IsNullOrWhiteSpace($env:DMUX_PROJECT_PATH) -and
-    (Test-Path -LiteralPath $env:DMUX_PROJECT_PATH) -and
-    -not (Codex-Has-Sandbox-Mode-Arg $launchArgs)) {
-  $launchArgs = @("--sandbox", "workspace-write") + $launchArgs
-}
 
 if ($memoryInjectionStrategy -eq "codexDeveloperInstructions" -and
     -not [string]::IsNullOrWhiteSpace($env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
     (Test-Path -LiteralPath $env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
     -not [string]::IsNullOrWhiteSpace($env:DMUX_PROJECT_PATH) -and
     (Test-Path -LiteralPath $env:DMUX_PROJECT_PATH) -and
-    ($permissionMode -eq "fullAccess" -or (Codex-Allows-Additional-Writable-Roots $launchArgs)) -and
+    (Codex-Allows-Additional-Writable-Roots $launchArgs) -and
     -not (Has-Option-Value $launchArgs @("-C", "--cd"))) {
   $launchArgs = @("-C", $env:DMUX_PROJECT_PATH, "--add-dir", $env:DMUX_AI_MEMORY_WORKSPACE_ROOT) + $launchArgs
 }
@@ -971,53 +826,6 @@ if ($Tool -eq 'codex') {
   $launchArgs = @(Add-Codex-Embedded-Mode $realBin $launchArgs $searchPath)
 }
 
-if ($permissionMode -eq "fullAccess") {
-  if ($Tool -eq "codex") {
-    if (-not (Has-Arg $launchArgs "--dangerously-bypass-approvals-and-sandbox") -and
-        -not (Has-Arg $launchArgs "--full-auto") -and
-        -not (Has-Option-Value $launchArgs @("--sandbox", "--ask-for-approval", "-s", "-a"))) {
-      $launchArgs = @("--dangerously-bypass-approvals-and-sandbox") + $launchArgs
-    }
-  } elseif ($Tool -eq "claude" -or $Tool -eq "claude-code" -or $Tool -eq "reclaude") {
-    if (-not (Has-Arg $launchArgs "--dangerously-skip-permissions") -and
-        -not (Has-Arg $launchArgs "--allow-dangerously-skip-permissions") -and
-        -not (Has-Option-Value $launchArgs @("--permission-mode"))) {
-      $launchArgs = @("--dangerously-skip-permissions") + $launchArgs
-    }
-  } elseif ($Tool -eq "agy") {
-    if (-not (Has-Option-Value $launchArgs @("--approval-mode", "--mode", "--sandbox", "--dangerously-skip-permissions")) -and
-        -not (Has-Arg $launchArgs "--yolo") -and
-        -not (Has-Arg $launchArgs "-y")) {
-      $launchArgs = @("--dangerously-skip-permissions") + $launchArgs
-    }
-  } elseif ($Tool -eq "omp") {
-    if (-not (Has-Option-Value $launchArgs @("--approval-mode")) -and
-        -not (Has-Arg $launchArgs "--auto-approve") -and
-        -not (Has-Arg $launchArgs "--yolo")) {
-      $launchArgs = @("--approval-mode", "yolo") + $launchArgs
-    }
-  } elseif ($Tool -eq "kimi" -or $Tool -eq "kimi-code") {
-    # Kimi Code uses the generic model flag, but its permission flags differ from agy.
-  } elseif ($Tool -eq "opencode" -or $Tool -eq "mimo") {
-    if (-not (Has-Arg $launchArgs "--dangerously-skip-permissions")) {
-      $launchArgs = @("--dangerously-skip-permissions") + $launchArgs
-    }
-  } elseif ($Tool -eq "codewhale") {
-    if (-not (Has-Arg $launchArgs "--yolo")) {
-      $launchArgs = @("--yolo") + $launchArgs
-    }
-  }
-}
-
-# Covers both the injected flag (fullAccess) and a user-supplied one: when
-# elevated, Claude Code refuses the bypass and prompts will still appear.
-if (($Tool -eq "claude" -or $Tool -eq "claude-code" -or $Tool -eq "reclaude") -and
-    (Has-Arg $launchArgs "--dangerously-skip-permissions") -and
-    (Test-Elevated-Process)) {
-  [Console]::Error.WriteLine("Codux: this terminal is running as Administrator; Claude Code refuses --dangerously-skip-permissions when elevated, so permission prompts will still appear.")
-  Write-Live-Log "elevation warning emitted tool=$Tool (bypass flag ineffective under admin)"
-}
-
 if ($memoryInjectionStrategy -eq "appendSystemPrompt") {
   $launchArgs = Apply-Append-System-Prompt $launchArgs "appendSystemPrompt" $Tool
 }
@@ -1030,7 +838,6 @@ if ($Tool -eq "omp") {
 }
 
 $launchModel = Extract-Model $launchArgs
-if ($Tool -eq 'kiro-cli' -and [string]::IsNullOrWhiteSpace($launchModel)) { $launchModel=$configuredModel }
 $resumeTarget = Extract-Resume-Target $launchArgs
 $transcriptPath = if ($Tool -eq "omp") { Extract-Omp-Session-Directory $launchArgs } else { "" }
 if (($Tool -eq 'kimi' -or $Tool -eq 'kimi-code') -and -not [string]::IsNullOrWhiteSpace($env:CODUX_NATIVE_KIMI_CONTEXT_MANIFEST)) {

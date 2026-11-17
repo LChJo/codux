@@ -13,7 +13,6 @@ use codux_runtime::{
     notification::NotificationSummary,
     remote::{RemotePairingInfo, RemotePendingPairing, RemoteSummary},
     settings::{SettingsSummary, locale_from_language_setting},
-    tool_permissions::ToolPermissionsSummary,
     update::UpdateSummary,
 };
 use gpui::{
@@ -405,7 +404,6 @@ fn settings_pane_body(
         SettingsPane::Pet => settings_pet_pane(&app.state.settings, window, cx),
         SettingsPane::AI => settings_ai_pane(
             &app.state.settings,
-            &app.state.tool_permissions,
             app.selected_ai_provider_id.as_deref(),
             app.ai_provider_testing_id.as_deref(),
             app.ai_provider_test_result.as_ref(),

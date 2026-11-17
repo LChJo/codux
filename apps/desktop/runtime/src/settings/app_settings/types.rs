@@ -123,56 +123,11 @@ pub struct AISettings {
     #[serde(default)]
     pub git_commit_message_style_rules: String,
     #[serde(default)]
-    pub runtime_tools: AIRuntimeToolSettings,
-    #[serde(default)]
     pub memory: AIMemorySettings,
     #[serde(default)]
     pub pet: AIPetSettings,
     #[serde(default)]
     pub providers: Vec<AIProviderSettings>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AIRuntimeToolSettings {
-    #[serde(default = "default_ai_tool_permission_mode")]
-    pub codex: String,
-    #[serde(default = "default_ai_tool_permission_mode")]
-    pub claude_code: String,
-    #[serde(default = "default_ai_tool_permission_mode")]
-    pub agy: String,
-    #[serde(default = "default_ai_tool_permission_mode")]
-    pub omp: String,
-    #[serde(default = "default_ai_tool_permission_mode")]
-    pub opencode: String,
-    #[serde(default = "default_ai_tool_permission_mode")]
-    pub kiro: String,
-    #[serde(default = "default_ai_tool_permission_mode")]
-    pub codewhale: String,
-    #[serde(default = "default_ai_tool_permission_mode")]
-    pub kimi: String,
-    #[serde(default = "default_ai_tool_permission_mode")]
-    pub mimo: String,
-    #[serde(default)]
-    pub codex_model: String,
-    #[serde(default)]
-    pub claude_code_model: String,
-    #[serde(default)]
-    pub agy_model: String,
-    #[serde(default)]
-    pub omp_model: String,
-    #[serde(default)]
-    pub opencode_model: String,
-    #[serde(default)]
-    pub kiro_model: String,
-    #[serde(default)]
-    pub codewhale_model: String,
-    #[serde(default)]
-    pub kimi_model: String,
-    #[serde(default)]
-    pub mimo_model: String,
-    #[serde(default = "default_codex_effort")]
-    pub codex_effort: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

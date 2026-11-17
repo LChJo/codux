@@ -664,7 +664,6 @@ fn project_and_worktree_switch_runs_runtime_activation_layout_pty_ai_and_git_flo
         session_title: Some("Task A Top".to_string()),
         session_cwd: Some(worktree_a_dir.clone()),
         session_instance_id: None,
-        tool_permissions_file: None,
         memory_workspace_root: None,
         memory_prompt_file: None,
         memory_index_file: None,

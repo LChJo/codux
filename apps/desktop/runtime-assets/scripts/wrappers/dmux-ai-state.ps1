@@ -167,31 +167,6 @@ function Resolve-SessionId($Payload) {
   return $null
 }
 
-function Get-ConfiguredPermissionMode {
-  if ([string]::IsNullOrWhiteSpace($env:DMUX_TOOL_PERMISSION_SETTINGS_FILE)) { return "" }
-  if (-not (Test-Path -LiteralPath $env:DMUX_TOOL_PERMISSION_SETTINGS_FILE)) { return "" }
-  $key = switch ($Tool) {
-    "codex" { "codex" }
-    "claude" { "claudeCode" }
-    "claude-code" { "claudeCode" }
-    "agy" { "agy" }
-    "opencode" { "opencode" }
-    default { "" }
-  }
-  if ([string]::IsNullOrWhiteSpace($key)) { return "" }
-  try {
-    $settings = Get-Content -LiteralPath $env:DMUX_TOOL_PERMISSION_SETTINGS_FILE -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
-    $value = Get-ObjectProperty $settings $key
-    if ($value -is [string] -and -not [string]::IsNullOrWhiteSpace($value)) { return $value }
-  } catch {
-  }
-  return ""
-}
-
-function Has-FullAccessPermission {
-  return [string]::Equals((Get-ConfiguredPermissionMode), "fullAccess", [StringComparison]::Ordinal)
-}
-
 function Write-ClaudeMemoryAdditionalContext([string]$HookEventName = "UserPromptSubmit") {
   if ([string]::IsNullOrWhiteSpace($env:DMUX_AI_MEMORY_INDEX_FILE)) { return }
   if (-not (Test-Path -LiteralPath $env:DMUX_AI_MEMORY_INDEX_FILE)) { return }
@@ -231,9 +206,6 @@ function Get-EventKind([string]$Value) {
     "pre-compact" { return "memoryRefreshing" }
     "post-compact" { return "memoryRefreshing" }
     "permission-request" {
-      if (($Tool -eq "claude" -or $Tool -eq "claude-code") -and (Has-FullAccessPermission)) {
-        return "promptSubmitted"
-      }
       return "needsInput"
     }
     "codex-permission-request" { return "needsInput" }
@@ -264,9 +236,6 @@ function Get-Source([string]$Value, $Payload) {
     "elicitation-result" { return "user-input" }
     "before-agent" { return "user-input" }
     "permission-request" {
-      if (($Tool -eq "claude" -or $Tool -eq "claude-code") -and (Has-FullAccessPermission)) {
-        return "permission-auto-allowed"
-      }
       return $null
     }
     "pre-compact" { return "pre-compact" }
@@ -282,9 +251,6 @@ function Get-Source([string]$Value, $Payload) {
 function Get-NotificationType([string]$Value, $Payload) {
   switch ($Value) {
     "permission-request" {
-      if (($Tool -eq "claude" -or $Tool -eq "claude-code") -and (Has-FullAccessPermission)) {
-        return $null
-      }
       return "permission-request"
     }
     "codex-permission-request" { return "permission-request" }

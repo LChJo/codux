@@ -188,39 +188,6 @@ codewhale_default_model() {
   ' "${settings_file}" 2>/dev/null
 }
 
-configured_permission_mode() {
-  [[ -n "${DMUX_TOOL_PERMISSION_SETTINGS_FILE:-}" && -f "${DMUX_TOOL_PERMISSION_SETTINGS_FILE}" ]] || return 0
-
-  local config_key=""
-  case "${tool_name}" in
-    codex)
-      config_key="codex"
-      ;;
-    claude|claude-code|reclaude)
-      config_key="claudeCode"
-      ;;
-    agy)
-      config_key="agy"
-      ;;
-    opencode)
-      config_key="opencode"
-      ;;
-    mimo)
-      config_key="mimo"
-      ;;
-    *)
-      return 0
-      ;;
-  esac
-
-  wrapper_helper_available || return 0
-  CONFIG_PATH="${DMUX_TOOL_PERMISSION_SETTINGS_FILE}" CONFIG_KEY="${config_key}" "${wrapper_helper}" --codux-wrapper-helper json-string-key
-}
-
-has_full_access_permission() {
-  [[ "$(configured_permission_mode)" == "fullAccess" ]]
-}
-
 write_claude_session_map() {
   local external_session_id
   external_session_id="$(resolved_claude_external_session_id)"
@@ -504,29 +471,18 @@ if [[ "${tool_name}" == "claude" || "${tool_name}" == "claude-code" || "${tool_n
           "" \
           "user-input"
       elif [[ "${action}" == "permission-request" ]]; then
-        if has_full_access_permission; then
-          write_ai_hook_event \
-            "promptSubmitted" \
-            "$(resolved_claude_external_session_id)" \
-            "$(resolved_hook_model)" \
-            "null" \
-            "" \
-            "" \
-            "permission-auto-allowed"
-        else
-          write_ai_hook_event \
-            "needsInput" \
-            "$(resolved_claude_external_session_id)" \
-            "$(resolved_hook_model)" \
-            "null" \
-            "" \
-            "permission-request" \
-            "" \
-            "permission-request" \
-            "" \
-            "$(extract_first_hook_field tool_name toolName tool)" \
-            "$(extract_first_hook_field message prompt)"
-        fi
+        write_ai_hook_event \
+          "needsInput" \
+          "$(resolved_claude_external_session_id)" \
+          "$(resolved_hook_model)" \
+          "null" \
+          "" \
+          "permission-request" \
+          "" \
+          "permission-request" \
+          "" \
+          "$(extract_first_hook_field tool_name toolName tool)" \
+          "$(extract_first_hook_field message prompt)"
       elif [[ "${action}" == "permission-denied" ]]; then
         write_ai_hook_event \
           "needsInput" \
@@ -744,29 +700,18 @@ if [[ "${tool_name}" == "kimi" ]]; then
       log_line "kimi hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
       ;;
     permission-request)
-      if has_full_access_permission; then
-        write_ai_hook_event \
-          "promptSubmitted" \
-          "$(extract_hook_session_id)" \
-          "$(resolved_hook_model)" \
-          "null" \
-          "" \
-          "" \
-          "permission-auto-allowed"
-      else
-        write_ai_hook_event \
-          "needsInput" \
-          "$(extract_hook_session_id)" \
-          "$(resolved_hook_model)" \
-          "null" \
-          "" \
-          "permission-request" \
-          "" \
-          "permission-request" \
-          "" \
-          "$(extract_first_hook_field tool_name toolName tool)" \
-          "$(extract_first_hook_field message prompt)"
-      fi
+      write_ai_hook_event \
+        "needsInput" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "null" \
+        "" \
+        "permission-request" \
+        "" \
+        "permission-request" \
+        "" \
+        "$(extract_first_hook_field tool_name toolName tool)" \
+        "$(extract_first_hook_field message prompt)"
       log_line "kimi hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
       ;;
     notification)

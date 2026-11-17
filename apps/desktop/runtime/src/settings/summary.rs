@@ -137,10 +137,6 @@ fn summary_from_raw(raw: &Map<String, Value>) -> SettingsSummary {
             .and_then(Value::as_str)
             .map(|value| bounded_trimmed_chars(value, 4_000))
             .unwrap_or(0),
-        runtime_tool_count: ai
-            .and_then(|ai| ai.get("runtimeTools"))
-            .map(runtime_tool_count)
-            .unwrap_or(defaults.runtime_tool_count),
         memory_enabled: memory
             .and_then(|memory| memory.get("enabled"))
             .and_then(Value::as_bool)
@@ -435,29 +431,6 @@ fn provider_summary(value: &Value) -> Option<AIProviderSummary> {
             .map(|value| !value.trim().is_empty())
             .unwrap_or(false),
     })
-}
-
-fn runtime_tool_count(value: &Value) -> usize {
-    const TOOL_KEYS: [&str; 9] = [
-        "codex",
-        "claudeCode",
-        "agy",
-        "omp",
-        "opencode",
-        "kiro",
-        "codewhale",
-        "kimi",
-        "mimo",
-    ];
-    match value {
-        Value::Object(tools) => TOOL_KEYS
-            .iter()
-            .filter(|key| tools.contains_key(**key))
-            .count()
-            .max(TOOL_KEYS.len()),
-        Value::Array(tools) => tools.len(),
-        _ => 0,
-    }
 }
 
 fn string_from_value(raw: &Map<String, Value>, key: &str, fallback: &str) -> String {

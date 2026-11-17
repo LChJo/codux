@@ -34,7 +34,6 @@ impl CoduxApp {
         if let Some(error) = power_sync_error {
             state.power.error = Some(error);
         }
-        let tool_permissions = state.tool_permissions.clone();
         let ready_snapshot = runtime_service.app_runtime_ready(true, window.is_window_active());
         state.remote = ready_snapshot.remote.clone();
         // Seed the outbound saved-host registry up front so the status-bar device
@@ -65,7 +64,7 @@ impl CoduxApp {
             None,
         );
         prepare_memory_launch_artifacts(&runtime_service, &state);
-        let launch_context = terminal_launch_context(&state, &runtime, &tool_permissions);
+        let launch_context = terminal_launch_context(&state, &runtime);
         let base_pty_config = launch_context
             .as_ref()
             .map(TerminalLaunchContext::to_config)

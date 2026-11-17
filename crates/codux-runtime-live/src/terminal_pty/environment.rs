@@ -10,17 +10,42 @@ pub(super) const CONFIGURED_ENV_KEYS: &[&str] = &[
     "GEMINI_MODEL",
     "GOOGLE_API_KEY",
     "GOOGLE_GEMINI_BASE_URL",
+    "GOOGLE_VERTEX_BASE_URL",
+    "GOOGLE_GENAI_API_VERSION",
     "GOOGLE_GENAI_USE_VERTEXAI",
     "GOOGLE_CLOUD_PROJECT",
     "GOOGLE_CLOUD_LOCATION",
     "GOOGLE_APPLICATION_CREDENTIALS",
+    "GOOGLE_CLOUD_QUOTA_PROJECT",
+    "CLOUDSDK_CONFIG",
+    "GEMINI_CLI_HOME",
     // Claude / Anthropic.
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_SMALL_FAST_MODEL",
     "ANTHROPIC_VERTEX_PROJECT_ID",
+    "ANTHROPIC_VERTEX_BASE_URL",
+    "ANTHROPIC_FOUNDRY_API_KEY",
+    "ANTHROPIC_FOUNDRY_AUTH_TOKEN",
+    "ANTHROPIC_FOUNDRY_BASE_URL",
+    "ANTHROPIC_FOUNDRY_RESOURCE",
+    "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_USE_BEDROCK",
     "CLAUDE_CODE_USE_VERTEX",
+    "CLAUDE_CODE_USE_FOUNDRY",
+    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+    "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN",
+    "CLAUDE_CODE_SUBAGENT_MODEL",
+    "CLAUDE_CODE_EFFORT_LEVEL",
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+    "MAX_THINKING_TOKENS",
+    "API_TIMEOUT_MS",
     // OpenAI-compatible clients.
     "OPENAI_API_KEY",
     "OPENAI_BASE_URL",
@@ -29,11 +54,14 @@ pub(super) const CONFIGURED_ENV_KEYS: &[&str] = &[
     "AZURE_OPENAI_API_KEY",
     "AZURE_OPENAI_ENDPOINT",
     "AZURE_OPENAI_API_VERSION",
+    "AZURE_OPENAI_AD_TOKEN",
     // Codex / OpenCode / Kimi / CodeWhale paths and credentials.
     "CODEX_HOME",
     "OPENCODE_API_KEY",
     "OPENCODE_BASE_URL",
     "OPENCODE_CONFIG_DIR",
+    "OPENCODE_CONFIG",
+    "OPENCODE_CONFIG_CONTENT",
     "OPENCODE_DB",
     "MIMOCODE_HOME",
     "MIMOCODE_DB",
@@ -48,11 +76,45 @@ pub(super) const CONFIGURED_ENV_KEYS: &[&str] = &[
     "DEEPSEEK_MODEL",
     "DEEPSEEK_AUTH_TOKEN",
     "TAVILY_API_KEY",
-    // Cloud provider selectors. Credential files remain in their normal
-    // per-user locations unless explicitly configured through project env.
+    // Git hosting and package registries.
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "GH_ENTERPRISE_TOKEN",
+    "GITHUB_ENTERPRISE_TOKEN",
+    "GH_HOST",
+    "GH_CONFIG_DIR",
+    "GITLAB_TOKEN",
+    "GITLAB_HOST",
+    "GLAB_CONFIG_DIR",
+    "NPM_TOKEN",
+    "NODE_AUTH_TOKEN",
+    // Cloud credentials, profiles and custom credential file locations.
     "AWS_PROFILE",
     "AWS_REGION",
     "AWS_DEFAULT_REGION",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_CONFIG_FILE",
+    "AWS_SHARED_CREDENTIALS_FILE",
+    "AWS_ROLE_ARN",
+    "AWS_ROLE_SESSION_NAME",
+    "AWS_WEB_IDENTITY_TOKEN_FILE",
+    "AWS_CA_BUNDLE",
+    "AWS_ENDPOINT_URL",
+    "AWS_SDK_LOAD_CONFIG",
+    "AZURE_CONFIG_DIR",
+    "AZURE_TENANT_ID",
+    "AZURE_CLIENT_ID",
+    "AZURE_CLIENT_SECRET",
+    "AZURE_CLIENT_CERTIFICATE_PATH",
+    "AZURE_FEDERATED_TOKEN_FILE",
+    "AZURE_AUTHORITY_HOST",
+    "AZURE_SUBSCRIPTION_ID",
+    "CLOUDFLARE_API_TOKEN",
+    "CLOUDFLARE_ACCOUNT_ID",
+    "CLOUDFLARE_API_KEY",
+    "CLOUDFLARE_EMAIL",
     // Proxy, certificate, and standard XDG configuration.
     "HTTPS_PROXY",
     "HTTP_PROXY",
@@ -62,16 +124,47 @@ pub(super) const CONFIGURED_ENV_KEYS: &[&str] = &[
     "http_proxy",
     "all_proxy",
     "no_proxy",
+    "WS_PROXY",
+    "WSS_PROXY",
+    "ws_proxy",
+    "wss_proxy",
     "SSL_CERT_FILE",
     "SSL_CERT_DIR",
     "NODE_EXTRA_CA_CERTS",
     "REQUESTS_CA_BUNDLE",
     "CURL_CA_BUNDLE",
+    "GIT_SSL_CAINFO",
+    "GIT_SSL_CAPATH",
+    "GRPC_DEFAULT_SSL_ROOTS_FILE_PATH",
     "XDG_CONFIG_HOME",
     "XDG_DATA_HOME",
     "XDG_CACHE_HOME",
     "XDG_STATE_HOME",
     "XDG_RUNTIME_DIR",
+];
+
+// Host-issued connection data and runtime locations are process-only. They must
+// not be recovered from a tool .env or a cached login-shell snapshot. Windows
+// core/sandbox identity flags and agent session IDs describe a different process
+// and are deliberately not inherited here.
+pub(super) const HOST_ENV_KEYS: &[&str] = &[
+    "BROWSER_USE_ACCESS_EXECUTOR_ID",
+    "BROWSER_USE_ACCESS_PIPE_PATH",
+    "BROWSER_USE_ACCESS_VERIFYING_IDENTITY",
+    "CODEX_APP_TOOLS_PIPE_PATH",
+    "CODEX_MCP_NODE_PATH",
+    "CODEX_BROWSER_USE_NODE_PATH",
+    "CODEX_ELECTRON_RESOURCES_PATH",
+    "CODEX_CLI_PATH",
+    "NODE_REPL_NODE_PATH",
+    "NODE_REPL_NODE_MODULE_DIRS",
+    "NODE_REPL_TRUSTED_CODE_PATHS",
+    "NODE_REPL_TRUSTED_SERVICES",
+    "NODE_REPL_NATIVE_PIPE_CONNECT_TIMEOUT_MS",
+    "CUA_REPL_NODE_REPL_PATH",
+    "CUA_REPL_ENABLED_SURFACES",
+    "SKY_CUA_NATIVE_PIPE",
+    "SKY_CUA_NATIVE_PIPE_DIRECTORY",
 ];
 
 pub fn terminal_environment(
@@ -228,16 +321,6 @@ pub fn terminal_environment(
         root_project_id.clone(),
     );
     values.insert("CODUX_DB_PROJECT_ID".to_string(), root_project_id);
-    if let Some(path) = config
-        .tool_permissions_file
-        .as_ref()
-        .or_else(|| context.and_then(|context| context.tool_permissions_file.as_ref()))
-    {
-        values.insert(
-            "DMUX_TOOL_PERMISSION_SETTINGS_FILE".to_string(),
-            path.display().to_string(),
-        );
-    }
     if let Some(path) = config
         .memory_workspace_root
         .as_ref()
@@ -448,6 +531,17 @@ pub(super) fn append_passthrough_env(values: &mut HashMap<String, String>) {
     append_env_keys(values, UNIX_PASSTHROUGH_ENV_KEYS);
     #[cfg(windows)]
     append_env_keys(values, WINDOWS_PASSTHROUGH_ENV_KEYS);
+    // Host transports can change while the login-shell snapshot stays cached.
+    // Automatic host values come from the current parent process; explicit
+    // project/runtime overrides are applied by terminal_environment afterwards.
+    for key in HOST_ENV_KEYS {
+        values.remove(*key);
+        if let Ok(value) = std::env::var(key)
+            && !value.is_empty()
+        {
+            values.insert((*key).to_string(), value);
+        }
+    }
 }
 
 pub(super) fn append_env_keys(values: &mut HashMap<String, String>, keys: &[&str]) {

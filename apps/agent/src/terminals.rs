@@ -346,7 +346,6 @@ pub(crate) fn create_terminal(
     let runtime_root = codux_runtime_live::runtime_paths::runtime_root_dir();
     config.support_dir = Some(data_dir.clone());
     config.runtime_root = Some(runtime_root.clone());
-    config.tool_permissions_file = Some(data_dir.join("tool_permissions.json"));
     crate::memory::prepare_terminal_launch_context(&mut config, &data_dir, &runtime_root)?;
     if config.terminal_id.is_none() {
         config.terminal_id = Some(uuid::Uuid::new_v4().to_string());

@@ -231,10 +231,6 @@ fn load_performance() -> PerformanceSummary {
     PerformanceService::summary()
 }
 
-fn load_tool_permissions(support_dir: &Path) -> ToolPermissionsSummary {
-    ToolPermissionsService::new(support_dir.to_path_buf()).sync()
-}
-
 fn read_json_or_default(path: PathBuf) -> Value {
     Value::Object(crate::config::ConfigStore::for_file(path).snapshot())
 }

@@ -217,12 +217,10 @@ fn agy_launch_flags_match_installed_cli_and_respect_explicit_policy() {
             .collect::<Vec<_>>();
         let output = fixture.command(&case).args(&original).output().unwrap();
         let captured = sink_args(&output);
-        let prefix_len = captured.len().checked_sub(original.len()).unwrap();
-        assert_eq!(&captured[prefix_len..], &original);
+        assert_eq!(captured, original);
         // Use only a local metadata command against the installed binary. No
         // prompt, account login, model call, or tool execution is performed.
         let probe = Command::new(&actual)
-            .args(&captured[..prefix_len])
             .args(&policy)
             .arg("agents")
             .env("HOME", fixture.root.join("home"))
@@ -234,17 +232,9 @@ fn agy_launch_flags_match_installed_cli_and_respect_explicit_policy() {
             .unwrap();
         assert!(
             probe.status.success(),
-            "Injected policy must be accepted by installed Agy: {}",
+            "Native policy must be accepted by installed Agy: {}",
             String::from_utf8_lossy(&probe.stderr)
         );
-        if policy.is_empty() {
-            assert_eq!(&captured[..prefix_len], ["--dangerously-skip-permissions"]);
-        } else {
-            assert_eq!(
-                captured, original,
-                "An explicit policy must take precedence"
-            );
-        }
         assert!(fixture.binding(&case).is_file());
     }
     assert_eq!(
@@ -302,7 +292,10 @@ fn agy_metadata_commands_preserve_arguments_and_do_not_create_bindings() {
         .output()
         .unwrap();
     let captured = sink_args(&output);
-    assert_eq!(captured[0], "--dangerously-skip-permissions");
+    assert_eq!(
+        captured,
+        ["--model", "kept", "--prompt-interactive", "agents"]
+    );
     assert!(
         fixture.binding(case).is_file(),
         "A literal prompt must still start an AI runtime session"
@@ -387,4 +380,92 @@ fn agy_wrapper_context_preserves_agent_resume_and_literal_prompt_arguments() {
             .success()
     );
     assert!(!fixture.binding("missing-context").exists());
+}
+
+#[test]
+#[cfg_attr(not(windows), ignore = "requires actual CODUX_TEST_ZSH")]
+fn legacy_runtime_settings_cannot_override_native_cli_options() {
+    let fixture = Fixture::new();
+    fixture.install_sink();
+    std::fs::write(
+        fixture.root.join("settings.json"),
+        r#"{"agy":"fullAccess","agyModel":"retired-model"}"#,
+    )
+    .unwrap();
+    std::fs::create_dir_all(fixture.root.join("support")).unwrap();
+    std::fs::write(
+        fixture.root.join("support/settings.json"),
+        r#"{"ai":{"runtimeTools":{"agy":"fullAccess","agyModel":"retired-model"}}}"#,
+    )
+    .unwrap();
+    for (case, args) in [
+        ("native-defaults", vec!["--prompt-interactive", "hello"]),
+        (
+            "native-options",
+            vec![
+                "--model",
+                "user-model",
+                "--mode",
+                "plan",
+                "--prompt-interactive",
+                "hello",
+            ],
+        ),
+    ] {
+        let output = fixture.command(case).args(&args).output().unwrap();
+        assert_eq!(sink_args(&output), args);
+        assert!(fixture.binding(case).is_file());
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn legacy_full_access_setting_does_not_suppress_permission_request_events() {
+    let fixture = Fixture::new();
+    let hook = fixture.root.join("dmux-ai-state.ps1");
+    stage_runtime_asset("scripts/wrappers/dmux-ai-state.ps1", &hook, true).unwrap();
+    std::fs::write(
+        fixture.root.join("settings.json"),
+        r#"{"claudeCode":"fullAccess"}"#,
+    )
+    .unwrap();
+    let events = fixture.root.join("events");
+    let output = Command::new("powershell.exe")
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+        ])
+        .arg(&hook)
+        .args(["permission-request", "test", "claude"])
+        .env("DMUX_RUNTIME_OWNER", "test")
+        .env("DMUX_SESSION_ID", "permission-terminal")
+        .env("DMUX_PROJECT_ID", "test-project")
+        .env("DMUX_RUNTIME_EVENT_DIR", &events)
+        .env(
+            "DMUX_TOOL_PERMISSION_SETTINGS_FILE",
+            fixture.root.join("settings.json"),
+        )
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let files = std::fs::read_dir(&events)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(files.len(), 1);
+    let event: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(files[0].path()).unwrap()).unwrap();
+    assert_eq!(event["payload"]["kind"], "needsInput");
+    assert_eq!(
+        event["payload"]["metadata"]["notificationType"],
+        "permission-request"
+    );
+    assert!(event["payload"]["metadata"]["source"].is_null());
 }

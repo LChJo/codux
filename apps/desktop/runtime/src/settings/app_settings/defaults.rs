@@ -54,14 +54,6 @@ pub(super) fn default_git_commit_message_language() -> String {
     "application".to_string()
 }
 
-pub(super) fn default_ai_tool_permission_mode() -> String {
-    "default".to_string()
-}
-
-pub(super) fn default_codex_effort() -> String {
-    "none".to_string()
-}
-
 pub(super) fn default_memory_user_recall() -> i32 {
     4
 }

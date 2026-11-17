@@ -2,7 +2,7 @@ use super::*;
 
 impl CoduxApp {
     pub(in crate::app) fn current_terminal_launch_context(&self) -> Option<TerminalLaunchContext> {
-        terminal_launch_context(&self.state, &self.runtime, &self.state.tool_permissions)
+        terminal_launch_context(&self.state, &self.runtime)
     }
 
     pub(in crate::app) fn current_terminal_base_pty_config(&self) -> TerminalPtyConfig {

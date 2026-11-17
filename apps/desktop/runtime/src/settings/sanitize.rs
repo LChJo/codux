@@ -183,14 +183,6 @@ fn ai_pet_mut(raw: &mut Map<String, Value>) -> Result<&mut Map<String, Value>, S
         .ok_or_else(|| "AI pet settings are invalid.".to_string())
 }
 
-fn ai_runtime_tools_mut(raw: &mut Map<String, Value>) -> Result<&mut Map<String, Value>, String> {
-    let ai = ai_mut(raw)?;
-    ai.entry("runtimeTools".to_string())
-        .or_insert_with(|| Value::Object(Map::new()))
-        .as_object_mut()
-        .ok_or_else(|| "AI runtime tool settings are invalid.".to_string())
-}
-
 fn update_mut(raw: &mut Map<String, Value>) -> Result<&mut Map<String, Value>, String> {
     raw.entry("update".to_string())
         .or_insert_with(|| Value::Object(Map::new()))

@@ -177,8 +177,6 @@ impl CoduxApp {
             session_title: Some(d.title.clone()),
             session_cwd: Some(PathBuf::from(&d.working_directory)),
             session_instance_id: Some(uuid::Uuid::new_v4().to_string()),
-            tool_permissions_file: (!self.state.tool_permissions.path.is_empty())
-                .then(|| PathBuf::from(&self.state.tool_permissions.path)),
             memory_workspace_root: Some(artifacts.workspace_root),
             memory_prompt_file: Some(artifacts.prompt_file),
             memory_index_file: Some(artifacts.index_file),

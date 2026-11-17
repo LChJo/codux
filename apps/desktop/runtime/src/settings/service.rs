@@ -53,18 +53,6 @@ impl SettingsService {
         Ok(summary_from_raw(&raw))
     }
 
-    fn update_runtime_tool_string(
-        &self,
-        key: &str,
-        value: String,
-    ) -> Result<SettingsSummary, String> {
-        let mut raw = self.raw_settings();
-        let tools = ai_runtime_tools_mut(&mut raw)?;
-        tools.insert(key.to_string(), Value::String(value));
-        self.save_raw_settings(&raw)?;
-        Ok(summary_from_raw(&raw))
-    }
-
     fn toggle_ai_pet_bool(&self, key: &str, default: bool) -> Result<SettingsSummary, String> {
         let mut raw = self.raw_settings();
         let pet = ai_pet_mut(&mut raw)?;
@@ -79,7 +67,11 @@ impl SettingsService {
     }
 
     fn save_raw_settings(&self, settings: &Map<String, Value>) -> Result<(), String> {
-        ConfigStore::for_file(self.settings_path.clone()).save_snapshot(settings)
+        let mut settings = settings.clone();
+        if let Some(ai) = settings.get_mut("ai").and_then(Value::as_object_mut) {
+            ai.remove("runtimeTools");
+        }
+        ConfigStore::for_file(self.settings_path.clone()).save_snapshot(&settings)
     }
 
     pub fn ai_settings(&self) -> AISettings {

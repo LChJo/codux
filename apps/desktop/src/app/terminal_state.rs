@@ -20,7 +20,6 @@ use codux_runtime::{
     },
     terminal_pty::{TerminalManager, TerminalOutputSnapshot, TerminalPtyConfig},
     terminal_runtime::{TerminalRuntimeSessionSummary, TerminalRuntimeSummary},
-    tool_permissions::ToolPermissionsSummary,
     worktree::WorktreeInfo,
 };
 use gpui::{Edges, WindowAppearance, px};
@@ -1186,7 +1185,6 @@ pub(in crate::app) fn restore_terminal_tabs_skeleton(
 pub(in crate::app) fn terminal_launch_context(
     state: &RuntimeState,
     runtime: &RuntimeInventory,
-    tool_permissions: &ToolPermissionsSummary,
 ) -> Option<TerminalLaunchContext> {
     let project = state.selected_project.as_ref()?;
     let worktree = super::ai_runtime_status::selected_worktree_info(state);
@@ -1222,13 +1220,6 @@ pub(in crate::app) fn terminal_launch_context(
         session_title: None,
         session_cwd: None,
         session_instance_id: Some(default_session_instance_id),
-        // Wire the env var whenever a path exists: sync() always reports the
-        // target path (even on a write error), and the terminal wrappers now
-        // degrade gracefully from a missing/corrupt cache file to
-        // $DMUX_APP_SUPPORT_ROOT/settings.json instead of silently skipping
-        // tool-permission injection.
-        tool_permissions_file: (!tool_permissions.path.is_empty())
-            .then(|| PathBuf::from(&tool_permissions.path)),
         memory_workspace_root: Some(launch_artifacts.workspace_root),
         memory_prompt_file: Some(launch_artifacts.prompt_file),
         memory_index_file: Some(launch_artifacts.index_file),

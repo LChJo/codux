@@ -399,7 +399,6 @@ fn terminal_manager_uses_context_session_cwd_for_identity() {
         session_title: None,
         session_cwd: Some(worktree_cwd.clone()),
         session_instance_id: None,
-        tool_permissions_file: None,
         memory_workspace_root: None,
         memory_prompt_file: None,
         memory_index_file: None,

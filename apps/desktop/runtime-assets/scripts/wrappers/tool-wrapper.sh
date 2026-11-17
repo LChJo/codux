@@ -341,103 +341,6 @@ run_wrapper_helper() {
   "${wrapper_helper}" --codux-wrapper-helper "$@" 2>/dev/null
 }
 
-json_string_key_fallback() {
-  local config_path="$1"
-  local config_key="$2"
-  [[ -f "${config_path}" && -n "${config_key}" ]] || return 0
-  if command -v python3 >/dev/null 2>&1; then
-    python3 - "${config_path}" "${config_key}" <<'PY'
-import json
-import sys
-path, key = sys.argv[1], sys.argv[2]
-try:
-    with open(path, "r", encoding="utf-8") as handle:
-        value = json.load(handle).get(key, "")
-except Exception:
-    value = ""
-if isinstance(value, str):
-    value = value.strip()
-    if value:
-        print(value)
-PY
-    return 0
-  fi
-  /usr/bin/sed -n 's/.*"'"${config_key}"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${config_path}" | /usr/bin/head -n 1
-}
-
-configured_json_string_key() {
-  local config_path="$1"
-  local config_key="$2"
-  local value=""
-  if wrapper_helper_available; then
-    value="$(CONFIG_PATH="${config_path}" CONFIG_KEY="${config_key}" run_wrapper_helper json-string-key || true)"
-  fi
-  if [[ -z "${value}" ]]; then
-    value="$(json_string_key_fallback "${config_path}" "${config_key}" || true)"
-  fi
-  [[ -n "${value}" ]] && print -r -- "${value}"
-}
-
-json_nested_string_key_fallback() {
-  local config_path="$1"
-  local key_path="${2:-}"
-  [[ -f "${config_path}" ]] || return 0
-  if command -v python3 >/dev/null 2>&1; then
-    python3 - "${config_path}" "${key_path}" <<'PY'
-import json
-import sys
-path, key_path = sys.argv[1], sys.argv[2]
-value = ""
-try:
-    with open(path, "r", encoding="utf-8") as handle:
-        node = json.load(handle)
-    if key_path:
-        for part in key_path.split("."):
-            if part:
-                node = node[part]
-        if isinstance(node, str):
-            value = node.strip()
-    else:
-        value = "ok"
-except Exception:
-    value = ""
-if value:
-    print(value)
-PY
-    return 0
-  fi
-  if [[ -z "${key_path}" ]]; then
-    # sed cannot validate JSON; treat a non-empty file as best-effort usable.
-    [[ -s "${config_path}" ]] && print -r -- "ok"
-    return 0
-  fi
-  # runtimeTools leaf keys are unique within settings.json, so matching the
-  # last dotted segment anywhere in the file is safe without a JSON parser.
-  json_string_key_fallback "${config_path}" "${key_path##*.}"
-}
-
-configured_json_nested_string_key() {
-  local config_path="$1"
-  local key_path="${2:-}"
-  local value=""
-  if wrapper_helper_available; then
-    value="$(CONFIG_PATH="${config_path}" CONFIG_KEY_PATH="${key_path}" run_wrapper_helper json-nested-string-key || true)"
-  fi
-  if [[ -z "${value}" ]]; then
-    value="$(json_nested_string_key_fallback "${config_path}" "${key_path}" || true)"
-  fi
-  [[ -n "${value}" ]] && print -r -- "${value}"
-}
-
-json_config_file_valid() {
-  [[ -f "${1:-}" ]] || return 1
-  [[ "$(configured_json_nested_string_key "$1" "" || true)" == "ok" ]]
-}
-
-is_elevated_process() {
-  [[ "$(/usr/bin/id -u 2>/dev/null)" == "0" ]]
-}
-
 memory_prompt_file() {
   [[ -n "${DMUX_AI_MEMORY_PROMPT_FILE:-}" && -f "${DMUX_AI_MEMORY_PROMPT_FILE}" ]] || return 1
   print -r -- "${DMUX_AI_MEMORY_PROMPT_FILE}"
@@ -456,162 +359,6 @@ tool_uses_memory_injection() {
 # Resolved once per launch by resolve_tool_settings_source. The managed cache
 # under the temp dir can vanish (temp cleaners) or be mid-write; the app
 # support settings.json is the source of truth and is always readable.
-tool_settings_source=""
-tool_settings_source_path=""
-
-resolve_tool_settings_source() {
-  tool_settings_source=""
-  tool_settings_source_path=""
-  local managed="${DMUX_TOOL_PERMISSION_SETTINGS_FILE:-}"
-  if [[ -n "${managed}" ]]; then
-    if [[ ! -f "${managed}" ]]; then
-      log_line "tool settings managed cache missing path=${managed}"
-    elif json_config_file_valid "${managed}"; then
-      tool_settings_source="managed"
-      tool_settings_source_path="${managed}"
-      log_line "tool settings source=managed path=${managed}"
-    else
-      log_line "tool settings managed cache parse failure path=${managed}"
-    fi
-  fi
-  if [[ -z "${tool_settings_source}" && -n "${DMUX_APP_SUPPORT_ROOT:-}" ]]; then
-    local fallback="${DMUX_APP_SUPPORT_ROOT}/settings.json"
-    if [[ ! -f "${fallback}" ]]; then
-      log_line "tool settings app-support missing path=${fallback}"
-    elif json_config_file_valid "${fallback}"; then
-      tool_settings_source="app-support"
-      tool_settings_source_path="${fallback}"
-      log_line "tool settings source=app-support path=${fallback}"
-    else
-      log_line "tool settings app-support parse failure path=${fallback}"
-    fi
-  fi
-  if [[ -z "${tool_settings_source}" ]]; then
-    tool_settings_source="none"
-    log_line "tool settings source=none tool=${tool_name} (no tool-permission injection)"
-  fi
-  return 0
-}
-
-configured_tool_setting() {
-  local config_key="$1"
-  [[ -n "${config_key}" && -n "${tool_settings_source_path}" ]] || return 0
-  case "${tool_settings_source}" in
-    managed)
-      configured_json_string_key "${tool_settings_source_path}" "${config_key}"
-      ;;
-    app-support)
-      configured_json_nested_string_key "${tool_settings_source_path}" "ai.runtimeTools.${config_key}"
-      ;;
-  esac
-}
-
-configured_permission_mode() {
-  local config_key=""
-  case "${tool_name}" in
-    codex)
-      config_key="codex"
-      ;;
-    claude|claude-code|reclaude)
-      config_key="claudeCode"
-      ;;
-    agy)
-      config_key="agy"
-      ;;
-    omp)
-      config_key="omp"
-      ;;
-    kimi|kimi-code)
-      config_key="kimi"
-      ;;
-    opencode)
-      config_key="opencode"
-      ;;
-    mimo)
-      config_key="mimo"
-      ;;
-    kiro-cli)
-      config_key="kiro"
-      ;;
-    codewhale)
-      config_key="codewhale"
-      ;;
-    *)
-      return 0
-      ;;
-  esac
-
-  configured_tool_setting "${config_key}"
-}
-
-
-configured_tool_model() {
-  local config_key=""
-  case "${tool_name}" in
-    codex)
-      config_key="codexModel"
-      ;;
-    claude|claude-code|reclaude)
-      config_key="claudeCodeModel"
-      ;;
-    agy)
-      config_key="agyModel"
-      ;;
-    omp)
-      config_key="ompModel"
-      ;;
-    kimi|kimi-code)
-      config_key="kimiModel"
-      ;;
-    opencode)
-      config_key="opencodeModel"
-      ;;
-    mimo)
-      config_key="mimoModel"
-      ;;
-    kiro-cli)
-      config_key="kiroModel"
-      ;;
-    codewhale)
-      config_key="codewhaleModel"
-      ;;
-    *)
-      return 0
-      ;;
-  esac
-
-  configured_tool_setting "${config_key}"
-}
-
-configured_codex_effort() {
-  local configured_effort
-  configured_effort="$(configured_tool_setting "codexEffort" || true)"
-  case "${configured_effort}" in
-    minimal|low|medium|high|xhigh)
-      print -r -- "${configured_effort}"
-      ;;
-  esac
-}
-
-apply_configured_model_arg() {
-  local configured_model
-  configured_model="$(configured_tool_model || true)"
-  [[ -n "${configured_model}" ]] || return 0
-  if has_exact_arg "--model" "${launch_args[@]}" \
-    || has_exact_arg "-m" "${launch_args[@]}" \
-    || has_prefix_arg "--model=" "${launch_args[@]}"; then
-    return 0
-  fi
-
-  case "${tool_name}" in
-    codex)
-      launch_args=("--model=${configured_model}" "${launch_args[@]}")
-      ;;
-    claude|claude-code|reclaude|agy|omp|kimi|kimi-code|opencode|mimo|codewhale)
-      launch_args=(--model "${configured_model}" "${launch_args[@]}")
-      ;;
-  esac
-}
 
 has_config_key_arg() {
   local target="$1"
@@ -630,17 +377,6 @@ has_config_key_arg() {
     previous="${arg}"
   done
   return 1
-}
-
-apply_configured_codex_effort_arg() {
-  [[ "${tool_name}" == "codex" ]] || return 0
-  local configured_effort
-  configured_effort="$(configured_codex_effort || true)"
-  [[ -n "${configured_effort}" ]] || return 0
-  if has_config_key_arg "model_reasoning_effort" "${launch_args[@]}"; then
-    return 0
-  fi
-  launch_args=(-c "model_reasoning_effort=\"${configured_effort}\"" "${launch_args[@]}")
 }
 
 apply_codex_embedded_mode() {
@@ -696,26 +432,6 @@ codex_allows_additional_writable_roots() {
     previous="${arg}"
   done
   return 1
-}
-
-codex_has_sandbox_mode_arg() {
-  local arg
-  for arg in "$@"; do
-    case "${arg}" in
-      --dangerously-bypass-approvals-and-sandbox|--full-auto|--sandbox|-s|--sandbox=*|-s*)
-        return 0
-        ;;
-    esac
-  done
-  return 1
-}
-
-apply_default_codex_memory_sandbox_arg() {
-  tool_uses_memory_injection "codexDeveloperInstructions" || return 0
-  [[ -n "${DMUX_AI_MEMORY_WORKSPACE_ROOT:-}" && -d "${DMUX_AI_MEMORY_WORKSPACE_ROOT}" ]] || return 0
-  [[ -n "${DMUX_PROJECT_PATH:-}" && -d "${DMUX_PROJECT_PATH}" ]] || return 0
-  codex_has_sandbox_mode_arg "${launch_args[@]}" && return 0
-  launch_args=(--sandbox workspace-write "${launch_args[@]}")
 }
 
 apply_codex_memory_workspace_args() {
@@ -1175,30 +891,14 @@ if is_passthrough_invocation "$@"; then
 fi
 
 memory_injection_strategy="$(tool_memory_injection_strategy || true)"
-resolve_tool_settings_source
 
 if [[ "$tool_name" == "claude" || "$tool_name" == "claude-code" || "$tool_name" == "reclaude" ]]; then
   helper_script="${wrapper_dir}/dmux-ai-state.sh"
   if [[ -x "$helper_script" && -n "${DMUX_SESSION_ID:-}" && -n "${DMUX_RUNTIME_EVENT_DIR:-}" ]]; then
-    local_permission_mode="$(configured_permission_mode || true)"
     claude_launch_path="${managed_system_first_path}"
     claude_maxproc="${DMUX_CLAUDE_MAXPROC:-2048}"
     apply_process_limit_cap "${claude_maxproc}"
     launch_args=("$@")
-    apply_configured_model_arg
-    if [[ "${local_permission_mode}" == "fullAccess" ]] \
-      && ! has_exact_arg "--dangerously-skip-permissions" "${launch_args[@]}" \
-      && ! has_exact_arg "--allow-dangerously-skip-permissions" "${launch_args[@]}" \
-      && ! has_exact_arg "--permission-mode" "${launch_args[@]}" \
-      && ! has_prefix_arg "--permission-mode=" "${launch_args[@]}"; then
-      launch_args=(--dangerously-skip-permissions "${launch_args[@]}")
-    fi
-    # Covers both the injected flag (fullAccess) and a user-supplied one: as
-    # root, Claude Code refuses the bypass and prompts will still appear.
-    if has_exact_arg "--dangerously-skip-permissions" "${launch_args[@]}" && is_elevated_process; then
-      print -u2 -r -- "Codux: this terminal is running as root; Claude Code refuses --dangerously-skip-permissions when running as root, so permission prompts will still appear."
-      log_line "elevation warning emitted tool=${tool_name} (bypass flag ineffective as root)"
-    fi
     apply_append_system_prompt_memory_instructions "appendSystemPrompt" "claude"
     skip_session_id=false
     launch_model="$(extract_model_target "${launch_args[@]}" || true)"
@@ -1229,22 +929,7 @@ fi
 if [[ "$tool_name" == "codex" ]]; then
   helper_script="${wrapper_dir}/dmux-ai-state.sh"
   if [[ "${1:-}" != "app-server" && -x "$helper_script" && -n "${DMUX_SESSION_ID:-}" && -n "${DMUX_RUNTIME_EVENT_DIR:-}" ]]; then
-    local_permission_mode="$(configured_permission_mode || true)"
     launch_args=("$@")
-    apply_configured_model_arg
-    apply_configured_codex_effort_arg
-    if [[ "${local_permission_mode}" == "fullAccess" ]] \
-      && ! has_exact_arg "--dangerously-bypass-approvals-and-sandbox" "${launch_args[@]}" \
-      && ! has_exact_arg "--full-auto" "${launch_args[@]}" \
-      && ! has_exact_arg "--sandbox" "${launch_args[@]}" \
-      && ! has_prefix_arg "--sandbox=" "${launch_args[@]}" \
-      && ! has_exact_arg "--ask-for-approval" "${launch_args[@]}" \
-      && ! has_prefix_arg "--ask-for-approval=" "${launch_args[@]}" \
-      && ! has_exact_arg "-s" "${launch_args[@]}" \
-      && ! has_exact_arg "-a" "${launch_args[@]}"; then
-      launch_args=(--dangerously-bypass-approvals-and-sandbox "${launch_args[@]}")
-    fi
-    apply_default_codex_memory_sandbox_arg
     apply_codex_memory_workspace_args
     apply_codex_memory_developer_instructions
     launch_args=(--enable hooks "${launch_args[@]}")
@@ -1259,23 +944,8 @@ if [[ "$tool_name" == "codex" ]]; then
 fi
 
 if [[ "$tool_name" == "agy" ]]; then
-  local_permission_mode="$(configured_permission_mode || true)"
   launch_args=("$@")
-  apply_configured_model_arg
   apply_managed_agy_context
-  if [[ "${local_permission_mode}" == "fullAccess" ]] \
-    && ! has_exact_arg "--approval-mode" "${launch_args[@]}" \
-    && ! has_prefix_arg "--approval-mode=" "${launch_args[@]}" \
-    && ! has_exact_arg "--mode" "${launch_args[@]}" \
-    && ! has_prefix_arg "--mode=" "${launch_args[@]}" \
-    && ! has_exact_arg "--sandbox" "${launch_args[@]}" \
-    && ! has_prefix_arg "--sandbox=" "${launch_args[@]}" \
-    && ! has_exact_arg "--dangerously-skip-permissions" "${launch_args[@]}" \
-    && ! has_prefix_arg "--dangerously-skip-permissions=" "${launch_args[@]}" \
-    && ! has_exact_arg "--yolo" "${launch_args[@]}" \
-    && ! has_exact_arg "-y" "${launch_args[@]}"; then
-    launch_args=(--dangerously-skip-permissions "${launch_args[@]}")
-  fi
   launch_model="$(extract_model_target "${launch_args[@]}" || true)"
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
@@ -1285,17 +955,8 @@ if [[ "$tool_name" == "agy" ]]; then
 fi
 
 if [[ "$tool_name" == "omp" ]]; then
-  local_permission_mode="$(configured_permission_mode || true)"
   launch_args=("$@")
-  apply_configured_model_arg
   apply_append_system_prompt_memory_instructions "appendSystemPrompt" "omp"
-  if [[ "${local_permission_mode}" == "fullAccess" ]] \
-    && ! has_exact_arg "--approval-mode" "${launch_args[@]}" \
-    && ! has_prefix_arg "--approval-mode=" "${launch_args[@]}" \
-    && ! has_exact_arg "--auto-approve" "${launch_args[@]}" \
-    && ! has_exact_arg "--yolo" "${launch_args[@]}"; then
-    launch_args=(--approval-mode yolo "${launch_args[@]}")
-  fi
   launch_args+=(--config "${wrapper_dir}/managed-config/omp.yml")
   launch_model="$(extract_model_target "${launch_args[@]}" || true)"
   resume_target=""
@@ -1308,7 +969,6 @@ fi
 
 if [[ "$tool_name" == "kimi" || "$tool_name" == "kimi-code" ]]; then
   launch_args=("$@")
-  apply_configured_model_arg
   if tool_uses_memory_injection "kimiAgent"; then
     kimi_context="${CODUX_BLACKBOARD_CONTEXT_FILE:-${DMUX_AI_MEMORY_PROMPT_FILE:-}}"
     if [[ -n "${CODUX_BLACKBOARD_CONTEXT_FILE:-}" && ! -f "${CODUX_BLACKBOARD_CONTEXT_FILE}" ]]; then
@@ -1336,7 +996,6 @@ if [[ "$tool_name" == "kiro-cli" ]]; then
   launch_args=("$@")
   apply_managed_kiro_context
   launch_model="$(extract_model_target "${launch_args[@]}" || true)"
-  [[ -n "$launch_model" ]] || launch_model="$(configured_tool_model || true)"
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
   write_runtime_binding "${resume_target}" "${launch_model}" "" "$(runtime_session_origin_for_resume "${resume_target}")"
@@ -1345,13 +1004,7 @@ if [[ "$tool_name" == "kiro-cli" ]]; then
 fi
 
 if [[ "$tool_name" == "opencode" || "$tool_name" == "mimo" ]]; then
-  local_permission_mode="$(configured_permission_mode || true)"
   launch_args=("$@")
-  apply_configured_model_arg
-  if [[ "${local_permission_mode}" == "fullAccess" ]] \
-    && ! has_exact_arg "--dangerously-skip-permissions" "${launch_args[@]}"; then
-    launch_args=(--dangerously-skip-permissions "${launch_args[@]}")
-  fi
   launch_model="$(extract_model_target "${launch_args[@]}" || true)"
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
@@ -1366,13 +1019,7 @@ if [[ "$tool_name" == "opencode" || "$tool_name" == "mimo" ]]; then
 fi
 
 if [[ "$tool_name" == "codewhale" ]]; then
-  local_permission_mode="$(configured_permission_mode || true)"
   launch_args=("$@")
-  apply_configured_model_arg
-  if [[ "${local_permission_mode}" == "fullAccess" ]] \
-    && ! has_exact_arg "--yolo" "${launch_args[@]}"; then
-    launch_args=(--yolo "${launch_args[@]}")
-  fi
   launch_model="$(extract_model_target "${launch_args[@]}" || true)"
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"

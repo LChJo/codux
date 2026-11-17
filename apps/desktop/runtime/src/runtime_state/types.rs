@@ -34,7 +34,6 @@ pub struct RuntimeState {
     pub pet: PetSummary,
     pub power: PowerSummary,
     pub performance: PerformanceSummary,
-    pub tool_permissions: ToolPermissionsSummary,
 }
 
 #[derive(Clone, Debug)]

@@ -1,5 +1,5 @@
 #[cfg(not(windows))]
-use super::environment::CONFIGURED_ENV_KEYS;
+use super::environment::append_passthrough_env;
 use super::*;
 
 #[cfg(windows)]
@@ -16,7 +16,7 @@ pub(super) const FALLBACK_PATH: &str =
 // Keep the inherited environment explicit: PTY sessions start with a clean
 // environment, so these safe terminal/developer preferences must be restored
 // without copying arbitrary parent-process secrets. Tool credentials and
-// config paths live in CONFIGURED_ENV_KEYS below.
+// config paths live in environment::CONFIGURED_ENV_KEYS.
 pub(super) const COMMON_PASSTHROUGH_ENV_KEYS: &[&str] = &[
     "LANG",
     "LC_ALL",
@@ -47,29 +47,113 @@ pub(super) const COMMON_PASSTHROUGH_ENV_KEYS: &[&str] = &[
     "GIT_SSH",
     "GIT_SSH_VARIANT",
     "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_SYSTEM",
     "GIT_CONFIG_NOSYSTEM",
     "GIT_TERMINAL_PROMPT",
     "GIT_ASKPASS",
     "SSH_ASKPASS",
     "SSH_ASKPASS_REQUIRE",
+    "SSH_AUTH_SOCK",
+    "GPG_TTY",
     "CARGO_HOME",
+    "CARGO_TARGET_DIR",
+    "CARGO_BUILD_TARGET",
+    "CARGO_BUILD_JOBS",
+    "CARGO_NET_OFFLINE",
+    "CARGO_REGISTRIES_CRATES_IO_INDEX",
+    "CARGO_REGISTRIES_CRATES_IO_PROTOCOL",
+    "RUSTFLAGS",
+    "RUSTDOCFLAGS",
+    "RUSTC_WRAPPER",
+    "RUSTC_WORKSPACE_WRAPPER",
     "RUSTUP_HOME",
+    "RUSTUP_TOOLCHAIN",
+    "RUSTUP_DIST_SERVER",
+    "RUSTUP_UPDATE_ROOT",
     "JAVA_HOME",
+    "JAVA_TOOL_OPTIONS",
+    "GRADLE_USER_HOME",
+    "MAVEN_OPTS",
     "GOPATH",
     "GOBIN",
+    "GOROOT",
+    "GOPROXY",
+    "GOSUMDB",
+    "GOPRIVATE",
+    "GONOPROXY",
+    "GONOSUMDB",
+    "GOFLAGS",
+    "GOTOOLCHAIN",
+    "GOMODCACHE",
+    "GOCACHE",
+    "CGO_ENABLED",
     "VIRTUAL_ENV",
     "CONDA_PREFIX",
     "PYTHONHOME",
     "PYTHONPATH",
+    "PYTHONUTF8",
+    "PYTHONIOENCODING",
+    "PIP_CONFIG_FILE",
+    "PIP_INDEX_URL",
+    "PIP_EXTRA_INDEX_URL",
+    "PIP_CACHE_DIR",
+    "PIP_CERT",
+    "UV_CACHE_DIR",
+    "UV_INDEX_URL",
+    "UV_EXTRA_INDEX_URL",
+    "UV_PYTHON",
+    "UV_PROJECT_ENVIRONMENT",
+    "UV_NATIVE_TLS",
+    "POETRY_CACHE_DIR",
+    "POETRY_VIRTUALENVS_PATH",
+    "NODE_OPTIONS",
+    "NODE_PATH",
+    "NODE_USE_ENV_PROXY",
+    "NPM_CONFIG_REGISTRY",
+    "NPM_CONFIG_USERCONFIG",
+    "NPM_CONFIG_CACHE",
+    "NPM_CONFIG_PREFIX",
     "NVM_HOME",
+    "NVM_DIR",
+    "NVM_SYMLINK",
+    "FNM_DIR",
     "VOLTA_HOME",
     "PNPM_HOME",
     "BUN_INSTALL",
+    "CC",
+    "CXX",
+    "AR",
+    "CFLAGS",
+    "CXXFLAGS",
+    "CPPFLAGS",
+    "LDFLAGS",
+    "CMAKE_PREFIX_PATH",
+    "CMAKE_TOOLCHAIN_FILE",
+    "CMAKE_GENERATOR",
+    "PKG_CONFIG_PATH",
+    "PKG_CONFIG_LIBDIR",
+    "PKG_CONFIG_SYSROOT_DIR",
+    "VCPKG_ROOT",
+    "VCPKG_DEFAULT_TRIPLET",
+    "SCCACHE_DIR",
+    "DOCKER_HOST",
+    "DOCKER_CONTEXT",
+    "DOCKER_CONFIG",
+    "DOCKER_CERT_PATH",
+    "DOCKER_TLS_VERIFY",
+    "KUBECONFIG",
+    "HELM_CONFIG_HOME",
+    "HELM_CACHE_HOME",
+    "HELM_DATA_HOME",
 ];
 #[cfg(unix)]
 pub(super) const UNIX_PASSTHROUGH_ENV_KEYS: &[&str] = &[
     "TMPDIR",
-    "SSH_AUTH_SOCK",
+    // Unix names are case-sensitive; Windows reads these via the uppercase keys.
+    "npm_config_registry",
+    "npm_config_userconfig",
+    "npm_config_cache",
+    "npm_config_prefix",
     "__CF_USER_TEXT_ENCODING",
     "DISPLAY",
     "WAYLAND_DISPLAY",
@@ -149,17 +233,9 @@ pub(super) fn capture_shell_environment_uncached(
             std::env::var("PATH").unwrap_or_else(|_| FALLBACK_PATH.to_string()),
         )
         .stdin(Stdio::null());
-    for key in COMMON_PASSTHROUGH_ENV_KEYS
-        .iter()
-        .chain(CONFIGURED_ENV_KEYS.iter())
-        .chain(UNIX_PASSTHROUGH_ENV_KEYS.iter())
-    {
-        if let Ok(value) = std::env::var(key)
-            && !value.is_empty()
-        {
-            capture.env(key, value);
-        }
-    }
+    let mut inherited = HashMap::new();
+    append_passthrough_env(&mut inherited);
+    capture.envs(inherited);
     let output = capture.output().ok()?;
     parse_captured_shell_environment(&output.stdout, begin_marker, end_marker)
 }

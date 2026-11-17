@@ -73,7 +73,6 @@ impl RuntimeState {
         let pet = load_pet(&support_dir);
         let power = PowerService::new().summary(&settings.sleep_mode);
         let performance = load_performance();
-        let tool_permissions = load_tool_permissions(&support_dir);
 
         Self {
             support_dir,
@@ -106,7 +105,6 @@ impl RuntimeState {
             pet,
             power,
             performance,
-            tool_permissions,
         }
     }
 
@@ -164,7 +162,6 @@ impl RuntimeState {
         self.pet = load_pet(&self.support_dir);
         self.power = PowerService::new().summary(&self.settings.sleep_mode);
         self.performance = load_performance();
-        self.tool_permissions = load_tool_permissions(&self.support_dir);
     }
 
     pub fn refresh_ai_history_stats(&mut self) {

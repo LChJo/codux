@@ -605,9 +605,6 @@ impl RuntimeService {
             )))
     }
 
-    pub fn sync_tool_permissions(&self) -> ToolPermissionsSummary {
-        ToolPermissionsService::new(self.support_dir.clone()).sync()
-    }
 }
 
 // Shared by RuntimeService and the remote host runtime so every project

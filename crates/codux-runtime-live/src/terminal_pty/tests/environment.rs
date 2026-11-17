@@ -1,5 +1,168 @@
 use super::*;
-use crate::terminal_pty::environment::{CONFIGURED_ENV_KEYS, configured_dotenv};
+use crate::terminal_pty::environment::{
+    CONFIGURED_ENV_KEYS, append_passthrough_env, configured_dotenv,
+};
+
+#[test]
+fn terminal_environment_inherits_tools_and_current_host_from_process() {
+    const CHILD: &str = "CODUX_TEST_TERMINAL_ENV_CHILD";
+    let fixture = [
+        ("ANTHROPIC_MODEL", "fixture-model"),
+        ("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "1"),
+        ("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1"),
+        ("CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN", "0"),
+        ("GH_TOKEN", "fixture-github-token"),
+        ("AWS_SESSION_TOKEN", "fixture-aws-token"),
+        ("AZURE_CLIENT_ID", "fixture-client"),
+        ("CARGO_TARGET_DIR", "fixture-target"),
+        ("RUSTFLAGS", "-C debuginfo=1"),
+        ("NPM_CONFIG_REGISTRY", "https://registry.example.test"),
+        ("UV_INDEX_URL", "https://python.example.test/simple"),
+        ("SSH_AUTH_SOCK", "fixture-agent"),
+        ("BROWSER_USE_ACCESS_EXECUTOR_ID", "fixture-executor"),
+        ("BROWSER_USE_ACCESS_PIPE_PATH", "fixture-current-pipe"),
+        ("BROWSER_USE_ACCESS_VERIFYING_IDENTITY", "fixture-identity"),
+        ("CODEX_APP_TOOLS_PIPE_PATH", "fixture-app-pipe"),
+        ("CODEX_MCP_NODE_PATH", "fixture-node"),
+    ];
+    // Isolate process environment changes from concurrently running Rust tests.
+    if std::env::var_os(CHILD).is_none() {
+        let home = std::env::temp_dir().join(format!("codux-env-process-{}", Uuid::new_v4()));
+        fs::create_dir_all(&home).unwrap();
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+        child
+            .args([
+                "--exact",
+                "terminal_pty::tests::environment::terminal_environment_inherits_tools_and_current_host_from_process",
+                "--nocapture",
+            ])
+            .env_clear()
+            .env(CHILD, "1")
+            .env("HOME", &home)
+            .env("USERPROFILE", &home)
+            .env("UNRELATED_SECRET", "must-not-leak")
+            .env("CODEX_WINDOWS_REGISTERED_CORE", "1")
+            .env("CODEX_WINDOWS_SANDBOX_PACKAGE_FAMILY", "other-runtime")
+            .env("CODEX_THREAD_ID", "other-thread")
+            .env("NODE_OPTIONS", "")
+            .envs(fixture);
+        for key in ["SystemRoot", "WINDIR", "TEMP", "TMP"] {
+            if let Some(value) = std::env::var_os(key) {
+                child.env(key, value);
+            }
+        }
+        let output = child.output().unwrap();
+        fs::remove_dir_all(home).unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains("1 passed;"),
+            "environment child failed: {}\n{}",
+            stdout,
+            String::from_utf8_lossy(&output.stderr),
+        );
+        return;
+    }
+
+    let env = terminal_environment(
+        "missing-test-shell",
+        None,
+        "fixture-terminal",
+        &TerminalPtyConfig::default(),
+        None,
+    );
+    for (key, expected) in fixture {
+        assert_eq!(env.get(key).map(String::as_str), Some(expected), "{key}");
+    }
+    for key in [
+        "UNRELATED_SECRET",
+        "CODEX_WINDOWS_REGISTERED_CORE",
+        "CODEX_WINDOWS_SANDBOX_PACKAGE_FAMILY",
+        "CODEX_THREAD_ID",
+        "NODE_OPTIONS",
+    ] {
+        assert!(!env.contains_key(key), "unexpected inherited key {key}");
+    }
+
+    let mut captured = HashMap::from([
+        ("ANTHROPIC_MODEL".into(), "login-shell-model".into()),
+        ("BROWSER_USE_ACCESS_PIPE_PATH".into(), "stale-pipe".into()),
+        ("NODE_REPL_NODE_PATH".into(), "stale-node".into()),
+    ]);
+    append_passthrough_env(&mut captured);
+    assert_eq!(captured["ANTHROPIC_MODEL"], "login-shell-model");
+    assert_eq!(
+        captured["BROWSER_USE_ACCESS_PIPE_PATH"],
+        "fixture-current-pipe"
+    );
+    assert!(!captured.contains_key("NODE_REPL_NODE_PATH"));
+
+    let config = TerminalPtyConfig {
+        project_env: Some(HashMap::from([(
+            "ANTHROPIC_MODEL".into(),
+            "project-model".into(),
+        )])),
+        env: Some(HashMap::from([(
+            "ANTHROPIC_MODEL".into(),
+            "launch-model".into(),
+        )])),
+        ..Default::default()
+    };
+    let env = terminal_environment(
+        "missing-test-shell",
+        None,
+        "fixture-terminal",
+        &config,
+        None,
+    );
+    assert_eq!(env["ANTHROPIC_MODEL"], "launch-model");
+}
+
+#[test]
+fn tool_dotenv_loads_explicit_settings_without_host_transports() {
+    let home = std::env::temp_dir().join(format!("codux-env-settings-{}", Uuid::new_v4()));
+    fs::create_dir_all(home.join(".claude")).unwrap();
+    fs::create_dir_all(home.join(".codex")).unwrap();
+    fs::write(
+        home.join(".claude/.env"),
+        concat!(
+            "export ANTHROPIC_MODEL='configured-model'\n",
+            "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1\n",
+            "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1\n",
+            "AWS_SHARED_CREDENTIALS_FILE='/custom/aws credentials'\n",
+            "GH_TOKEN=fixture-token\n",
+            "BROWSER_USE_ACCESS_PIPE_PATH=stale-pipe\n",
+            "CODEX_APP_TOOLS_PIPE_PATH=stale-app-pipe\n",
+            "NODE_REPL_TRUSTED_SERVICES=untrusted-services\n",
+            "CODEX_WINDOWS_REGISTERED_CORE=1\n",
+            "UNRELATED_SECRET=must-not-leak\n",
+        ),
+    )
+    .unwrap();
+    fs::write(
+        home.join(".codex/.env"),
+        "ANTHROPIC_MODEL=lower-priority-model\n",
+    )
+    .unwrap();
+    let env = configured_dotenv(home.to_str().unwrap());
+    assert_eq!(env["ANTHROPIC_MODEL"], "configured-model");
+    assert_eq!(env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"], "1");
+    assert_eq!(env["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"], "1");
+    assert_eq!(
+        env["AWS_SHARED_CREDENTIALS_FILE"],
+        "/custom/aws credentials"
+    );
+    assert_eq!(env["GH_TOKEN"], "fixture-token");
+    for key in [
+        "BROWSER_USE_ACCESS_PIPE_PATH",
+        "CODEX_APP_TOOLS_PIPE_PATH",
+        "NODE_REPL_TRUSTED_SERVICES",
+        "CODEX_WINDOWS_REGISTERED_CORE",
+        "UNRELATED_SECRET",
+    ] {
+        assert!(!env.contains_key(key), "unexpected dotenv key {key}");
+    }
+    fs::remove_dir_all(home).unwrap();
+}
 
 #[test]
 fn reclaimed_worktree_environment_cannot_restore_legacy_capabilities() {
@@ -256,7 +419,6 @@ fn terminal_environment_injects_codux_runtime_context() {
         session_title: Some("终端 1".to_string()),
         session_cwd: Some(PathBuf::from("/workspace/codux")),
         session_instance_id: Some("session-instance-1".to_string()),
-        tool_permissions_file: Some(PathBuf::from("/tmp/codux/tool-permissions.json")),
         memory_workspace_root: Some(PathBuf::from("/tmp/codux/memory-workspaces/project-1")),
         memory_prompt_file: Some(PathBuf::from(
             "/tmp/codux/memory-workspaces/project-1/memory-prompt.txt",
@@ -280,13 +442,9 @@ fn terminal_environment_injects_codux_runtime_context() {
         env.get("DMUX_PROJECT_PATH").map(String::as_str),
         Some("/workspace/codux")
     );
-    // Claude Code defaults to its classic (scrollback) renderer for a clean
-    // desktop<->mobile handoff, unless the user set the var themselves.
-    assert_eq!(
-        env.get("CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN")
-            .map(String::as_str),
-        Some("1")
-    );
+    // An inherited preference may replace the default. The isolated process
+    // regression above verifies that an explicit "0" survives environment setup.
+    assert!(env.contains_key("CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN"));
     assert_eq!(
         env.get("CODUX_TERMINAL_ID").map(String::as_str),
         Some("gpui-term-1")
@@ -386,7 +544,6 @@ fn terminal_environment_treats_named_zsh_wrapper_as_zsh() {
         session_title: None,
         session_cwd: Some(PathBuf::from("/workspace/codux")),
         session_instance_id: None,
-        tool_permissions_file: None,
         memory_workspace_root: None,
         memory_prompt_file: None,
         memory_index_file: None,
@@ -462,7 +619,6 @@ fn terminal_environment_does_not_override_zdotdir_when_runtime_zsh_hook_is_incom
         session_title: Some("Terminal 1".to_string()),
         session_cwd: Some(PathBuf::from("/workspace/codux")),
         session_instance_id: Some("session-instance-1".to_string()),
-        tool_permissions_file: None,
         memory_workspace_root: None,
         memory_prompt_file: None,
         memory_index_file: None,
@@ -507,7 +663,6 @@ fn terminal_environment_keeps_runtime_context_compact() {
         session_title: Some("Terminal 1".to_string()),
         session_cwd: Some(PathBuf::from("/workspace/codux")),
         session_instance_id: Some("session-instance-1".to_string()),
-        tool_permissions_file: Some(PathBuf::from("/tmp/codux/tool-permissions.json")),
         memory_workspace_root: Some(PathBuf::from("/tmp/codux/memory-workspaces/project-1")),
         memory_prompt_file: Some(PathBuf::from(
             "/tmp/codux/memory-workspaces/project-1/memory-prompt.txt",
