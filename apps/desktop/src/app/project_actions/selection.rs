@@ -296,6 +296,11 @@ impl CoduxApp {
     }
 
     pub(in crate::app) fn clear_current_worktree_ui_state(&mut self) {
+        // Returning to the same scope is a new visit: requests from the previous
+        // generation cannot complete, so do not restore their loading state.
+        if self.active_git_comparison().is_none() {
+            self.git_comparison = None;
+        }
         self.file_directory.clear();
         self.reset_file_tree_state();
         self.file_preview = "select a file to preview it".to_string();

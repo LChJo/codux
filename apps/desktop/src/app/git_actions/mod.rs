@@ -7,15 +7,21 @@ use codux_runtime::git::GitReviewFile;
 mod branches;
 mod clone;
 mod commit;
+mod comparison;
 mod network;
 mod review;
 mod runner;
 mod stash_tags;
 
+pub(in crate::app) use comparison::{ReviewComparisonState, git_comparison_endpoints};
+
 pub(in crate::app) fn merge_git_review_status_files(
     review: &mut GitReviewSummary,
     git: &GitSummary,
 ) {
+    if review.mode == "taskBranch" {
+        return;
+    }
     let mut seen = review
         .files
         .iter()
@@ -38,6 +44,7 @@ pub(in crate::app) fn merge_git_review_status_files(
         seen.insert(file.path.clone());
         review.files.push(GitReviewFile {
             path: file.path.clone(),
+            old_path: file.old_path.clone(),
             status: status.to_string(),
             additions: 0,
             deletions: 0,

@@ -7,9 +7,247 @@ mod tests {
     fn git_file(path: &str, index_status: &str, worktree_status: &str) -> GitFileStatus {
         GitFileStatus {
             path: path.to_string(),
+            old_path: None,
             index_status: index_status.to_string(),
             worktree_status: worktree_status.to_string(),
         }
+    }
+
+    fn comparison_fixture() -> (PathBuf, GitRepository) {
+        let path = temp_dir("git-comparison");
+        GitService::init(path.to_str().unwrap()).unwrap();
+        let repo = GitRepository::open(&path).unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "Codux Test").unwrap();
+        config.set_str("user.email", "codux@example.test").unwrap();
+        config.set_str("core.autocrlf", "false").unwrap();
+        (path, repo)
+    }
+
+    #[test]
+    fn review_wire_paths_follow_the_selected_linked_worktree() {
+        let (root, repo) = comparison_fixture();
+        let path = root.to_str().unwrap();
+        fs::write(root.join("tracked.txt"), "head\n").unwrap();
+        GitService::stage_file(path, "tracked.txt").unwrap();
+        GitService::commit_staged(path, "Initial").unwrap();
+        let linked = root.join("linked");
+        repo.worktree("linked", &linked, None).unwrap();
+        let linked_path = linked.to_str().unwrap();
+        let (other, other_repo) = comparison_fixture();
+        assert_eq!(wire::read_project_path("comparison", path, Some(linked_path)).unwrap(), linked_path);
+        assert_eq!(wire::read_project_path("stored_state", path, Some(linked_path)).unwrap(), path);
+        assert!(wire::read_project_path("comparison_file", path, other.to_str()).is_err());
+        drop((repo, other_repo));
+        fs::remove_dir_all(root).ok();
+        fs::remove_dir_all(other).ok();
+    }
+
+    #[test]
+    fn comparison_lists_nested_untracked_files_past_six_hundred() {
+        let (root, repo) = comparison_fixture();
+        let path = root.to_str().unwrap();
+        fs::create_dir(root.join("nested")).unwrap();
+        for index in 0..605 {
+            fs::write(root.join(format!("nested/file-{index:03}.txt")), "line\n").unwrap();
+        }
+        let comparison = GitService::comparison(path, GitComparisonRequest::Unstaged).unwrap();
+        assert_eq!(comparison.files.len(), 605);
+        let content = comparison_file(comparison, path, "nested/file-604.txt");
+        assert_eq!(content.added_lines, vec![1]);
+        drop(repo);
+        fs::remove_dir_all(root).ok();
+    }
+
+    fn comparison_file(
+        comparison: GitComparison,
+        path: &str,
+        name: &str,
+    ) -> GitReviewContentSummary {
+        let file = comparison
+            .files
+            .into_iter()
+            .find(|file| file.path == name)
+            .unwrap();
+        GitService::comparison_file(path, comparison.range, file).unwrap()
+    }
+
+    #[test]
+    fn comparison_separates_head_index_and_worktree() {
+        let (root, repo) = comparison_fixture();
+        let path = root.to_str().unwrap();
+        fs::write(root.join("file.txt"), "head\n").unwrap();
+        GitService::stage_file(path, "file.txt").unwrap();
+        let unborn = GitService::comparison(path, GitComparisonRequest::Staged).unwrap();
+        assert!(matches!(
+            unborn.range,
+            GitComparisonRange::Staged { head: None }
+        ));
+        GitService::commit_staged(path, "first commit\n\nfull body").unwrap();
+        let root_commit = repo.head().unwrap().target().unwrap().to_string();
+        fs::write(root.join("file.txt"), "index\n").unwrap();
+        GitService::stage_file(path, "file.txt").unwrap();
+        fs::write(root.join("file.txt"), "worktree\n").unwrap();
+        fs::write(root.join("untracked.txt"), "new\n").unwrap();
+        let staged = GitService::comparison(path, GitComparisonRequest::Staged).unwrap();
+        let staged = comparison_file(staged, path, "file.txt");
+        assert_eq!(
+            (
+                staged.head_content.as_str(),
+                staged.worktree_content.as_str()
+            ),
+            ("head\n", "index\n")
+        );
+        let unstaged = GitService::comparison(path, GitComparisonRequest::Unstaged).unwrap();
+        assert!(
+            unstaged
+                .files
+                .iter()
+                .any(|file| file.path == "untracked.txt")
+        );
+        let unstaged = comparison_file(unstaged, path, "file.txt");
+        assert_eq!(
+            (
+                unstaged.head_content.as_str(),
+                unstaged.worktree_content.as_str()
+            ),
+            ("index\n", "worktree\n")
+        );
+        let history = GitService::comparison(
+            path,
+            GitComparisonRequest::Commit {
+                commit: root_commit,
+                parent_index: 0,
+            },
+        )
+        .unwrap();
+        assert!(
+            history
+                .commit
+                .as_ref()
+                .unwrap()
+                .message
+                .contains("full body")
+        );
+        let history = comparison_file(history, path, "file.txt");
+        assert!(history.head_content.is_empty());
+        assert_eq!(history.worktree_content, "head\n");
+        drop(repo);
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn comparison_retains_rename_paths_and_history_pages() {
+        let (root, repo) = comparison_fixture();
+        let path = root.to_str().unwrap();
+        fs::write(root.join("old.txt"), "same rename content\nnext line\n").unwrap();
+        GitService::stage_file(path, "old.txt").unwrap();
+        GitService::commit_staged(path, "Initial").unwrap();
+        fs::rename(root.join("old.txt"), root.join("new.txt")).unwrap();
+        GitService::stage_paths(path, &["old.txt".to_string(), "new.txt".to_string()]).unwrap();
+        GitService::commit_staged(path, "Rename sample").unwrap();
+        let id = repo.head().unwrap().target().unwrap().to_string();
+        fs::write(root.join("new.txt"), "dirty worktree\n").unwrap();
+        let comparison = GitService::comparison(
+            path,
+            GitComparisonRequest::Commit {
+                commit: id.clone(),
+                parent_index: 0,
+            },
+        )
+        .unwrap();
+        assert_eq!(comparison.files[0].old_path.as_deref(), Some("old.txt"));
+        let content = comparison_file(comparison, path, "new.txt");
+        assert_eq!(content.head_content, content.worktree_content);
+        assert!(content.head_content.contains("same rename content"));
+        let first = GitService::history_page(path, "", 0, 1).unwrap();
+        assert_eq!(first.commits[0].hash, id);
+        assert!(first.has_more);
+        let second = GitService::history_page(path, "", 1, 1).unwrap();
+        assert_eq!(second.commits[0].title, "Initial");
+        assert!(!second.has_more);
+        assert_eq!(
+            GitService::history_page(path, "SAMPLE", 0, 1)
+                .unwrap()
+                .commits[0]
+                .hash,
+            id
+        );
+        drop(repo);
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn comparison_uses_merge_base_and_selected_parent() {
+        let (root, repo) = comparison_fixture();
+        let path = root.to_str().unwrap();
+        fs::write(root.join("base.txt"), "base\n").unwrap();
+        GitService::stage_file(path, "base.txt").unwrap();
+        GitService::commit_staged(path, "Initial").unwrap();
+        let common = repo.head().unwrap().target().unwrap().to_string();
+        let base_name = repo.head().unwrap().shorthand().unwrap().to_string();
+        GitService::create_branch(path, "side", None, true).unwrap();
+        fs::write(root.join("side.txt"), "side\n").unwrap();
+        GitService::stage_file(path, "side.txt").unwrap();
+        GitService::commit_staged(path, "Side").unwrap();
+        let side = repo.head().unwrap().target().unwrap().to_string();
+        GitService::checkout_branch(path, &base_name).unwrap();
+        fs::write(root.join("target.bin"), [0, 1, 2, 3]).unwrap();
+        GitService::stage_file(path, "target.bin").unwrap();
+        GitService::commit_staged(path, "Target").unwrap();
+        let target = repo.head().unwrap().target().unwrap().to_string();
+        let from_base = |direct| {
+            GitService::comparison(
+                path,
+                GitComparisonRequest::Branch {
+                    base: side.clone(),
+                    target: target.clone(),
+                    direct,
+                },
+            )
+            .unwrap()
+        };
+        assert_eq!(
+            from_base(false).range,
+            GitComparisonRange::Trees {
+                base: Some(common),
+                target: target.clone()
+            }
+        );
+        assert_eq!(from_base(false).files.len(), 1);
+        let direct = from_base(true);
+        assert_eq!(direct.files.len(), 2);
+        let binary = direct
+            .files
+            .into_iter()
+            .find(|file| file.path == "target.bin")
+            .unwrap();
+        assert!(
+            GitService::comparison_file(path, direct.range, binary)
+                .unwrap_err()
+                .contains("Binary")
+        );
+        GitService::merge_branch(path, "side", false).unwrap();
+        let merge_id = repo.head().unwrap().target().unwrap().to_string();
+        for (parent_index, expected) in [(0, target), (1, side)] {
+            let comparison = GitService::comparison(
+                path,
+                GitComparisonRequest::Commit {
+                    commit: merge_id.clone(),
+                    parent_index,
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                comparison.range,
+                GitComparisonRange::Trees {
+                    base: Some(expected),
+                    target: merge_id.clone()
+                }
+            );
+        }
+        drop(repo);
+        fs::remove_dir_all(root).ok();
     }
 
     #[test]

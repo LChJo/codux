@@ -112,7 +112,14 @@ impl CoduxApp {
 
     pub(in crate::app) fn workspace_assistant_snapshot(&self) -> WorkspaceAssistantSnapshot {
         WorkspaceAssistantSnapshot {
-            panel: self.assistant_panel,
+            panel: if self.workspace_view == WorkspaceView::Review {
+                None
+            } else {
+                self.assistant_panel
+            },
+            show_docked_git: self.workspace_view != WorkspaceView::Review
+                && self.git_sidebar_visible()
+                && self.state.selected_project.is_some(),
             has_project: self.state.selected_project.is_some(),
             is_remote_project: self
                 .state
@@ -132,7 +139,9 @@ impl CoduxApp {
         let toolbar_view = self.workspace_toolbar_view(cx);
         let body_view = self.workspace_body_view(cx);
         let assistant_view = self.workspace_assistant_view(cx);
-        let view = cx.new(|_| WorkspaceColumnView::new(toolbar_view, body_view, assistant_view));
+        let app_entity = cx.entity();
+        let view = cx
+            .new(|_| WorkspaceColumnView::new(app_entity, toolbar_view, body_view, assistant_view));
         self.workspace_column_view = Some(view.clone());
         view
     }

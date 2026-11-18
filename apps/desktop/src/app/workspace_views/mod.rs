@@ -28,6 +28,7 @@ enum TerminalSplitDivider {
 }
 
 pub(in crate::app) struct WorkspaceColumnView {
+    app_entity: gpui::Entity<CoduxApp>,
     toolbar_view: gpui::Entity<WorkspaceToolbarView>,
     body_view: gpui::Entity<WorkspaceBodyView>,
     assistant_view: gpui::Entity<WorkspaceAssistantView>,
@@ -35,11 +36,13 @@ pub(in crate::app) struct WorkspaceColumnView {
 
 impl WorkspaceColumnView {
     pub(in crate::app) fn new(
+        app_entity: gpui::Entity<CoduxApp>,
         toolbar_view: gpui::Entity<WorkspaceToolbarView>,
         body_view: gpui::Entity<WorkspaceBodyView>,
         assistant_view: gpui::Entity<WorkspaceAssistantView>,
     ) -> Self {
         Self {
+            app_entity,
             toolbar_view,
             body_view,
             assistant_view,
@@ -54,6 +57,7 @@ impl Render for WorkspaceColumnView {
             .snapshot
             .panel
             .is_some_and(|panel| assistant_panel_available(panel, &assistant_snapshot.snapshot));
+        let show_git = assistant_snapshot.snapshot.show_docked_git;
 
         div()
             .flex()
@@ -79,6 +83,21 @@ impl Render for WorkspaceColumnView {
                     .min_w_0()
                     .min_h_0()
                     .overflow_hidden()
+                    .when(show_git, |this| {
+                        let sidebar = self
+                            .app_entity
+                            .update(cx, |app, cx| app.git_sidebar_view(cx));
+                        this.child(
+                            div()
+                                .w(px(300.0))
+                                .flex_none()
+                                .h_full()
+                                .min_h_0()
+                                .border_r_1()
+                                .border_color(cx.theme().border)
+                                .child(gpui::AnyView::from(sidebar)),
+                        )
+                    })
                     .child(
                         div()
                             .flex()
@@ -164,6 +183,7 @@ pub(in crate::app) struct WorkspaceToolbarSnapshot {
 #[derive(Clone, PartialEq)]
 pub(in crate::app) struct WorkspaceAssistantSnapshot {
     pub(super) panel: Option<AssistantPanel>,
+    pub(super) show_docked_git: bool,
     pub(super) has_project: bool,
     pub(super) is_remote_project: bool,
 }

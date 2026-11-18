@@ -300,6 +300,7 @@ pub(super) fn workspace_toolbar_fingerprint(app: &CoduxApp) -> u64 {
     workspace_view_hash(&(
         workspace_view_key(app.workspace_view),
         assistant_panel_key(app.assistant_panel),
+        app.git_sidebar_visible(),
         app.state.selected_project.as_ref().map(|project| {
             (
                 project.id.clone(),

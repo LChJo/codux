@@ -150,6 +150,7 @@ pub(super) fn git_status_file_row(
     selected_files: &HashSet<String>,
     depth: usize,
     labels: Rc<GitFileMenuLabels>,
+    app: &CoduxApp,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let status = git_file_status_label(&file);
@@ -171,140 +172,165 @@ pub(super) fn git_status_file_row(
         .to_string();
     let is_dir_status = file.path.ends_with('/');
     let app_entity = cx.entity();
+    let tooltip_entity = app_entity.clone();
+    let labels_for_tooltip = GitSidebarLabels::load(&app.state.settings.language);
+    let status_word = match status.chars().next() {
+        Some('A') => labels_for_tooltip.text("git.review.status.added", "Added"),
+        Some('D') => labels_for_tooltip.text("git.review.status.deleted", "Deleted"),
+        Some('R') => labels_for_tooltip.text("git.review.status.renamed", "Renamed"),
+        Some('?') => labels_for_tooltip.untracked.clone(),
+        _ => labels_for_tooltip.text("git.review.status.modified", "Modified"),
+    };
+    let mut tooltip = format!("{file_name}\n{}\n{status_word}", file.path);
+    if let Some(old_path) = &file.old_path {
+        tooltip.push_str(&format!("\n{old_path} → {}", file.path));
+    }
+    if let Some(review) = app
+        .git_review
+        .files
+        .iter()
+        .find(|review| review.path == file.path)
+        && (review.additions > 0 || review.deletions > 0)
+    {
+        tooltip.push_str(&format!("  +{}  −{}", review.additions, review.deletions));
+    }
 
-    div()
-        .id(SharedString::from(format!(
-            "git-sidebar-file-{}",
-            file.path
-        )))
-        .w_full()
-        .min_w_0()
-        .h(px(24.0))
-        .pl(px(46.0 + depth as f32 * 18.0))
-        .pr_3()
-        .flex()
-        .items_center()
-        .justify_between()
-        .bg(if active {
-            cx.theme().list_hover
-        } else {
-            cx.theme().transparent
-        })
-        .cursor_pointer()
-        .hover(|style| style.bg(cx.theme().list_hover))
-        .on_click(cx.listener(move |app, event: &ClickEvent, window, cx| {
-            if event.click_count() >= 2 && !is_dir_status {
-                app.open_git_diff_window(file_path.clone(), window, cx);
-            } else if event.modifiers().shift {
-                app.toggle_git_file_selection(file_path.clone(), cx);
-            } else {
-                app.select_git_file_only(file_path.clone(), cx);
+    codux_tooltip_container(
+        tooltip_entity,
+        format!("git-sidebar-file-{}", file.path),
+        tooltip,
+    )
+    .w_full()
+    .min_w_0()
+    .h(px(24.0))
+    .pl(px(46.0 + depth as f32 * 18.0))
+    .pr_3()
+    .flex()
+    .items_center()
+    .justify_between()
+    .bg(if active {
+        cx.theme().list_hover
+    } else {
+        cx.theme().transparent
+    })
+    .cursor_pointer()
+    .hover(|style| style.bg(cx.theme().list_hover))
+    .on_click(cx.listener(move |app, event: &ClickEvent, window, cx| {
+        if !event.modifiers().shift && app.workspace_view == WorkspaceView::Review && !is_dir_status
+        {
+            if app.active_git_comparison().is_some() || app.git_review.base_branch.is_some() {
+                app.return_to_working_git_review(cx);
             }
-        }))
-        .child(
-            div()
-                .flex()
-                .flex_1()
-                .items_center()
-                .min_w_0()
-                .text_color(color(theme::TEXT_MUTED))
-                .child(
-                    Icon::new(if is_dir_status {
-                        HeroIconName::Folder
-                    } else {
-                        HeroIconName::Document
-                    })
-                    .size_3p5(),
-                )
-                .child(
-                    div()
-                        .ml(px(8.0))
-                        .min_w_0()
-                        .text_size(rems(0.875))
-                        .line_height(rems(1.125))
-                        .truncate()
-                        .child(file_name),
-                ),
-        )
-        .child(
-            div().ml_2().flex().items_center().gap_1().child(
+            app.load_git_file_diff_async(file_path.clone(), cx);
+        } else if event.click_count() >= 2 && !is_dir_status {
+            app.open_git_diff_window(file_path.clone(), window, cx);
+        } else if event.modifiers().shift {
+            app.toggle_git_file_selection(file_path.clone(), cx);
+        } else {
+            app.select_git_file_only(file_path.clone(), cx);
+        }
+    }))
+    .child(
+        div()
+            .flex()
+            .flex_1()
+            .items_center()
+            .min_w_0()
+            .text_color(color(theme::TEXT_MUTED))
+            .child(
+                Icon::new(if is_dir_status {
+                    HeroIconName::Folder
+                } else {
+                    HeroIconName::Document
+                })
+                .size_3p5(),
+            )
+            .child(
                 div()
-                    .min_w(px(18.0))
+                    .ml(px(8.0))
+                    .min_w_0()
                     .text_size(rems(0.875))
                     .line_height(rems(1.125))
-                    .text_color(color(status_color))
-                    .child(status),
+                    .truncate()
+                    .child(file_name),
             ),
-        )
-        .context_menu(move |menu, _window, _cx| {
-            let stage_entity = app_entity.clone();
-            let stage_path = menu_file_path.clone();
-            let unstage_entity = app_entity.clone();
-            let unstage_path = menu_file_path.clone();
-            let discard_entity = app_entity.clone();
-            let discard_path = menu_file_path.clone();
-            let ignore_entity = app_entity.clone();
-            let ignore_path = menu_file_path.clone();
-            let diff_entity = app_entity.clone();
-            let diff_path = menu_file_path.clone();
+    )
+    .child(
+        div().ml_2().flex().items_center().gap_1().child(
+            div()
+                .min_w(px(18.0))
+                .text_size(rems(0.875))
+                .line_height(rems(1.125))
+                .text_color(color(status_color))
+                .child(status),
+        ),
+    )
+    .context_menu(move |menu, _window, _cx| {
+        let stage_entity = app_entity.clone();
+        let stage_path = menu_file_path.clone();
+        let unstage_entity = app_entity.clone();
+        let unstage_path = menu_file_path.clone();
+        let discard_entity = app_entity.clone();
+        let discard_path = menu_file_path.clone();
+        let ignore_entity = app_entity.clone();
+        let ignore_path = menu_file_path.clone();
+        let diff_entity = app_entity.clone();
+        let diff_path = menu_file_path.clone();
 
-            let menu = if can_stage {
-                menu.item(
-                    git_context_menu_item(labels.stage.clone(), HeroIconName::Plus).on_click(
-                        move |_, window, cx| {
-                            cx.update_entity(&stage_entity, |app, cx| {
-                                app.select_git_file_only(stage_path.clone(), cx);
-                                app.stage_git_paths(
-                                    app.selected_git_action_paths(&stage_path),
-                                    window,
-                                    cx,
-                                );
-                            });
-                        },
-                    ),
-                )
-            } else {
-                menu
-            };
-            let menu = if can_unstage {
-                menu.item(
-                    git_context_menu_item(labels.unstage.clone(), HeroIconName::Minus).on_click(
-                        move |_, window, cx| {
-                            cx.update_entity(&unstage_entity, |app, cx| {
-                                app.select_git_file_only(unstage_path.clone(), cx);
-                                app.unstage_git_paths(
-                                    app.selected_git_action_paths(&unstage_path),
-                                    window,
-                                    cx,
-                                );
-                            });
-                        },
-                    ),
-                )
-            } else {
-                menu
-            };
-            let menu = if !is_dir_status {
-                menu.item(
-                    git_context_menu_item(
-                        labels.open_diff.clone(),
-                        HeroIconName::ArrowTopRightOnSquare,
-                    )
-                    .on_click(move |_, window, cx| {
-                        cx.update_entity(&diff_entity, |app, cx| {
-                            app.open_git_diff_window(diff_path.clone(), window, cx);
+        let menu = if can_stage {
+            menu.item(
+                git_context_menu_item(labels.stage.clone(), HeroIconName::Plus).on_click(
+                    move |_, window, cx| {
+                        cx.update_entity(&stage_entity, |app, cx| {
+                            app.select_git_file_only(stage_path.clone(), cx);
+                            app.stage_git_paths(
+                                app.selected_git_action_paths(&stage_path),
+                                window,
+                                cx,
+                            );
                         });
-                    }),
+                    },
+                ),
+            )
+        } else {
+            menu
+        };
+        let menu = if can_unstage {
+            menu.item(
+                git_context_menu_item(labels.unstage.clone(), HeroIconName::Minus).on_click(
+                    move |_, window, cx| {
+                        cx.update_entity(&unstage_entity, |app, cx| {
+                            app.select_git_file_only(unstage_path.clone(), cx);
+                            app.unstage_git_paths(
+                                app.selected_git_action_paths(&unstage_path),
+                                window,
+                                cx,
+                            );
+                        });
+                    },
+                ),
+            )
+        } else {
+            menu
+        };
+        let menu = if !is_dir_status {
+            menu.item(
+                git_context_menu_item(
+                    labels.open_diff.clone(),
+                    HeroIconName::ArrowTopRightOnSquare,
                 )
-            } else {
-                menu
-            };
-            let menu = if can_discard {
-                menu.separator().item(
-                    git_context_menu_item(
-                        labels.discard_changes.clone(),
-                        HeroIconName::ArrowUturnLeft,
-                    )
+                .on_click(move |_, window, cx| {
+                    cx.update_entity(&diff_entity, |app, cx| {
+                        app.open_git_diff_window(diff_path.clone(), window, cx);
+                    });
+                }),
+            )
+        } else {
+            menu
+        };
+        let menu = if can_discard {
+            menu.separator().item(
+                git_context_menu_item(labels.discard_changes.clone(), HeroIconName::ArrowUturnLeft)
                     .on_click(move |_, window, cx| {
                         cx.update_entity(&discard_entity, |app, cx| {
                             app.select_git_file_only(discard_path.clone(), cx);
@@ -315,28 +341,29 @@ pub(super) fn git_status_file_row(
                             );
                         });
                     }),
-                )
-            } else {
-                menu
-            };
-            if is_git_untracked_file(&file) || is_dir_status {
-                menu.item(
-                    git_context_menu_item(labels.add_gitignore.clone(), HeroIconName::XMark)
-                        .on_click(move |_, window, cx| {
-                            cx.update_entity(&ignore_entity, |app, cx| {
-                                app.append_project_gitignore_paths(
-                                    app.selected_git_action_paths(&ignore_path),
-                                    window,
-                                    cx,
-                                );
-                            });
-                        }),
-                )
-            } else {
-                menu
-            }
-        })
-        .into_any_element()
+            )
+        } else {
+            menu
+        };
+        if is_git_untracked_file(&file) || is_dir_status {
+            menu.item(
+                git_context_menu_item(labels.add_gitignore.clone(), HeroIconName::XMark).on_click(
+                    move |_, window, cx| {
+                        cx.update_entity(&ignore_entity, |app, cx| {
+                            app.append_project_gitignore_paths(
+                                app.selected_git_action_paths(&ignore_path),
+                                window,
+                                cx,
+                            );
+                        });
+                    },
+                ),
+            )
+        } else {
+            menu
+        }
+    })
+    .into_any_element()
 }
 
 #[derive(Clone)]

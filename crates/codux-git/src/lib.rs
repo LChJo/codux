@@ -44,6 +44,7 @@ include!("commands.rs");
 include!("repository.rs");
 include!("operations.rs");
 include!("diff.rs");
+include!("comparison.rs");
 include!("metadata.rs");
 
 #[cfg(test)]

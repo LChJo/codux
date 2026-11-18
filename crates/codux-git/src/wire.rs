@@ -197,6 +197,35 @@ pub fn invoke(repo: &str, op: &str, args: &Value) -> Result<(), String> {
     }
 }
 
+/// Comparison reads use the selected linked worktree when its common Git
+/// directory belongs to the resolved project. Other reads keep their routing.
+pub fn read_project_path<'a>(
+    op: &str,
+    root: &'a str,
+    explicit: Option<&'a str>,
+) -> Result<&'a str, String> {
+    if !matches!(op, "comparison" | "comparison_file" | "history_page") {
+        return Ok(root);
+    }
+    let Some(explicit) = explicit.map(str::trim).filter(|path| !path.is_empty()) else {
+        return Ok(root);
+    };
+    let same_path = codux_runtime_core::path::local_paths_equal;
+    if same_path(std::path::Path::new(root), std::path::Path::new(explicit)) {
+        return Ok(root);
+    }
+    let root_repo = super::discover_repository(root).map_err(|error| error.to_string())?;
+    let worktree_repo = super::discover_repository(explicit).map_err(|error| error.to_string())?;
+    if same_path(root_repo.commondir(), worktree_repo.commondir())
+        && worktree_repo
+            .workdir()
+            .is_some_and(|path| same_path(path, std::path::Path::new(explicit)))
+    {
+        return Ok(explicit);
+    }
+    Err("The selected Git worktree does not belong to this project.".to_string())
+}
+
 /// Generic git read (`git.read`) → the inner `result` value for `{op, result}`.
 pub fn read(repo: &str, op: &str, args: &Value) -> Result<Value, String> {
     let s = |key: &str| arg(args, key);
@@ -206,6 +235,34 @@ pub fn read(repo: &str, op: &str, args: &Value) -> Result<Value, String> {
     };
     let path = repo;
     match op {
+        "comparison" => {
+            let request = serde_json::from_value(args.get("request").cloned().unwrap_or_default())
+                .map_err(|error| error.to_string())?;
+            serde_json::to_value(GitService::comparison(path, request)?)
+                .map_err(|error| error.to_string())
+        }
+        "comparison_file" => {
+            let range = serde_json::from_value(args.get("range").cloned().unwrap_or_default())
+                .map_err(|error| error.to_string())?;
+            let file = serde_json::from_value(args.get("file").cloned().unwrap_or_default())
+                .map_err(|error| error.to_string())?;
+            serde_json::to_value(GitService::comparison_file(path, range, file)?)
+                .map_err(|error| error.to_string())
+        }
+        "history_page" => {
+            let offset = args
+                .get("offset")
+                .and_then(Value::as_u64)
+                .unwrap_or_default();
+            let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(40);
+            serde_json::to_value(GitService::history_page(
+                path,
+                s("query"),
+                offset as usize,
+                limit as usize,
+            )?)
+            .map_err(|error| error.to_string())
+        }
         "diff" => GitService::file_diff(path, s("filePath")).map(|diff| json!({ "diff": diff })),
         "review_diff" => GitService::review_file_diff(path, s("filePath"), base().as_deref())
             .map(|diff| json!({ "diff": diff })),

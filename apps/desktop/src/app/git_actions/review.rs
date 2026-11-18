@@ -179,6 +179,15 @@ impl CoduxApp {
         file_path: String,
         cx: &mut Context<Self>,
     ) {
+        self.reload_git_file_diff_async(file_path, false, cx);
+    }
+
+    pub(in crate::app) fn reload_git_file_diff_async(
+        &mut self,
+        file_path: String,
+        preserve_scroll: bool,
+        cx: &mut Context<Self>,
+    ) {
         let Some(project_path) = self.selected_worktree_path() else {
             self.status_message = "no selected project for Git diff".to_string();
             self.invalidate_git_panel(cx);
@@ -188,18 +197,64 @@ impl CoduxApp {
             return;
         };
         let base_branch = self.git_review.base_branch.clone();
+        let file = base_branch
+            .is_none()
+            .then(|| {
+                self.git_review
+                    .files
+                    .iter()
+                    .find(|file| file.path == file_path)
+                    .cloned()
+            })
+            .flatten();
         let runtime_service = self.runtime_service.clone();
         let generation = self.project_switch_generation;
+        self.git_review_file_request_id += 1;
+        let request_id = self.git_review_file_request_id;
         self.selected_git_file = Some(file_path.clone());
         self.selected_git_files.clear();
         self.selected_git_files.insert(file_path.clone());
-        self.clear_git_review_derived_content();
+        if !preserve_scroll {
+            self.clear_git_review_derived_content();
+        }
         self.git_diff_preview = "loading diff...".to_string();
         self.invalidate_ui(cx, [UiRegion::GitSidebar, UiRegion::WorkspaceBody]);
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
             let result = codux_runtime::async_runtime::run_limited_blocking_with_priority(
                 codux_runtime::async_runtime::BLOCKING_PRIORITY_FOREGROUND + generation,
                 move || {
+                    if let Some(file) = file {
+                        match runtime_service.read_project_git_comparison_file(
+                            &project_path,
+                            codux_runtime::git::GitComparisonRange::WorkingTree,
+                            file,
+                        ) {
+                            Ok(content) => {
+                                return (
+                                    scope_key,
+                                    generation,
+                                    file_path,
+                                    Ok(String::new()),
+                                    content,
+                                );
+                            }
+                            Err(error) if !error.contains("is not supported") => {
+                                let content = GitReviewContentSummary {
+                                    path: file_path.clone(),
+                                    error: Some(error),
+                                    ..Default::default()
+                                };
+                                return (
+                                    scope_key,
+                                    generation,
+                                    file_path,
+                                    Ok(String::new()),
+                                    content,
+                                );
+                            }
+                            Err(_) => {}
+                        }
+                    }
                     let diff = runtime_service.read_project_git_review_diff(
                         &project_path,
                         &file_path,
@@ -219,7 +274,8 @@ impl CoduxApp {
                 let Some((scope_key, generation, file_path, diff, content)) = result else {
                     return;
                 };
-                if app.project_switch_generation != generation
+                if app.git_review_file_request_id != request_id
+                    || app.project_switch_generation != generation
                     || super::app_state::current_worktree_scope_key(&app.state).as_ref()
                         != Some(&scope_key)
                     || app.selected_git_file.as_deref() != Some(file_path.as_str())
@@ -229,12 +285,20 @@ impl CoduxApp {
                 match diff {
                     Ok(diff) => {
                         app.git_diff_preview = diff;
-                        app.set_git_review_derived_content(content);
+                        if preserve_scroll {
+                            app.restore_git_review_derived_content(content);
+                        } else {
+                            app.set_git_review_derived_content(content);
+                        }
                         app.status_message = format!("diff loaded: {file_path}");
                     }
                     Err(error) => {
                         app.git_diff_preview = format!("failed to load diff: {error}");
-                        app.clear_git_review_derived_content();
+                        app.restore_git_review_derived_content(GitReviewContentSummary {
+                            path: file_path.clone(),
+                            error: Some(error.clone()),
+                            ..Default::default()
+                        });
                         app.status_message = format!("failed to load diff: {error}");
                     }
                 }

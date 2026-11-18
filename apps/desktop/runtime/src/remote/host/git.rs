@@ -155,7 +155,12 @@ impl RemoteHostRuntime {
                 crate::git::GitService::status(&project_path),
             ))
         } else {
-            crate::git::wire::read(&project_path, op, &args)
+            crate::git::wire::read_project_path(
+                op,
+                &project_path,
+                envelope.payload.get("projectPath").and_then(Value::as_str),
+            )
+            .and_then(|path| crate::git::wire::read(path, op, &args))
         };
         match result {
             Ok(result) => self.reply(

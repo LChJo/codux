@@ -46,8 +46,30 @@ pub(super) enum GitReviewLineTone {
 
 #[derive(Clone, Default)]
 pub(in crate::app) struct GitReviewDerivedRows {
-    pub(super) original: Rc<Vec<GitReviewAlignedCell>>,
-    pub(super) current: Rc<Vec<GitReviewAlignedCell>>,
+    pub(super) original: Arc<Vec<GitReviewAlignedCell>>,
+    pub(super) current: Arc<Vec<GitReviewAlignedCell>>,
+}
+
+impl GitReviewDerivedRows {
+    pub(super) fn unified(&self) -> Arc<Vec<GitReviewAlignedCell>> {
+        let mut rows = Vec::new();
+        let mut additions = Vec::new();
+        for (original, current) in self.original.iter().zip(self.current.iter()) {
+            if original.tone.is_some() || current.tone.is_some() {
+                if original.line_number.is_some() {
+                    rows.push(original.clone());
+                }
+                if current.line_number.is_some() {
+                    additions.push(current.clone());
+                }
+            } else {
+                rows.append(&mut additions);
+                rows.push(current.clone());
+            }
+        }
+        rows.append(&mut additions);
+        Arc::new(rows)
+    }
 }
 
 #[derive(Clone, Default)]
@@ -62,7 +84,7 @@ pub(super) struct GitReviewAlignedCell {
 pub(super) fn git_review_content_panel(
     list_id: &'static str,
     title: &str,
-    cells: Rc<Vec<GitReviewAlignedCell>>,
+    cells: Arc<Vec<GitReviewAlignedCell>>,
     scroll_handle: VirtualListScrollHandle,
     cx: &mut Context<workspace_views::ReviewDiffContentView>,
 ) -> impl IntoElement {
@@ -308,8 +330,8 @@ pub(in crate::app) fn build_git_review_derived_rows(
     }
 
     GitReviewDerivedRows {
-        original: Rc::new(original_cells),
-        current: Rc::new(current_cells),
+        original: Arc::new(original_cells),
+        current: Arc::new(current_cells),
     }
 }
 
@@ -405,8 +427,46 @@ pub(in crate::app) fn git_review_file_list(
     selected_path: Option<&str>,
     refreshing: bool,
     labels: Rc<GitSidebarLabels>,
+    filter: gpui::Entity<InputState>,
+    scroll_handle: VirtualListScrollHandle,
     cx: &mut Context<workspace_views::ReviewFileListView>,
 ) -> impl IntoElement {
+    let query = filter.read(cx).value().trim().to_lowercase();
+    let files = Rc::new(
+        review
+            .files
+            .iter()
+            .filter(|file| {
+                !file.path.is_empty()
+                    && !file.path.ends_with('/')
+                    && (query.is_empty()
+                        || file.path.to_lowercase().contains(&query)
+                        || file
+                            .old_path
+                            .as_ref()
+                            .is_some_and(|path| path.to_lowercase().contains(&query)))
+            })
+            .cloned()
+            .collect::<Vec<_>>(),
+    );
+    let empty_message = if let Some(error) = &review.error {
+        git_review_error_message(error, &labels)
+    } else if !query.is_empty() && !review.files.is_empty() {
+        labels.text("git.review.no_matches", "No matching files")
+    } else if refreshing {
+        labels.text("git.review.loading", "Loading changes…")
+    } else if !review.is_repository {
+        labels.review_no_repository.clone()
+    } else if !review.files.is_empty() {
+        labels.text("git.review.nested_untracked", "Open Unstaged to review files inside folders")
+    } else if review.mode == "workingTreeAudit" {
+        labels.text("git.review.clean", "Working tree is clean")
+    } else {
+        labels.text("git.review.no_changes", "No changes in this comparison")
+    };
+    let selected_path = selected_path.map(str::to_string);
+    let scroll_entity = app_entity.clone();
+    let list_labels = labels.clone();
     div()
         .flex()
         .flex_col()
@@ -435,13 +495,21 @@ pub(in crate::app) fn git_review_file_list(
                             let app_entity = app_entity.clone();
                             move |_view, _event, _window, cx| {
                                 app_entity.update(cx, |app, app_cx| {
-                                    app.refresh_git_panel_state_async(app_cx);
+                                    app.refresh_git_review(app_cx);
                                 });
                             }
                         })),
                 ),
         )
-        .child(if review.files.is_empty() {
+        .when(!review.files.is_empty(), |this| {
+            this.child(
+                div()
+                    .px_2()
+                    .py_1()
+                    .child(Input::new(&filter).with_size(Size::Small)),
+            )
+        })
+        .child(if files.is_empty() {
             div()
                 .flex_1()
                 .min_h_0()
@@ -452,75 +520,51 @@ pub(in crate::app) fn git_review_file_list(
                 .text_size(rems(0.8125))
                 .line_height(rems(1.125))
                 .text_color(color(theme::TEXT_DIM))
-                .child(if review.is_repository {
-                    labels.review_empty.clone()
-                } else {
-                    labels.review_no_repository.clone()
-                })
+                .child(empty_message)
                 .into_any_element()
         } else {
             div()
                 .flex_1()
                 .min_h_0()
-                .overflow_y_scrollbar()
-                .py_2()
-                .children(git_review_file_rows(
-                    &review.files,
-                    selected_path,
-                    &labels,
-                    app_entity,
-                    cx,
-                ))
+                .relative()
+                .overflow_hidden()
+                .id("git-review-file-scroll")
+                .on_scroll_wheel(move |_, _, cx| {
+                    scroll_entity.update(cx, |app, cx| app.clear_codux_tooltip(cx));
+                })
+                .child(
+                    v_virtual_list(
+                        cx.entity(),
+                        "git-review-file-list",
+                        Rc::new(vec![size(px(1.0), px(26.0)); files.len()]),
+                        move |_, range: Range<usize>, _, cx| {
+                            range
+                                .filter_map(|index| files.get(index))
+                                .map(|file| {
+                                    git_review_file_row(
+                                        file,
+                                        selected_path.as_deref() == Some(file.path.as_str()),
+                                        &list_labels,
+                                        app_entity.clone(),
+                                        cx,
+                                    )
+                                    .into_any_element()
+                                })
+                                .collect::<Vec<_>>()
+                        },
+                    )
+                    .track_scroll(&scroll_handle)
+                    .with_sizing_behavior(ListSizingBehavior::Auto),
+                )
+                .vertical_scrollbar(&scroll_handle)
                 .into_any_element()
         })
-}
-
-/// Flat list of changed files — no directory tree. Each row carries its
-/// directory as a dim annotation after the file name.
-fn git_review_file_rows(
-    files: &[GitReviewFile],
-    selected_path: Option<&str>,
-    labels: &GitSidebarLabels,
-    app_entity: gpui::Entity<CoduxApp>,
-    cx: &mut Context<workspace_views::ReviewFileListView>,
-) -> Vec<AnyElement> {
-    let mut rows = Vec::new();
-    for file in files {
-        // Directory placeholders (trailing '/') carry no diff to review.
-        if file.path.trim().is_empty() || file.path.ends_with('/') {
-            continue;
-        }
-        if rows.len() >= MAX_GIT_REVIEW_FILE_ROWS {
-            rows.push(git_review_file_limit_row(files.len(), labels).into_any_element());
-            break;
-        }
-        let selected = selected_path == Some(file.path.as_str());
-        rows.push(git_review_file_row(file, selected, app_entity.clone(), cx).into_any_element());
-    }
-    rows
-}
-
-const MAX_GIT_REVIEW_FILE_ROWS: usize = 600;
-
-fn git_review_file_limit_row(total: usize, labels: &GitSidebarLabels) -> impl IntoElement {
-    let message = labels
-        .review_tree_limit
-        .replacen("%@", &MAX_GIT_REVIEW_FILE_ROWS.to_string(), 1)
-        .replacen("%@", &total.to_string(), 1);
-    div()
-        .h(px(30.0))
-        .px_3()
-        .flex()
-        .items_center()
-        .text_size(rems(0.75))
-        .line_height(rems(1.0))
-        .text_color(color(theme::TEXT_DIM))
-        .child(message)
 }
 
 fn git_review_file_row(
     file: &GitReviewFile,
     selected: bool,
+    labels: &GitSidebarLabels,
     app_entity: gpui::Entity<CoduxApp>,
     cx: &mut Context<workspace_views::ReviewFileListView>,
 ) -> impl IntoElement {
@@ -540,10 +584,27 @@ fn git_review_file_row(
         .filter(|dir| !dir.is_empty())
         .unwrap_or_default()
         .to_string();
-    Button::new(format!("review-file-{path}"))
+    let status = match file.status.as_str() {
+        "added" => labels.text("git.review.status.added", "Added"),
+        "deleted" => labels.text("git.review.status.deleted", "Deleted"),
+        "renamed" => labels.text("git.review.status.renamed", "Renamed"),
+        "copied" => labels.text("git.review.status.copied", "Copied"),
+        "untracked" => labels.untracked.clone(),
+        "staged" => labels.staged.clone(),
+        "typeChanged" => labels.text("git.review.status.type_changed", "Type changed"),
+        _ => labels.text("git.review.status.modified", "Modified"),
+    };
+    let mut tooltip = format!("{file_name}\n{}\n{status}", file.path);
+    if let Some(old_path) = &file.old_path {
+        tooltip.push_str(&format!("\n{old_path} → {}", file.path));
+    }
+    if file.additions > 0 || file.deletions > 0 {
+        tooltip.push_str(&format!("  +{}  −{}", file.additions, file.deletions));
+    }
+    let row = Button::new(format!("review-file-{path}"))
         .ghost()
         .w_full()
-        .h(px(24.0))
+        .h(px(26.0))
         .px_2()
         .rounded_sm()
         .text_color(if selected {
@@ -552,10 +613,14 @@ fn git_review_file_row(
             color(theme::TEXT_MUTED)
         })
         .when(selected, |this| this.bg(color(theme::ACCENT).opacity(0.13)))
-        .on_click(cx.listener(move |_view, _event: &ClickEvent, _window, cx| {
-            app_entity.update(cx, |app, app_cx| {
-                app.load_git_file_diff_async(path.clone(), app_cx);
-            });
+        .on_click(cx.listener({
+            let app_entity = app_entity.clone();
+            let path = path.clone();
+            move |_view, _event: &ClickEvent, _window, cx| {
+                app_entity.update(cx, |app, app_cx| {
+                    app.open_git_review_file(path.clone(), app_cx);
+                });
+            }
         }))
         .child(
             div()
@@ -577,32 +642,54 @@ fn git_review_file_row(
                                 .size_3p5()
                                 .flex_none(),
                         )
-                        .child(
-                            div()
-                                .flex_none()
-                                .max_w(gpui::relative(0.6))
-                                .truncate()
-                                .text_size(rems(0.875))
-                                .line_height(rems(1.125))
-                                .child(file_name),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .truncate()
-                                .text_size(rems(0.6875))
-                                .line_height(rems(1.0))
-                                .text_color(color(theme::TEXT_DIM))
-                                .child(directory),
-                        ),
+                        .child(git_file_name_and_directory(file_name, directory)),
                 )
                 .child(git_review_stats_cells(
                     None,
                     None,
                     Some((badge.0.to_string(), badge.1, true)),
                 )),
+        );
+    codux_tooltip_container(app_entity, format!("review-file-tooltip-{path}"), tooltip)
+        .w_full()
+        .child(row)
+}
+
+pub(super) fn git_file_name_and_directory(
+    file_name: String,
+    directory: String,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_1()
+        .min_w_0()
+        .items_center()
+        .child(
+            div()
+                .min_w_0()
+                .truncate()
+                .text_size(rems(0.875))
+                .line_height(rems(1.125))
+                .child(file_name),
         )
+        .when(!directory.is_empty(), |this| {
+            this.child(
+                div()
+                    .flex_1()
+                    .flex_basis(px(0.0))
+                    .min_w_0()
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .pl_2()
+                            .truncate()
+                            .text_size(rems(0.6875))
+                            .line_height(rems(1.0))
+                            .text_color(color(theme::TEXT_DIM))
+                            .child(directory),
+                    ),
+            )
+        })
 }
 
 fn git_review_stats_cells(

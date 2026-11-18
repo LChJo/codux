@@ -64,7 +64,7 @@ pub(super) fn git_diff_window_body(
 fn git_diff_window_content_panel(
     list_id: &'static str,
     title: &str,
-    cells: Rc<Vec<GitReviewAlignedCell>>,
+    cells: Arc<Vec<GitReviewAlignedCell>>,
     scroll_handle: VirtualListScrollHandle,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {

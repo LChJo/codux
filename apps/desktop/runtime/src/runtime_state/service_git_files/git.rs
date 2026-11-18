@@ -1,4 +1,56 @@
 impl RuntimeService {
+    pub fn read_project_git_comparison(
+        &self,
+        project_path: &str,
+        request: git::GitComparisonRequest,
+    ) -> Result<git::GitComparison, String> {
+        if let Some(result) =
+            self.hosted_git_read(project_path, "comparison", json!({ "request": request }))
+        {
+            return result.and_then(|value| {
+                serde_json::from_value(value).map_err(|error| error.to_string())
+            });
+        }
+        git::GitService::comparison(project_path, request)
+    }
+
+    pub fn read_project_git_comparison_file(
+        &self,
+        project_path: &str,
+        range: git::GitComparisonRange,
+        file: git::GitReviewFile,
+    ) -> Result<git::GitReviewContentSummary, String> {
+        if let Some(result) = self.hosted_git_read(
+            project_path,
+            "comparison_file",
+            json!({ "range": range, "file": file }),
+        ) {
+            return result.and_then(|value| {
+                serde_json::from_value(value).map_err(|error| error.to_string())
+            });
+        }
+        git::GitService::comparison_file(project_path, range, file)
+    }
+
+    pub fn read_project_git_history(
+        &self,
+        project_path: &str,
+        query: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<git::GitHistoryPage, String> {
+        if let Some(result) = self.hosted_git_read(
+            project_path,
+            "history_page",
+            json!({ "query": query, "offset": offset, "limit": limit }),
+        ) {
+            return result.and_then(|value| {
+                serde_json::from_value(value).map_err(|error| error.to_string())
+            });
+        }
+        git::GitService::history_page(project_path, query, offset, limit)
+    }
+
     pub fn init_project_git(&self, project_path: &str) -> Result<git::GitSummary, String> {
         if let Some(result) =
             self.hosted_git_invoke_blocking(project_path, "init", serde_json::json!({}))

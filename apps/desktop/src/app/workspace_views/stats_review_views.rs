@@ -123,12 +123,18 @@ impl ReviewWorkspaceView {
 impl Render for ReviewWorkspaceView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let snapshot = self.snapshot.clone();
+        let git_sidebar = snapshot.show_git_sidebar.then(|| {
+            self.app_entity
+                .update(cx, |app, cx| app.git_sidebar_view(cx))
+        });
         let file_list_snapshot = snapshot.file_list_snapshot();
         let diff_content_snapshot = snapshot.diff_content_snapshot();
         let file_list_view = self.review_file_list_view(file_list_snapshot, cx);
         let diff_content_view = self.review_diff_content_view(diff_content_snapshot, cx);
         super::workspace_review::review_workspace_body(
             snapshot,
+            self.app_entity.clone(),
+            git_sidebar,
             file_list_view,
             diff_content_view,
             cx,
@@ -161,7 +167,7 @@ impl ReviewWorkspaceView {
             view.update(cx, |view, cx| view.set_snapshot(snapshot, cx));
             return view.clone();
         }
-        let view = cx.new(|_| ReviewDiffContentView::new(snapshot));
+        let view = cx.new(|_| ReviewDiffContentView::new(self.app_entity.clone(), snapshot));
         self.diff_content_view = Some(view.clone());
         view
     }
@@ -170,6 +176,8 @@ impl ReviewWorkspaceView {
 pub(in crate::app) struct ReviewFileListView {
     app_entity: gpui::Entity<CoduxApp>,
     snapshot: super::workspace_review::ReviewFileListSnapshot,
+    scroll_handle: VirtualListScrollHandle,
+    filter: Option<gpui::Entity<gpui_component::input::InputState>>,
 }
 
 impl ReviewFileListView {
@@ -180,6 +188,8 @@ impl ReviewFileListView {
         Self {
             app_entity,
             snapshot,
+            scroll_handle: VirtualListScrollHandle::new(),
+            filter: None,
         }
     }
 
@@ -191,26 +201,61 @@ impl ReviewFileListView {
         if self.snapshot == snapshot {
             return;
         }
+        if self.snapshot.filter_scope != snapshot.filter_scope {
+            self.filter = None;
+            self.scroll_handle = VirtualListScrollHandle::new();
+        }
         self.snapshot = snapshot;
         cx.notify();
     }
 }
 
 impl Render for ReviewFileListView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_component::input::{InputEvent, InputState};
+        let filter = self.filter.get_or_insert_with(|| {
+            let placeholder = self.snapshot.filter_placeholder();
+            let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
+            cx.subscribe(&input, |view, _, event, cx| {
+                if matches!(event, InputEvent::Change) {
+                    view.scroll_handle
+                        .scroll_to_item(0, gpui::ScrollStrategy::Top);
+                    cx.notify();
+                }
+            })
+            .detach();
+            input
+        });
         let snapshot = self.snapshot.clone();
-        super::workspace_review::review_file_list(self.app_entity.clone(), snapshot, cx)
-            .into_any_element()
+        super::workspace_review::review_file_list(
+            self.app_entity.clone(),
+            snapshot,
+            filter.clone(),
+            self.scroll_handle.clone(),
+            cx,
+        )
+        .into_any_element()
     }
 }
 
 pub(in crate::app) struct ReviewDiffContentView {
+    app_entity: gpui::Entity<CoduxApp>,
     snapshot: super::workspace_review::ReviewDiffContentSnapshot,
+    container_width: Option<Pixels>,
+    unified: Option<bool>,
 }
 
 impl ReviewDiffContentView {
-    fn new(snapshot: super::workspace_review::ReviewDiffContentSnapshot) -> Self {
-        Self { snapshot }
+    fn new(
+        app_entity: gpui::Entity<CoduxApp>,
+        snapshot: super::workspace_review::ReviewDiffContentSnapshot,
+    ) -> Self {
+        Self {
+            app_entity,
+            snapshot,
+            container_width: None,
+            unified: None,
+        }
     }
 
     fn set_snapshot(
@@ -224,11 +269,39 @@ impl ReviewDiffContentView {
         self.snapshot = snapshot;
         cx.notify();
     }
+
+    pub(in crate::app) fn toggle_diff_layout(&mut self, unified: bool, cx: &mut Context<Self>) {
+        self.unified = Some(!unified);
+        cx.notify();
+    }
 }
 
 impl Render for ReviewDiffContentView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let snapshot = self.snapshot.clone();
-        super::workspace_review::review_diff_content(snapshot, cx).into_any_element()
+        let unified = self
+            .unified
+            .unwrap_or_else(|| self.container_width.is_some_and(|width| width < px(620.0)));
+        let view = cx.entity();
+        div()
+            .size_full()
+            .min_w_0()
+            .min_h_0()
+            .on_prepaint(move |bounds, _, cx| {
+                view.update(cx, |view, cx| {
+                    let old_narrow = view.container_width.is_some_and(|width| width < px(620.0));
+                    let new_narrow = bounds.size.width < px(620.0);
+                    view.container_width = Some(bounds.size.width);
+                    if view.unified.is_none() && old_narrow != new_narrow {
+                        cx.notify();
+                    }
+                });
+            })
+            .child(super::workspace_review::review_diff_content(
+                self.app_entity.clone(),
+                snapshot,
+                unified,
+                cx,
+            ))
     }
 }

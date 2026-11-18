@@ -146,6 +146,9 @@ impl CoduxApp {
                     self.state.worktrees = self
                         .runtime_service
                         .reload_worktrees(Some(&project_id), Some(&project_path));
+                    if self.active_git_comparison().is_some() {
+                        self.refresh_live_git_review(cx);
+                    }
                     self.invalidate_task_column(cx);
                 }
                 self.status_message = completion.success_message;

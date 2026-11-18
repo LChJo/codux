@@ -183,7 +183,7 @@ impl CoduxApp {
                         .child(workspace_assistant_button(
                             "Git",
                             AssistantPanel::Git,
-                            self.assistant_panel,
+                            self.git_sidebar_visible().then_some(AssistantPanel::Git),
                             has_project_context,
                             cx,
                         ))

@@ -92,6 +92,12 @@ impl CoduxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.workspace_view != view {
+            self.clear_codux_tooltip(cx);
+            if view == WorkspaceView::Review {
+                self.git_review_sidebar_open = true;
+            }
+        }
         self.workspace_view = view;
         if view != WorkspaceView::Blackboard {
             self.hide_blackboard_web(cx);
@@ -113,6 +119,9 @@ impl CoduxApp {
             WorkspaceView::Review => {
                 self.assistant_panel = None;
                 self.refresh_git_panel_state_async(cx);
+                if self.active_git_comparison().is_some() {
+                    self.refresh_git_review(cx);
+                }
                 self.ensure_selected_git_review_file_loaded_async(cx);
             }
             WorkspaceView::Stats => {
@@ -182,6 +191,18 @@ impl CoduxApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if panel == AssistantPanel::Git {
+            if self.workspace_view == WorkspaceView::Review {
+                self.git_review_sidebar_open = !self.git_review_sidebar_open;
+            } else {
+                self.git_sidebar_pinned = !self.git_sidebar_pinned;
+                if self.git_sidebar_pinned {
+                    self.refresh_git_panel_state_async(cx);
+                }
+            }
+            self.invalidate_workspace(cx);
+            return;
+        }
         self.assistant_panel = if self.assistant_panel == Some(panel) {
             None
         } else {
@@ -204,6 +225,13 @@ impl CoduxApp {
                 UiRegion::StatusBar,
             ],
         );
+    }
+
+    pub(in crate::app) fn git_sidebar_visible(&self) -> bool {
+        match self.workspace_view {
+            WorkspaceView::Review => self.git_review_sidebar_open,
+            _ => self.git_sidebar_pinned,
+        }
     }
 
     pub(in crate::app) fn refresh_assistant_panel_state(

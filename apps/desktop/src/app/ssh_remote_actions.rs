@@ -1868,6 +1868,7 @@ impl CoduxApp {
             .or(selected_path);
         let selected_worktree_key = current_worktree_scope_key(&self.state);
         let mut applied = 0;
+        let mut git_updated = false;
 
         for event in events {
             match event {
@@ -1887,6 +1888,7 @@ impl CoduxApp {
                     self.sync_current_worktree_git_summary_from_current_git();
                     self.normalize_selected_git_file();
                     self.normalize_selected_git_branch();
+                    git_updated = true;
                     applied += 1;
                 }
                 ProjectActivityEvent::WorktreeSnapshot {
@@ -1940,6 +1942,10 @@ impl CoduxApp {
             }
         }
 
+        if git_updated {
+            self.refresh_live_git_review(cx);
+            self.invalidate_ui(cx, [UiRegion::GitSidebar, UiRegion::WorkspaceBody]);
+        }
         if applied > 0 {
             self.invalidate_task_column(cx);
             self.invalidate_status_bar(cx);

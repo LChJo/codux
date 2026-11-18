@@ -318,6 +318,7 @@ impl Render for GitSidebarView {
                     running_operation: app.git_running_operation.as_ref(),
                     commit_message: &app.git_commit_message,
                     commit_message_revision: app.git_commit_message_revision,
+                    history_active: app.git_sidebar_history,
                     files_panel_view,
                     history_panel_view,
                 },
@@ -524,9 +525,10 @@ fn git_fingerprint(git: &GitSummary) -> u64 {
     ])
 }
 
-fn git_file_status_fingerprint(status: &GitFileStatus) -> (String, String, String) {
+fn git_file_status_fingerprint(status: &GitFileStatus) -> (String, Option<String>, String, String) {
     (
         status.path.clone(),
+        status.old_path.clone(),
         status.index_status.clone(),
         status.worktree_status.clone(),
     )
@@ -562,6 +564,7 @@ fn git_interaction_fingerprint(app: &CoduxApp) -> u64 {
             app.selected_git_file.clone(),
             sorted_strings(&app.selected_git_files),
             app.selected_git_branch.clone(),
+            app.git_sidebar_history,
             app.state
                 .selected_project
                 .as_ref()

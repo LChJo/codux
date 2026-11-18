@@ -114,6 +114,7 @@ impl CoduxApp {
             return;
         };
         let base_branch = self.git_review.base_branch.clone();
+        let requested_base = base_branch.clone();
         let runtime_service = self.runtime_service.clone();
         let generation = self.project_switch_generation;
         self.git_review_refreshing = true;
@@ -147,6 +148,11 @@ impl CoduxApp {
                     app.invalidate_git_panel(cx);
                     return;
                 }
+                if app.git_review.base_branch != requested_base {
+                    app.git_review_refreshing = false;
+                    app.refresh_git_panel_state_async_impl(quiet, cx);
+                    return;
+                }
                 app.state.git = git;
                 app.git_review = git_review;
                 let worktree_git_changed = app.sync_current_worktree_git_summary_from_current_git();
@@ -174,6 +180,11 @@ impl CoduxApp {
                 );
                 if app.workspace_view == WorkspaceView::Review {
                     app.ensure_selected_git_review_file_loaded_async(cx);
+                    if let Some(path) = app.selected_git_file.clone()
+                        && app.active_git_comparison().is_none()
+                    {
+                        app.reload_git_file_diff_async(path, true, cx);
+                    }
                 }
                 app.invalidate_git_panel(cx);
                 app.invalidate_status_bar(cx);

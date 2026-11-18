@@ -1,6 +1,7 @@
 fn review_status_from_delta(delta: git2::Delta) -> String {
     match delta {
         git2::Delta::Added => "added",
+        git2::Delta::Untracked => "untracked",
         git2::Delta::Deleted => "deleted",
         git2::Delta::Renamed => "renamed",
         git2::Delta::Copied => "copied",
@@ -68,6 +69,7 @@ fn review_file_from_status(
     let (additions, deletions) = stats.get(&file.path).copied().unwrap_or((0, 0));
     GitReviewFile {
         path: file.path.clone(),
+        old_path: file.old_path.clone(),
         status,
         additions,
         deletions,

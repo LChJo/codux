@@ -468,6 +468,7 @@ fn remote_git_status_payload_matches_domain_shape() {
             is_repository: true,
             error: None,
             changed_files: vec![crate::git::GitFileStatus {
+                old_path: None,
                 path: "src/main.rs".to_string(),
                 index_status: "modified".to_string(),
                 worktree_status: "modified".to_string(),

@@ -726,7 +726,10 @@ fn make_handler(
                         }),
                     ))
                 } else {
-                    match codux_git::wire::read(&project_path, op, &args) {
+                    let result = codux_git::wire::read_project_path(
+                        op, &project_path, payload.get("projectPath").and_then(Value::as_str),
+                    ).and_then(|path| codux_git::wire::read(path, op, &args));
+                    match result {
                         Ok(result) => {
                             Some((REMOTE_GIT_READ, json!({ "op": op, "result": result })))
                         }

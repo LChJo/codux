@@ -98,6 +98,14 @@ pub(super) fn git_panel_header(
                 .items_center()
                 .when(git.is_repository, |this| {
                     this.child(assistant_header_icon_button(
+                        "git-sidebar-refresh",
+                        HeroIconName::ArrowPath,
+                        cx,
+                        |app, _event, _window, cx| app.refresh_git_panel_state_async(cx),
+                    ))
+                })
+                .when(git.is_repository, |this| {
+                    this.child(assistant_header_icon_button(
                         "git-sidebar-ai",
                         HeroIconName::Sparkles,
                         cx,
@@ -135,6 +143,8 @@ pub(super) fn git_panel_header(
 
 pub(super) fn git_repository_panel(
     labels: Rc<GitSidebarLabels>,
+    history_active: bool,
+    clean: bool,
     commit_message: &str,
     commit_message_revision: u64,
     files_panel_view: gpui::Entity<GitFilesPanelView>,
@@ -147,27 +157,84 @@ pub(super) fn git_repository_panel(
         .flex_1()
         .min_h_0()
         .flex_col()
-        .child(git_commit_panel(
-            commit_message,
-            commit_message_revision,
-            labels.clone(),
-            window,
-            cx,
-        ))
         .child(
-            v_resizable("git-sidebar-file-history-split")
-                .child(
-                    resizable_panel()
-                        .size_range(px(160.0)..px(900.0))
-                        .child(gpui::AnyView::from(files_panel_view)),
-                )
-                .child(
-                    resizable_panel()
-                        .size(px(260.0))
-                        .size_range(px(180.0)..px(420.0))
-                        .child(gpui::AnyView::from(history_panel_view)),
+            div()
+                .flex()
+                .gap_1()
+                .px_2()
+                .py_1()
+                .border_b_1()
+                .border_color(cx.theme().border)
+                .children(
+                    [
+                        (false, labels.changed.clone()),
+                        (true, labels.history.clone()),
+                    ]
+                    .into_iter()
+                    .map(|(history, label)| {
+                        Button::new(if history {
+                            "git-sidebar-history-tab"
+                        } else {
+                            "git-sidebar-changes-tab"
+                        })
+                        .compact()
+                        .ghost()
+                        .label(label)
+                        .when(history_active == history, |button| {
+                            button.bg(cx.theme().accent)
+                        })
+                        .on_click(cx.listener(move |app, _, _, cx| {
+                            app.git_sidebar_history = history;
+                            app.invalidate_ui(cx, [UiRegion::GitSidebar]);
+                        }))
+                    }),
                 ),
         )
+        .child(if history_active {
+            gpui::AnyView::from(history_panel_view).into_any_element()
+        } else {
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_h_0()
+                .child(git_commit_panel(
+                    commit_message,
+                    commit_message_revision,
+                    labels.clone(),
+                    window,
+                    cx,
+                ))
+                .child(if clean {
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_1()
+                        .px_2()
+                        .py_2()
+                        .text_sm()
+                        .child(labels.text("git.review.clean", "Working tree is clean"))
+                        .child(
+                            Button::new("git-sidebar-clean-history")
+                                .compact()
+                                .ghost()
+                                .label(labels.text("git.review.view_history", "View history"))
+                                .on_click(cx.listener(|app, _, _, cx| {
+                                    app.git_sidebar_history = true;
+                                    app.invalidate_ui(cx, [UiRegion::GitSidebar]);
+                                })),
+                        )
+                        .into_any_element()
+                } else {
+                    div()
+                        .flex_1()
+                        .min_h_0()
+                        .child(gpui::AnyView::from(files_panel_view))
+                        .into_any_element()
+                })
+                .into_any_element()
+        })
 }
 
 pub(super) fn git_commit_panel(
@@ -369,12 +436,12 @@ pub(super) fn git_files_panel(
                 cx.entity().clone(),
                 "git-files-list",
                 item_sizes,
-                move |_app, visible_range: Range<usize>, _window, cx| {
+                move |app, visible_range: Range<usize>, _window, cx| {
                     visible_range
                         .filter_map(|index| {
                             rows.get(index)
                                 .cloned()
-                                .map(|row: GitStatusVirtualRow| row.render(cx))
+                                .map(|row: GitStatusVirtualRow| row.render(app, cx))
                         })
                         .collect::<Vec<_>>()
                 },

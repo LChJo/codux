@@ -193,7 +193,10 @@ fn git_review_from_repo(repo: &GitRepository, base_branch: Option<&str>) -> GitR
         .map(str::to_string);
 
     if let Some(base) = base {
-        let files = git2_commit_review_files(repo, &base).unwrap_or_default();
+        let (files, error) = match git2_commit_review_files(repo, &base) {
+            Ok(files) => (files, None),
+            Err(error) => (Vec::new(), Some(error)),
+        };
         let diff_stat = review_diff_stat(&files);
         return GitReviewSummary {
             mode: "taskBranch".to_string(),
@@ -202,7 +205,7 @@ fn git_review_from_repo(repo: &GitRepository, base_branch: Option<&str>) -> GitR
             diff_stat,
             files,
             is_repository: true,
-            error: None,
+            error,
         };
     }
 
@@ -325,6 +328,7 @@ fn git_status_directory_markers(path: String, file: &GitFileStatus) -> Vec<GitFi
     if is_untracked_status(file) {
         return vec![GitFileStatus {
             path,
+            old_path: None,
             index_status: "?".to_string(),
             worktree_status: "?".to_string(),
         }];
@@ -332,6 +336,7 @@ fn git_status_directory_markers(path: String, file: &GitFileStatus) -> Vec<GitFi
 
     vec![GitFileStatus {
         path,
+        old_path: None,
         index_status: file.index_status.clone(),
         worktree_status: file.worktree_status.clone(),
     }]
@@ -411,6 +416,15 @@ fn git2_status_files_with_options(
         let worktree_status = git2_worktree_status_code(status);
         let file = GitFileStatus {
             path,
+            old_path: entry
+                .index_to_workdir()
+                .filter(|delta| delta.status() == git2::Delta::Renamed)
+                .or_else(|| {
+                    entry
+                        .head_to_index()
+                        .filter(|delta| delta.status() == git2::Delta::Renamed)
+                })
+                .and_then(|delta| delta.old_file().path().map(normalize_git_path_path)),
             index_status: index_status.clone(),
             worktree_status: worktree_status.clone(),
         };

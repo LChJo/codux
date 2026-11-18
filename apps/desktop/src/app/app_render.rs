@@ -293,7 +293,10 @@ impl Render for CoduxApp {
         let show_task_column = !self.task_column_collapsed
             && !matches!(
                 self.workspace_view,
-                WorkspaceView::Triggers | WorkspaceView::Blackboard | WorkspaceView::Stats
+                WorkspaceView::Triggers
+                    | WorkspaceView::Blackboard
+                    | WorkspaceView::Stats
+                    | WorkspaceView::Review
             );
         let task_column_view = show_task_column.then(|| self.task_column_view(cx));
         let workspace_column_view = self.workspace_column_view(cx);

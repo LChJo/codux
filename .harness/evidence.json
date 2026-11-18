@@ -132,8 +132,8 @@
     },
     {
       "id": "48b50b45-19dc-4dae-aadb-47e47cef6703",
-      "observedAt": "2026-11-08T07:39:19.4671481Z",
-      "hash": "07bbddf906f13d1b96253d2ff7a7b42a308234b6039351ca38e7097e8ff6a2f8",
+      "observedAt": "2026-11-18T10:44:06Z",
+      "hash": "2f19ae008f7c3709184fd2c28f69ba82b6e1bafcb634d207153adea6684e18f3",
       "claim": "Shared git2 and notify Git service, watchers, worktree operations and remote wire dispatch.",
       "kind": "source-code",
       "location": {
@@ -528,6 +528,66 @@
       "kind": "source-code",
       "location": {
         "path": "crates/codux-ai-sessions/src/summary.rs"
+      }
+    },
+    {
+      "id": "ccf6be52-43f3-4720-abf2-7711d81c87fb",
+      "observedAt": "2026-11-18T09:49:42Z",
+      "hash": "1572509e680da47474fb39896640f10c31eba98fe6f1f583f4a5577c3694c584",
+      "claim": "The pending desktop Git review specification defines a three-pane review layout, independent Git sidebar visibility and readable file details.",
+      "kind": "document",
+      "location": {
+        "path": "docs/spec/changes/redesign-git-review-workspace-2026-11-18/specs/git-review-workspace/spec.md"
+      }
+    },
+    {
+      "id": "e6215fee-7cae-43ba-a564-9ae2e651cc67",
+      "observedAt": "2026-11-18T10:44:06Z",
+      "hash": "f924e442b4a5c2b0169d0d06102ea56f84759923a30ccc39eff4057f688d489c",
+      "claim": "The desktop Git review workspace arranges the Git sidebar, changed files and diff in scope-aware panels and offers staged, unstaged, branch and commit comparisons.",
+      "kind": "source-code",
+      "location": {
+        "path": "apps/desktop/src/app/workspace_review.rs"
+      }
+    },
+    {
+      "id": "c08e5029-afa8-49fd-a89c-bb98382d4f7e",
+      "observedAt": "2026-11-18T12:28:01Z",
+      "hash": "fcb4ced980bf7f31b3f00f14a1f125a095bcb6fa6d1802c401dae0b079b06a5c",
+      "claim": "Git review auto-opens its sidebar independently of the persistent visibility preference in other workspaces.",
+      "kind": "source-code",
+      "location": {
+        "path": "apps/desktop/src/app/window_actions/view_toggles.rs"
+      }
+    },
+    {
+      "id": "05349d2f-42e1-446e-a9de-b088421e2f28",
+      "observedAt": "2026-11-18T10:44:06Z",
+      "hash": "1a5e0ef74c445dbf9a6b45e92eee8f1d6963280be8c6022a8d8c254a1ccd86e8",
+      "claim": "The shared Git service reads paged commit history and resolves comparisons to staged, unstaged, or immutable tree endpoints, with bounded file previews.",
+      "kind": "source-code",
+      "location": {
+        "path": "crates/codux-git/src/comparison.rs"
+      }
+    },
+    {
+      "id": "341cdbec-d36d-480b-9e84-67ea80d9529c",
+      "observedAt": "2026-11-18T12:28:01Z",
+      "hash": "904fe70cb610815ea222b517d5d4cb01b30de21a82850c27eedc2680ea1a87d8",
+      "claim": "Git comparison state is bound to a project and worktree visit generation, so returning to a previous scope cannot reactivate cancelled comparison or file loads.",
+      "kind": "source-code",
+      "location": {
+        "path": "apps/desktop/src/app/git_actions/comparison.rs"
+      }
+    },
+    {
+      "id": "593e8cf2-9eec-40df-a725-6504fa562be5",
+      "observedAt": "2026-11-18T12:28:01Z",
+      "hash": "c68e9a9db29824d15986e17d9a4191a5525cae6c0ae0c1362a10cdd71c36d9bc",
+      "claim": "Git history rows are focusable and open commit comparisons through native GPUI keyboard click activation.",
+      "kind": "source-code",
+      "location": {
+        "path": "apps/desktop/src/app/sidebars/git/history.rs"
       }
     }
   ],

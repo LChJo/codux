@@ -1,15 +1,19 @@
 use super::*;
 
 pub(super) fn git_history_panel(
-    git: &GitSummary,
+    commits: &[GitCommitSummary],
+    branch: &str,
+    head: Option<&str>,
+    unfiltered: bool,
     labels: Rc<GitSidebarLabels>,
     scroll_handle: VirtualListScrollHandle,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
-    let commits = Rc::new(git.commits.clone());
+    let commits = Rc::new(commits.to_vec());
     let commit_count = commits.len();
     let menu_labels = Rc::new(GitHistoryMenuLabels::from(labels.as_ref()));
-    let head_label = SharedString::from(match git.branch.as_str() {
+    let head = head.map(str::to_string);
+    let head_label = SharedString::from(match branch {
         "" | "HEAD" | "uninitialized" => "HEAD".to_string(),
         branch => format!("HEAD->{branch}"),
     });
@@ -31,9 +35,13 @@ pub(super) fn git_history_panel(
                 .text_size(rems(0.875))
                 .line_height(rems(1.125))
                 .text_color(cx.theme().muted_foreground)
-                .child(labels.history.clone()),
+                .child(if branch.is_empty() {
+                    labels.history.clone()
+                } else {
+                    format!("{} · {branch}", labels.history)
+                }),
         )
-        .child(if git.commits.is_empty() {
+        .child(if commits.is_empty() {
             div()
                 .flex_1()
                 .px_3()
@@ -41,7 +49,11 @@ pub(super) fn git_history_panel(
                 .text_size(rems(0.875))
                 .line_height(rems(1.125))
                 .text_color(color(theme::TEXT_DIM))
-                .child(labels.history_empty.clone())
+                .child(if unfiltered {
+                    labels.history_empty.clone()
+                } else {
+                    labels.text("git.review.no_matching_commits", "No matching commits")
+                })
                 .into_any_element()
         } else {
             div()
@@ -61,7 +73,8 @@ pub(super) fn git_history_panel(
                                     commits.get(index).cloned().map(|commit| {
                                         git_history_timeline_row(
                                             &commit,
-                                            index == 0,
+                                            head.as_ref()
+                                                .is_some_and(|head| commit.hash.starts_with(head)),
                                             index == 0,
                                             index + 1 >= commit_count,
                                             head_label.clone(),
@@ -107,6 +120,9 @@ fn git_history_timeline_row(
     let menu_hash = hash.clone();
     let app_entity = cx.entity();
     let context_entity = app_entity.clone();
+    let open_entity = app_entity.clone();
+    let open_hash = hash.clone();
+    let short_hash = hash.chars().take(8).collect::<String>();
     let context_hash = menu_hash.clone();
     let tooltip = format!(
         "{}\n{}\n{} · {}",
@@ -126,6 +142,15 @@ fn git_history_timeline_row(
     .py(px(4.0))
     .flex()
     .gap_2()
+    .focusable()
+    .tab_stop(true)
+    .cursor_pointer()
+    .focus_visible(|style| style.bg(cx.theme().accent))
+    .on_click(move |_, window, cx| {
+        open_entity.update(cx, |app, cx| {
+            app.open_git_commit_review(open_hash.clone(), window, cx);
+        })
+    })
     .hover(|style| style.bg(cx.theme().list_hover))
     .child(
         div()
@@ -228,7 +253,7 @@ fn git_history_timeline_row(
                     .line_height(rems(1.0))
                     .text_color(color(theme::TEXT_DIM))
                     .truncate()
-                    .child(format!("{author} · {relative_time} · {hash}")),
+                    .child(format!("{author} · {relative_time} · {short_hash}")),
             ),
     )
     .context_menu(move |menu, _window, _cx| {

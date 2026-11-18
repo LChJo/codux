@@ -99,6 +99,9 @@ fn review_files_from_diff(diff: &git2::Diff<'_>) -> Result<Vec<GitReviewFile>, S
         let (additions, deletions) = patch_line_stats(diff, index);
         files.push(GitReviewFile {
             path,
+            old_path: matches!(delta.status(), git2::Delta::Renamed | git2::Delta::Copied)
+                .then(|| delta.old_file().path().map(normalize_git_path_path))
+                .flatten(),
             status: review_status_from_delta(delta.status()),
             additions,
             deletions,

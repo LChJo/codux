@@ -44,6 +44,8 @@ pub struct GitStashSummary {
 #[serde(rename_all = "camelCase")]
 pub struct GitFileStatus {
     pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub old_path: Option<String>,
     pub index_status: String,
     pub worktree_status: String,
 }
@@ -96,6 +98,8 @@ pub struct GitReviewSummary {
 #[serde(rename_all = "camelCase")]
 pub struct GitReviewFile {
     pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub old_path: Option<String>,
     pub status: String,
     pub additions: i64,
     pub deletions: i64,

@@ -51,7 +51,7 @@ impl GitStatusVirtualRow {
         }
     }
 
-    pub(super) fn render(self, cx: &mut Context<CoduxApp>) -> AnyElement {
+    pub(super) fn render(self, app: &CoduxApp, cx: &mut Context<CoduxApp>) -> AnyElement {
         match self {
             Self::GroupHeader {
                 id,
@@ -94,6 +94,7 @@ impl GitStatusVirtualRow {
                     &selected_files,
                     depth,
                     labels,
+                    app,
                     cx,
                 )
                 .into_any_element()
@@ -464,6 +465,7 @@ mod tests {
     fn git_file(path: &str, index_status: &str, worktree_status: &str) -> GitFileStatus {
         GitFileStatus {
             path: path.to_string(),
+            old_path: None,
             index_status: index_status.to_string(),
             worktree_status: worktree_status.to_string(),
         }

@@ -2,6 +2,7 @@ use super::*;
 
 #[derive(Clone)]
 pub(in crate::app) struct GitSidebarLabels {
+    locale: String,
     pub(super) remote_url: String,
     pub(super) cancel: String,
     pub(super) confirm: String,
@@ -49,15 +50,14 @@ pub(in crate::app) struct GitSidebarLabels {
     pub(super) review_changed_files: String,
     pub(super) review_original: String,
     pub(super) review_select_file: String,
-    pub(super) review_empty: String,
     pub(super) review_no_repository: String,
-    pub(super) review_tree_limit: String,
 }
 impl GitSidebarLabels {
     pub(in crate::app) fn load(language: &str) -> Self {
         let locale = locale_from_language_setting(language);
         let tr = |key: &str, fallback: &str| translate(&locale, key, fallback);
         Self {
+            locale: locale.clone(),
             remote_url: tr("git.remote.add.url_message", "Remote Repository URL"),
             cancel: tr("common.cancel", "Cancel"),
             confirm: tr("common.confirm", "Confirm"),
@@ -135,16 +135,12 @@ impl GitSidebarLabels {
                 "worktree.review.select_file",
                 "Select a changed file to compare.",
             ),
-            review_empty: tr(
-                "worktree.review.no_changes",
-                "No changes relative to the base branch.",
-            ),
             review_no_repository: tr("worktree.review.no_repository", "No Git repository."),
-            review_tree_limit: tr(
-                "worktree.review.tree_limit_format",
-                "Showing first %@ rows of %@ changed files",
-            ),
         }
+    }
+
+    pub(in crate::app) fn text(&self, key: &str, fallback: &str) -> String {
+        translate(&self.locale, key, fallback)
     }
 }
 
@@ -155,6 +151,7 @@ pub(in crate::app) struct GitSectionInput<'a> {
     pub(in crate::app) running_operation: Option<&'a GitRunningOperation>,
     pub(in crate::app) commit_message: &'a str,
     pub(in crate::app) commit_message_revision: u64,
+    pub(in crate::app) history_active: bool,
     pub(in crate::app) files_panel_view: gpui::Entity<GitFilesPanelView>,
     pub(in crate::app) history_panel_view: gpui::Entity<GitHistoryPanelView>,
 }
@@ -171,6 +168,7 @@ pub(in crate::app) fn git_section(
         running_operation,
         commit_message,
         commit_message_revision,
+        history_active,
         files_panel_view,
         history_panel_view,
     } = input;
@@ -200,6 +198,8 @@ pub(in crate::app) fn git_section(
         .child(if git.is_repository {
             git_repository_panel(
                 labels.clone(),
+                history_active,
+                git.error.is_none() && git.staged == 0 && git.unstaged == 0 && git.untracked == 0,
                 commit_message,
                 commit_message_revision,
                 files_panel_view,
