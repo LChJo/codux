@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-26]
+    runs-on: ${{ matrix.os }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+      CMAKE_OSX_DEPLOYMENT_TARGET: "14.0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ci-cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - name: Check desktop and agent
+        run: cargo check --locked -p codux -p codux-agent -p codux-wrapper-helper
+      - name: Test terminal runtime
+        run: cargo test --locked -p codux-runtime-live -p codux-terminal-pty --lib
+      - name: Test updater
+        shell: bash
+        run: |
+          cargo test --locked -p codux-runtime --lib update
+          cargo test --locked -p codux-agent --bin codux-agent cmd_update
+
+  release-scripts:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_ALLOW_UNSIGNED: "true"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: |
+          node apps/desktop/scripts/release/test-bump-local-version.mjs
+          node apps/desktop/scripts/release/test-prepare-release.mjs
+          node apps/desktop/scripts/release/test-package-gpui.mjs
+          node apps/desktop/scripts/release/test-publish-github-release.mjs
+          node apps/desktop/scripts/release/test-render-homebrew-cask.mjs
+          node apps/agent/scripts/release/test-agent-release-scripts.mjs

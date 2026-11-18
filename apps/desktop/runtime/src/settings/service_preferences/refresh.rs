@@ -7,6 +7,12 @@ impl SettingsService {
             .and_then(Value::as_bool)
             .unwrap_or(false);
         update.insert("enabled".to_string(), Value::Bool(!current));
+        let channel = update
+            .get("channel")
+            .and_then(Value::as_str)
+            .unwrap_or("stable")
+            .to_string();
+        sync_update_endpoint_for_channel(update, &channel);
         self.save_raw_settings(&raw)?;
         Ok(summary_from_raw(&raw))
     }
@@ -94,27 +100,6 @@ fn sync_update_endpoint_for_channel(update: &mut serde_json::Map<String, Value>,
         .and_then(Value::as_str)
         .unwrap_or("")
         .trim();
-    if endpoint.is_empty() || is_managed_update_endpoint(endpoint) {
-        update.insert(
-            "endpoint".to_string(),
-            Value::String(update_endpoint_for_channel(channel).to_string()),
-        );
-    }
-}
-
-fn update_endpoint_for_channel(channel: &str) -> &'static str {
-    match channel {
-        "beta" => "https://raw.githubusercontent.com/duxweb/codux/main/updates/beta/latest.json",
-        _ => "https://raw.githubusercontent.com/duxweb/codux/main/updates/stable/latest.json",
-    }
-}
-
-fn is_managed_update_endpoint(endpoint: &str) -> bool {
-    matches!(
-        endpoint,
-        "https://github.com/duxweb/codux/releases/latest/download/latest.json"
-            | "https://github.com/duxweb/codux/releases/download/beta/latest.json"
-            | "https://raw.githubusercontent.com/duxweb/codux/main/updates/stable/latest.json"
-            | "https://raw.githubusercontent.com/duxweb/codux/main/updates/beta/latest.json"
-    )
+    let endpoint = app_settings::effective_update_endpoint(endpoint, channel);
+    update.insert("endpoint".to_string(), Value::String(endpoint));
 }

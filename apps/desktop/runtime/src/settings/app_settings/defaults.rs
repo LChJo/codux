@@ -183,20 +183,34 @@ pub(super) fn release_channel_for_version(version: &str) -> &'static str {
 
 pub(crate) fn update_endpoint_for_channel(channel: &str) -> String {
     match channel {
-        "beta" => "https://raw.githubusercontent.com/duxweb/codux/main/updates/beta/latest.json",
-        _ => "https://raw.githubusercontent.com/duxweb/codux/main/updates/stable/latest.json",
+        "beta" => "https://raw.githubusercontent.com/LChJo/codux/main/updates/beta/latest.json",
+        _ => "https://raw.githubusercontent.com/LChJo/codux/main/updates/stable/latest.json",
     }
     .to_string()
 }
 
-pub(super) fn is_managed_update_endpoint(endpoint: &str) -> bool {
-    matches!(
-        endpoint,
-        "https://github.com/duxweb/codux/releases/latest/download/latest.json"
-            | "https://github.com/duxweb/codux/releases/download/beta/latest.json"
-            | "https://raw.githubusercontent.com/duxweb/codux/main/updates/stable/latest.json"
-            | "https://raw.githubusercontent.com/duxweb/codux/main/updates/beta/latest.json"
-    )
+pub(crate) fn effective_update_endpoint(endpoint: &str, channel: &str) -> String {
+    let endpoint = endpoint.trim();
+    let repo_path = endpoint.to_ascii_lowercase();
+    let managed = is_parent_update_url(endpoint)
+        || repo_path.starts_with("https://github.com/lchjo/codux/releases/")
+        || repo_path.starts_with("https://raw.githubusercontent.com/lchjo/codux/main/updates/");
+    if endpoint.is_empty() || managed {
+        update_endpoint_for_channel(channel)
+    } else {
+        endpoint.to_string()
+    }
+}
+
+pub(crate) fn is_parent_update_url(url: &str) -> bool {
+    let url = url.trim().to_ascii_lowercase();
+    let without_scheme = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"));
+    without_scheme.is_some_and(|path| {
+        path.starts_with("github.com/duxweb/codux/")
+            || path.starts_with("raw.githubusercontent.com/duxweb/codux/")
+    })
 }
 
 #[cfg(test)]

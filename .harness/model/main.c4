@@ -37,14 +37,14 @@ model {
       }
     }
     runtime = component "Desktop Runtime" {
-      description "Desktop runtime services and platform adapters for files, settings, updates, remote hosting and the shared Git, AI, memory and terminal engines. Settings services omit runtime tool defaults and discard legacy ai.runtimeTools values on save; no tool permission cache is generated."
+      description "Desktop runtime services and platform adapters for files, settings, updates, remote hosting and the shared Git, AI, memory and terminal engines. Update channels use fork-owned manifests published after all desktop and agent artifacts are uploaded. Manual checks are independent of background checks. Settings services omit runtime tool defaults and discard legacy ai.runtimeTools values on save; no tool permission cache is generated."
       metadata {
         harness_id "fd9e63c2-396e-49db-8696-de8ace866d2c"
-        brief "Desktop runtime services and platform adapters for files, settings, updates, remote hosting and the shared Git, AI, memory and terminal engines. Settings services omit runtime tool defaults and discard legacy ai.runtimeTools values on save; no tool permission cache is generated."
+        brief "Desktop runtime services and platform adapters for files, settings, updates, remote hosting and the shared Git, AI, memory and terminal engines. Update channels use fork-owned manifests published after desktop and agent artifacts are uploaded. Manual checks are independent of background checks. Settings services omit runtime tool defaults and discard legacy ai.runtimeTools values on save; no tool permission cache is generated."
         source "fact"
         status "verified"
-        evidence "7573f9b2-3925-4756-a26e-c48047c97ab6 20f1f5f9-0d45-4012-9c7f-e7234fff6223 c8cd308b-ee93-476e-8fce-d0186102c9cd"
-        version "2"
+        evidence "7573f9b2-3925-4756-a26e-c48047c97ab6 20f1f5f9-0d45-4012-9c7f-e7234fff6223 c8cd308b-ee93-476e-8fce-d0186102c9cd bc8981dd-7066-4114-9950-c234c5e87f0e e60ad127-b851-40aa-90dd-a5896abd923c"
+        version "3"
       }
       url_open = component "Native URL Opener" {
         description "Validates http, https and file URLs. Windows opens the full UTF-16 URL/path on a dedicated STA shell thread, avoiding GPUI message-loop reentrancy and preserving synchronous launch errors."
@@ -136,14 +136,14 @@ model {
       }
     }
     live = component "Live Runtime" {
-      description "Shared AI supervisor, enhanced PTY manager, remote terminal dispatch, wrapper helpers, runtime paths and host metrics. Terminal environments explicitly inherit tool/development settings and current host connection parameters; tool dotenv files cannot supply host transports. CLI wrappers preserve native model, effort and permission options while retaining managed context, memory and session tracking; permission requests remain visible."
+      description "Shared AI supervisor, enhanced PTY manager, remote terminal dispatch, wrapper helpers, runtime paths and host metrics. Codex turn state drives the status sent to desktop and remote clients. Terminal environments explicitly inherit tool/development settings and current host connection parameters; tool dotenv files cannot supply host transports. CLI wrappers preserve native model, effort and permission options while retaining managed context, memory and session tracking; permission requests remain visible."
       metadata {
         harness_id "92983e4d-b1ce-457e-b7c8-482627a4767d"
-        brief "Shared AI supervisor, enhanced PTY manager, remote terminal dispatch, wrapper helpers, runtime paths and host metrics. Terminal environments explicitly inherit tool/development settings and current host connection parameters; tool dotenv files cannot supply host transports. CLI wrappers preserve native model, effort and permission options while retaining managed context, memory and session tracking; permission requests remain visible."
+        brief "Shared AI supervisor, enhanced PTY manager, remote terminal dispatch, wrapper helpers, runtime paths and host metrics. Codex turn state drives the status sent to desktop and remote clients. Terminal environments explicitly inherit tool/development settings and current host connection parameters; tool dotenv files cannot supply host transports. CLI wrappers preserve native model, effort and permission options while retaining managed context, memory and session tracking; permission requests remain visible."
         source "fact"
         status "verified"
-        evidence "b81f773d-bb5f-485c-9936-d020d4e56e62 04f1f824-9014-4a16-80ca-053af31eacc0 ca775350-aa5d-419c-85eb-98d9a0e52999 6ab0bf23-0508-4bba-99e7-d1398b81f26c 9df6de7c-41f6-4f20-95a0-2cd9339eff08 b530ac47-6da3-485a-86f0-7f220c14a693 c9513c43-2f92-41c6-a395-a1dc8ffb4567 9aa57823-b74e-4bc9-8b80-ba24b3e01659 2f87b12c-4f28-4749-8375-c1201518d5f2"
-        version "3"
+        evidence "b81f773d-bb5f-485c-9936-d020d4e56e62 04f1f824-9014-4a16-80ca-053af31eacc0 ca775350-aa5d-419c-85eb-98d9a0e52999 6ab0bf23-0508-4bba-99e7-d1398b81f26c 9df6de7c-41f6-4f20-95a0-2cd9339eff08 b530ac47-6da3-485a-86f0-7f220c14a693 c9513c43-2f92-41c6-a395-a1dc8ffb4567 9aa57823-b74e-4bc9-8b80-ba24b3e01659 2f87b12c-4f28-4749-8375-c1201518d5f2 df0a6675-5699-41b4-a97b-a834a1632389"
+        version "4"
       }
     }
     terminal_core = component "Terminal Core" {

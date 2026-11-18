@@ -5,7 +5,7 @@
 #           on your PATH as `codux` (no build toolchain needed).
 # Uninstall stop the host, remove its OS service, and delete the binary.
 #
-#   curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/LChJo/codux/main/apps/agent/scripts/install.sh | sh
 #   curl -fsSL .../install.sh | sh -s -- --uninstall
 #
 # Options (pass after `sh -s --`, or as env vars):
@@ -24,7 +24,7 @@
 #   --help              show this help
 set -eu
 
-REPO="duxweb/codux"
+REPO="LChJo/codux"
 BIN_NAME="codux"
 MODE="install"
 CHANNEL="${CODUX_CHANNEL:-stable}"
@@ -51,7 +51,7 @@ Codux headless host (codux) installer / uninstaller.
 Install   download the prebuilt codux-agent binary and put it on PATH as `codux`.
 Uninstall stop the host, remove its OS service, delete the binary.
 
-  curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/scripts/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/LChJo/codux/main/apps/agent/scripts/install.sh | sh
   curl -fsSL .../install.sh | sh -s -- --uninstall
 
 Options (pass after `sh -s --`, or as env vars):

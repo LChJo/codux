@@ -1,9 +1,6 @@
 name: Release macOS Formal
 
 on:
-  workflow_run:
-    workflows: ["Release GPUI Desktop"]
-    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -21,7 +18,11 @@ on:
           - stable
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: codux-release
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -30,7 +31,7 @@ env:
 
 jobs:
   metadata:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && startsWith(github.event.workflow_run.head_branch, 'v')) }}
+    if: github.repository == 'LChJo/codux'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
@@ -41,16 +42,15 @@ jobs:
         id: ref
         shell: bash
         env:
-          DISPATCH_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
-          WORKFLOW_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || '' }}
+          SOURCE_TAG: ${{ inputs.tag }}
         run: |
-          source_ref="${DISPATCH_TAG:-$WORKFLOW_TAG}"
-          echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
+          [[ "$SOURCE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          echo "source_ref=$SOURCE_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.ref.outputs.source_ref }}
+          ref: refs/tags/${{ steps.ref.outputs.source_ref }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -87,6 +87,7 @@ jobs:
     runs-on: macos-26
     env:
       CARGO_BUILD_TARGET: ${{ matrix.target }}
+      CODUX_UPDATER_PUBLIC_KEY: ${{ vars.CODUX_UPDATER_PUBLIC_KEY }}
       RELEASE_BUILD_ID: ${{ matrix.id }}
       RELEASE_STAGE_DIR: release-artifacts
       RELEASE_ARTIFACT_SUFFIX: ""
@@ -187,6 +188,8 @@ jobs:
           key: formal-rust-${{ runner.os }}-${{ matrix.id }}-${{ hashFiles('Cargo.lock') }}-${{ github.run_id }}
 
   publish:
+    permissions:
+      contents: write
     needs:
       - metadata
       - build
@@ -227,11 +230,3 @@ jobs:
 
       - name: Publish formal macOS assets and updater metadata
         run: node apps/desktop/scripts/release/publish-github-release.mjs
-
-      - name: Publish Homebrew tap
-        shell: bash
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
-          RELEASE_ARTIFACTS_DIR: release-artifacts
-        run: node apps/desktop/scripts/release/publish-homebrew-cask.mjs

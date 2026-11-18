@@ -10,11 +10,13 @@ import { spawnSync } from "node:child_process";
 const root = process.cwd();
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "codux-prepare-release-test-"));
 const notesPath = path.join(tempDir, "release-notes.md");
+const testEnv = { ...process.env, GITHUB_OUTPUT: "" };
 
 const result = spawnSync("node", ["apps/desktop/scripts/release/prepare-release.mjs", "v1.8.0", "--dry-run"], {
   cwd: root,
   env: {
-    ...process.env,
+    ...testEnv,
+    GITHUB_REPOSITORY: "LChJo/codux",
     RELEASE_NOTES_PATH: notesPath,
   },
   encoding: "utf8",
@@ -26,35 +28,35 @@ assert.match(notes, /## Downloads \/ 下载说明/);
 assert.match(notes, /\| File \/ 文件 \| Usage \| 用途 \|/);
 assert.match(
   notes,
-  /\| \[`codux-macos-aarch64\.dmg`\]\(https:\/\/github\.com\/duxweb\/codux\/releases\/latest\/download\/codux-macos-aarch64\.dmg\) \| Apple Silicon Mac stable release \| Apple Silicon Mac 正式版本 \|/,
+  /\| \[`codux-macos-aarch64\.dmg`\]\(https:\/\/github\.com\/LChJo\/codux\/releases\/download\/v1\.8\.0\/codux-macos-aarch64\.dmg\) \| Apple Silicon Mac stable release \| Apple Silicon Mac 正式版本 \|/,
 );
 assert.match(
   notes,
-  /\| \[`codux-macos-x86_64\.dmg`\]\(https:\/\/github\.com\/duxweb\/codux\/releases\/latest\/download\/codux-macos-x86_64\.dmg\) \| Intel Mac stable release \| Intel Mac 正式版本 \|/,
+  /\| \[`codux-macos-x86_64\.dmg`\]\(https:\/\/github\.com\/LChJo\/codux\/releases\/download\/v1\.8\.0\/codux-macos-x86_64\.dmg\) \| Intel Mac stable release \| Intel Mac 正式版本 \|/,
 );
 assert.match(
   notes,
-  /\| \[`codux-windows-x86_64-setup\.exe`\]\(https:\/\/github\.com\/duxweb\/codux\/releases\/latest\/download\/codux-windows-x86_64-setup\.exe\) \| Windows 64-bit installer \| Windows 64 位安装包 \|/,
+  /\| \[`codux-windows-x86_64-setup\.exe`\]\(https:\/\/github\.com\/LChJo\/codux\/releases\/download\/v1\.8\.0\/codux-windows-x86_64-setup\.exe\) \| Windows 64-bit installer \| Windows 64 位安装包 \|/,
 );
 assert.match(
   notes,
-  /\| \[`codux-macos-aarch64`\]\(https:\/\/github\.com\/duxweb\/codux\/releases\/latest\/download\/codux-macos-aarch64\) \| Apple Silicon Mac headless agent \| Apple Silicon Mac 主机端 \|/,
+  /\| \[`codux-macos-aarch64`\]\(https:\/\/github\.com\/LChJo\/codux\/releases\/download\/v1\.8\.0\/codux-macos-aarch64\) \| Apple Silicon Mac headless agent \| Apple Silicon Mac 主机端 \|/,
 );
 assert.match(
   notes,
-  /\| \[`codux-macos-x86_64`\]\(https:\/\/github\.com\/duxweb\/codux\/releases\/latest\/download\/codux-macos-x86_64\) \| Intel Mac headless agent \| Intel Mac 主机端 \|/,
+  /\| \[`codux-macos-x86_64`\]\(https:\/\/github\.com\/LChJo\/codux\/releases\/download\/v1\.8\.0\/codux-macos-x86_64\) \| Intel Mac headless agent \| Intel Mac 主机端 \|/,
 );
 assert.match(
   notes,
-  /\| \[`codux-linux-x86_64`\]\(https:\/\/github\.com\/duxweb\/codux\/releases\/latest\/download\/codux-linux-x86_64\) \| Linux x86_64 headless agent \| Linux x86_64 主机端 \|/,
+  /\| \[`codux-linux-x86_64`\]\(https:\/\/github\.com\/LChJo\/codux\/releases\/download\/v1\.8\.0\/codux-linux-x86_64\) \| Linux x86_64 headless agent \| Linux x86_64 主机端 \|/,
 );
 assert.match(
   notes,
-  /\| \[`codux-linux-aarch64`\]\(https:\/\/github\.com\/duxweb\/codux\/releases\/latest\/download\/codux-linux-aarch64\) \| Linux ARM64 headless agent \| Linux ARM64 主机端 \|/,
+  /\| \[`codux-linux-aarch64`\]\(https:\/\/github\.com\/LChJo\/codux\/releases\/download\/v1\.8\.0\/codux-linux-aarch64\) \| Linux ARM64 headless agent \| Linux ARM64 主机端 \|/,
 );
 assert.match(
   notes,
-  /\| \[`codux-windows-x86_64\.exe`\]\(https:\/\/github\.com\/duxweb\/codux\/releases\/latest\/download\/codux-windows-x86_64\.exe\) \| Windows 64-bit headless agent \| Windows 64 位主机端 \|/,
+  /\| \[`codux-windows-x86_64\.exe`\]\(https:\/\/github\.com\/LChJo\/codux\/releases\/download\/v1\.8\.0\/codux-windows-x86_64\.exe\) \| Windows 64-bit headless agent \| Windows 64 位主机端 \|/,
 );
 assert.doesNotMatch(notes, /codux-agent-1\.8\.0/);
 assert.doesNotMatch(notes, /debug/);
@@ -68,7 +70,7 @@ const rcChannelResult = spawnSync(
   {
     cwd: root,
     env: {
-      ...process.env,
+      ...testEnv,
       RELEASE_NOTES_PATH: path.join(tempDir, "rc-release-notes.md"),
     },
     encoding: "utf8",
@@ -84,7 +86,7 @@ const missingNotesResult = spawnSync(
   {
     cwd: root,
     env: {
-      ...process.env,
+      ...testEnv,
       RELEASE_NOTES_PATH: path.join(tempDir, "missing-release-notes.md"),
     },
     encoding: "utf8",

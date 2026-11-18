@@ -10,7 +10,7 @@ const dryRun = process.argv.includes("--dry-run");
 const version = requiredEnv("RELEASE_VERSION");
 const channel = requiredEnv("RELEASE_CHANNEL");
 const tagName = process.env.RELEASE_TAG || `v${version}`;
-const repo = process.env.GITHUB_REPOSITORY || "duxweb/codux";
+const repo = process.env.GITHUB_REPOSITORY || "LChJo/codux";
 const notesPath = process.env.RELEASE_NOTES_PATH || path.join(root, "dist", `release-notes-${version}.md`);
 const artifactsDir = process.env.RELEASE_ARTIFACTS_DIR || path.join(root, "release-artifacts");
 const notes = fs.existsSync(notesPath) ? fs.readFileSync(notesPath, "utf8") : `Codux ${version}`;
@@ -37,13 +37,15 @@ const latestPath = path.join(artifactsDir, "latest.json");
 fs.writeFileSync(latestPath, `${JSON.stringify(latestJson, null, 2)}\n`, "utf8");
 
 if (!dryRun) {
-  upsertRelease();
+  const releaseFlag = latestReleaseFlag();
+  ensureRelease();
   for (const asset of uploadAssets) {
     run("gh", ["release", "upload", tagName, "--repo", repo, "--clobber", `${asset.path}#${asset.name}`]);
   }
   if (uploadLatest) {
     run("gh", ["release", "upload", tagName, "--repo", repo, "--clobber", `${latestPath}#latest.json`]);
   }
+  run("gh", ["release", "edit", tagName, "--repo", repo, "--draft=false", "--title", `Codux ${version}`, "--notes-file", notesPath, releaseFlag]);
   if (publishManifest) {
     publishChannelManifest(latestPath);
   }
@@ -141,6 +143,7 @@ function artifactExt(file) {
 }
 
 function shouldUpload(asset) {
+  if (isAgentAsset(asset.name)) return true;
   return [
     ".dmg",
     ".exe",
@@ -157,6 +160,7 @@ function shouldUpload(asset) {
 }
 
 function shouldUploadPublicAsset(asset) {
+  if (isAgentAsset(asset.name)) return true;
   const lower = asset.name.toLowerCase();
   if (lower.endsWith(".sha256") || lower.endsWith(".sig")) return false;
   if (lower.endsWith(".app.zip") || lower.endsWith(".zip")) return false;
@@ -164,6 +168,10 @@ function shouldUploadPublicAsset(asset) {
   if (isVersionedUserInstallerAsset(lower)) return false;
   if (asset.ext === ".exe" && !lower.endsWith("-setup.exe")) return false;
   return [".dmg", ".app.tar.gz", ".exe", ".msi"].includes(asset.ext);
+}
+
+function isAgentAsset(name) {
+  return /^codux-(?:(?:macos|linux)-(?:aarch64|x86_64)|windows-x86_64\.exe)$/.test(name);
 }
 
 function isVersionedUserInstallerAsset(lowerName) {
@@ -200,8 +208,18 @@ function buildLatestJson(assets) {
       };
     }
   }
+  for (const asset of assets.filter((entry) => /^codux-(?:windows-x86_64-setup\.exe|macos-(?:aarch64|x86_64|universal)\.dmg)$/.test(entry.name))) {
+    const url = releaseAssetUrl(asset.name);
+    for (const platform of platformKeys(asset.name)) {
+      if (platforms[platform]) {
+        platforms[platform].manualUrl = url;
+      } else {
+        platforms[platform] = { url };
+      }
+    }
+  }
   if (!Object.keys(platforms).length) {
-    throw new Error("No signed updater assets found. Check Tauri updater signatures.");
+    throw new Error("No desktop updater or installer assets found.");
   }
   return {
     version,
@@ -264,8 +282,15 @@ function run(command, args) {
   }
 }
 
-function upsertRelease() {
-  const releaseFlag = channel === "beta" ? "--latest=false" : "--latest";
+function latestReleaseFlag() {
+  if (channel === "beta") return "--latest=false";
+  run("git", ["fetch", "origin", "refs/heads/main:refs/remotes/origin/main"]);
+  const previous = spawnSync("git", ["show", "origin/main:updates/stable/latest.json"], { encoding: "utf8" });
+  const published = previous.status === 0 ? JSON.parse(previous.stdout).version : null;
+  return published && compareVersions(published, version) > 0 ? "--latest=false" : "--latest";
+}
+
+function ensureRelease() {
   const releaseExists =
     spawnSync("gh", ["release", "view", tagName, "--repo", repo], {
       stdio: "ignore",
@@ -274,21 +299,7 @@ function upsertRelease() {
   if (!releaseExists && requireExistingRelease) {
     throw new Error(`Release ${tagName} does not exist.`);
   }
-  if (releaseExists) {
-    run("gh", [
-      "release",
-      "edit",
-      tagName,
-      "--repo",
-      repo,
-      "--title",
-      `Codux ${version}`,
-      "--notes-file",
-      notesPath,
-      releaseFlag,
-    ]);
-    return;
-  }
+  if (releaseExists) return;
   run("gh", [
     "release",
     "create",
@@ -299,16 +310,21 @@ function upsertRelease() {
     `Codux ${version}`,
     "--notes-file",
     notesPath,
-    releaseFlag,
+    "--verify-tag",
+    "--draft",
   ]);
 }
 
 function publishChannelManifest(sourcePath) {
   const latestContent = fs.readFileSync(sourcePath, "utf8");
-  run("git", ["fetch", "origin", "main"]);
+  run("git", ["fetch", "origin", "refs/heads/main:refs/remotes/origin/main"]);
   run("git", ["checkout", "-B", "main", "origin/main"]);
   for (const manifestChannel of manifestChannels) {
     const manifestPath = path.join(root, "updates", manifestChannel, "latest.json");
+    if (fs.existsSync(manifestPath)) {
+      const current = JSON.parse(fs.readFileSync(manifestPath, "utf8")).version;
+      if (current && compareVersions(current, version) > 0) continue;
+    }
     fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
     fs.writeFileSync(manifestPath, latestContent, "utf8");
     run("git", ["add", manifestPath]);
@@ -319,4 +335,28 @@ function publishChannelManifest(sourcePath) {
   if (diff.status === 0) return;
   run("git", ["commit", "-m", `chore: update ${manifestChannels.join("+")} updater manifest for ${version}`]);
   run("git", ["push", "origin", "HEAD:main"]);
+}
+
+function compareVersions(left, right) {
+  const parts = (value) => {
+    const [core, ...prerelease] = value.split("+")[0].split("-");
+    return [core.split(".").map(Number), prerelease.join("-").split(".")];
+  };
+  const [leftCore, leftPre] = parts(left);
+  const [rightCore, rightPre] = parts(right);
+  for (let index = 0; index < 3; index += 1) {
+    if (leftCore[index] !== rightCore[index]) return leftCore[index] - rightCore[index];
+  }
+  if (!leftPre[0] || !rightPre[0]) return Number(!leftPre[0]) - Number(!rightPre[0]);
+  for (let index = 0; index < Math.min(leftPre.length, rightPre.length); index += 1) {
+    const a = leftPre[index];
+    const b = rightPre[index];
+    if (a === b) continue;
+    const aNumeric = /^\d+$/.test(a);
+    const bNumeric = /^\d+$/.test(b);
+    if (aNumeric && bNumeric) return Number(a) - Number(b);
+    if (aNumeric !== bNumeric) return aNumeric ? -1 : 1;
+    return a < b ? -1 : 1;
+  }
+  return leftPre.length - rightPre.length;
 }

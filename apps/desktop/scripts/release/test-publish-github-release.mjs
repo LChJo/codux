@@ -88,13 +88,36 @@ for (const key of ["windows-x86_64", "windows-x86_64-nsis"]) {
   assert(manifest.platforms[key].url.endsWith("/codux-windows-x86_64-setup.exe"), `${key} should use stable NSIS name`);
 }
 
+for (const file of fs.readdirSync(artifactsDir).filter((name) => name.endsWith(".sig"))) {
+  fs.unlinkSync(path.join(artifactsDir, file));
+}
+writeAsset("codux-linux-x86_64", "agent");
+const unsigned = spawnSync("node", ["apps/desktop/scripts/release/publish-github-release.mjs", "--dry-run"], {
+  cwd: root,
+  encoding: "utf8",
+  env: {
+    ...process.env,
+    GITHUB_REPOSITORY: "LChJo/codux",
+    RELEASE_VERSION: "1.5.0",
+    RELEASE_CHANNEL: "beta",
+    RELEASE_ARTIFACTS_DIR: artifactsDir,
+    RELEASE_NOTES_PATH: notesPath,
+  },
+});
+assertEqual(unsigned.status, 0);
+assert(unsigned.stdout.includes("Prepared 6 public assets"), unsigned.stdout);
+const manual = JSON.parse(fs.readFileSync(path.join(artifactsDir, "latest.json"), "utf8"));
+assertEqual(manual.platforms["windows-x86_64"].url, "https://github.com/LChJo/codux/releases/download/v1.5.0/codux-windows-x86_64-setup.exe");
+assertEqual(manual.platforms["darwin-aarch64"].url, "https://github.com/LChJo/codux/releases/download/v1.5.0/codux-macos-aarch64.dmg");
+assert(!("signature" in manual.platforms["windows-x86_64"]), "unsigned updates must be manual");
+
 fs.rmSync(tempDir, { recursive: true, force: true });
 console.log("release manifest test passed");
 
 function releaseScriptUsesStableBetaReleaseFlag() {
   const script = fs.readFileSync(path.join(root, "apps/desktop/scripts/release/publish-github-release.mjs"), "utf8");
   return (
-    script.includes('channel === "beta" ? "--latest=false" : "--latest"') &&
+    script.includes('if (channel === "beta") return "--latest=false";') &&
     !script.includes('channel === "beta" ? "--prerelease"')
   );
 }

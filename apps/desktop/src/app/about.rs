@@ -246,14 +246,14 @@ impl CoduxApp {
         let repo_root = std::env::current_dir().unwrap_or_default();
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
             let status_result = codux_runtime::async_runtime::spawn(async move {
-                service.update_status(repo_root, env!("CARGO_PKG_VERSION"))
+                service.check_update_now(repo_root, env!("CARGO_PKG_VERSION"))
             })
             .await;
             let _ = this.update(cx, |app, cx| {
                 match status_result {
                     Ok(status) => {
                         app.update_dialog_status = Some(status.clone());
-                        app.update_dialog_phase = if !status.configured {
+                        app.update_dialog_phase = if !status.configured || status.latest_version.is_none() {
                             UpdateDialogPhase::NotConfigured
                         } else if status.available {
                             UpdateDialogPhase::Available
@@ -809,18 +809,37 @@ fn update_dialog_footer(app: &CoduxApp, language: &str, cx: &mut Context<CoduxAp
     }
     match phase {
         UpdateDialogPhase::Available => {
+            let automatic = app
+                .update_dialog_status
+                .as_ref()
+                .is_some_and(|status| status.automatic_install_supported);
             footer = footer.child(dialog_primary_button(
                 "update-dialog-download",
-                translate(language, "common.update", "Update"),
+                if automatic {
+                    translate(language, "common.update", "Update")
+                } else {
+                    translate(language, "common.open", "Open")
+                },
                 cx,
                 |app, _event, window, cx| {
-                    if app.update_dialog_status.is_none() {
+                    let Some(status) = app.update_dialog_status.as_ref() else {
                         app.update_dialog_error =
                             Some("No update status is available.".to_string());
                         app.update_dialog_phase = UpdateDialogPhase::Error;
                         cx.notify();
                         return;
                     };
+                    if !status.automatic_install_supported {
+                        if let Some(url) = status.download_url.clone() {
+                            app.open_url_in_background(
+                                url,
+                                "Unable to open the update download".to_string(),
+                                None,
+                                cx,
+                            );
+                        }
+                        return;
+                    }
                     set_update_dialog_window_phase(
                         window,
                         UpdateDialogPhase::Downloading,

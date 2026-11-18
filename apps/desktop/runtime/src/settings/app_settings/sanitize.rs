@@ -83,13 +83,8 @@ pub(super) fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
         "nightly" => "nightly".to_string(),
         _ => "stable".to_string(),
     };
-    settings.update.endpoint = settings.update.endpoint.trim().to_string();
-    if settings.update.enabled
-        && (settings.update.endpoint.is_empty()
-            || is_managed_update_endpoint(&settings.update.endpoint))
-    {
-        settings.update.endpoint = update_endpoint_for_channel(&settings.update.channel);
-    }
+    settings.update.endpoint =
+        effective_update_endpoint(&settings.update.endpoint, &settings.update.channel);
     settings
 }
 

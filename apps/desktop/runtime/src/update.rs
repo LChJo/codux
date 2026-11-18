@@ -1,6 +1,9 @@
 use crate::{
     config::ConfigStore,
-    settings::{AppSettings, UpdateSettings as AppUpdateSettings},
+    settings::{
+        AppSettings, UpdateSettings as AppUpdateSettings,
+        app_settings::{effective_update_endpoint, is_parent_update_url},
+    },
 };
 use semver::Version;
 use serde::Serialize;
@@ -43,17 +46,21 @@ impl UpdateService {
 
     pub fn latest_release_version(&self) -> Result<String, String> {
         let settings = self.settings();
-        let endpoint = if settings.endpoint.trim().is_empty() {
-            crate::settings::app_settings::update_endpoint_for_channel(&settings.channel)
-        } else {
-            settings.endpoint
-        };
+        let endpoint = effective_update_endpoint(&settings.endpoint, &settings.channel);
         let manifest = self.load_latest_manifest(&UpdateSummary {
             enabled: settings.enabled,
             channel: settings.channel,
             endpoint,
             ..Default::default()
         })?;
+        if manifest["platforms"].as_object().is_some_and(|platforms| {
+            !platforms.is_empty()
+                && platforms
+                    .values()
+                    .all(|entry| entry["url"].as_str().is_some_and(is_parent_update_url))
+        }) {
+            return Err("No release has been published for this update channel.".to_string());
+        }
         manifest_release_version(&manifest)
     }
 
@@ -69,10 +76,10 @@ impl UpdateService {
             } else {
                 settings.channel.clone()
             },
-            endpoint: settings.endpoint.clone(),
+            endpoint: effective_update_endpoint(&settings.endpoint, &settings.channel),
             ..Default::default()
         };
-        if !load_manifest {
+        if !load_manifest || !settings.enabled {
             return summary;
         }
         match self.load_latest_manifest(&summary) {
@@ -82,10 +89,12 @@ impl UpdateService {
                     .or_else(|| value.get("latestVersion"))
                     .and_then(Value::as_str)
                     .map(str::to_string);
-                summary.available = summary
-                    .latest_version
-                    .as_deref()
-                    .is_some_and(|version| version_is_newer(version, env!("CARGO_PKG_VERSION")));
+                summary.available = update_status_from_manifest(
+                    env!("CARGO_PKG_VERSION"),
+                    summary.channel.clone(),
+                    value.clone(),
+                )
+                .available;
                 summary.platform_count = value
                     .get("platforms")
                     .and_then(Value::as_object)
@@ -109,6 +118,12 @@ impl UpdateService {
         self.status_for_update_settings(&settings, current_version)
     }
 
+    pub fn check_now(&self, current_version: &str) -> UpdateStatus {
+        let mut settings = self.settings();
+        settings.enabled = true;
+        self.status_for_update_settings(&settings, current_version)
+    }
+
     pub fn status_from_settings(
         settings: &AppSettings,
         repo_root: PathBuf,
@@ -123,7 +138,8 @@ impl UpdateService {
         settings: &AppUpdateSettings,
         current_version: &str,
     ) -> UpdateStatus {
-        let endpoint_configured = settings.enabled && !settings.endpoint.trim().is_empty();
+        let endpoint = effective_update_endpoint(&settings.endpoint, &settings.channel);
+        let endpoint_configured = settings.enabled && !endpoint.is_empty();
         if !endpoint_configured {
             return UpdateStatus {
                 configured: false,
@@ -154,14 +170,14 @@ impl UpdateService {
         match self.load_latest_manifest(&UpdateSummary {
             enabled: settings.enabled,
             channel: settings.channel.clone(),
-            endpoint: settings.endpoint.clone(),
+            endpoint,
             ..Default::default()
         }) {
             Ok(value) => {
                 update_status_from_manifest(current_version, settings.channel.clone(), value)
             }
             Err(error) => UpdateStatus {
-                configured: true,
+                configured: false,
                 checking: false,
                 available: false,
                 automatic_install_supported: false,
@@ -231,7 +247,7 @@ fn manifest_release_version(manifest: &Value) -> Result<String, String> {
         .map(str::trim)
         .map(|version| version.trim_start_matches('v'))
         .filter(|version| !version.is_empty())
-        .ok_or_else(|| "Update manifest does not contain a release version".to_string())?;
+        .ok_or_else(|| "No release has been published for this update channel.".to_string())?;
     Version::parse(version)
         .map_err(|error| format!("Update manifest release version is invalid: {error}"))?;
     Ok(version.to_string())
@@ -269,25 +285,41 @@ fn update_status_from_manifest(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string);
-    let available = latest
+    let newer = latest
         .as_deref()
         .is_some_and(|version| version_is_newer(version, current_version));
     let latest_text = latest
         .clone()
         .unwrap_or_else(|| current_version.to_string());
     let platform_entry = current_platform_manifest_entry(&manifest);
-    let download_url = manifest_download_url(&manifest, platform_entry);
-    let download_checksum = manifest_download_checksum(&manifest, platform_entry);
     let download_signature = manifest_download_signature(platform_entry);
-    let has_signed_updater = download_signature.is_some();
+    let has_signed_updater =
+        download_signature.is_some() && crate::app_info::updater_public_key().is_some();
+    let signed_url = manifest_download_url(&manifest, platform_entry);
     let automatic_install_supported =
-        has_signed_updater && platform_supports_automatic_install(download_url.as_deref());
+        has_signed_updater && platform_supports_automatic_install(signed_url.as_deref());
+    let download_url = if automatic_install_supported {
+        signed_url
+    } else {
+        manifest_entry_string(platform_entry, "manualUrl").or(signed_url)
+    }
+    .filter(|value| {
+        !is_parent_update_url(value)
+            && url::Url::parse(value).is_ok_and(|url| matches!(url.scheme(), "https" | "http"))
+    });
+    let available = newer && download_url.is_some();
+    let download_checksum = manifest_download_checksum(&manifest, platform_entry);
+    let automatic_install_supported = automatic_install_supported && download_url.is_some();
     let message = if available && automatic_install_supported {
         format!("A new version {latest_text} is available.")
     } else if available {
         format!(
             "A new version {latest_text} is available. Open the download URL to update manually."
         )
+    } else if latest.is_none() {
+        "No release has been published for this update channel.".to_string()
+    } else if newer {
+        format!("Version {latest_text} has no installer for this platform.")
     } else {
         format!("Current version {current_version} is up to date.")
     };
@@ -526,6 +558,40 @@ mod tests {
     }
 
     #[test]
+    fn manual_check_works_when_background_checks_are_disabled() {
+        let dir =
+            std::env::temp_dir().join(format!("codux-update-manual-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let manifest = dir.join("latest.json");
+        fs::write(&manifest, r#"{"version":"2.1.0","downloadUrl":"https://github.com/LChJo/codux/releases/download/v2.1.0/setup.exe"}"#).unwrap();
+        fs::write(
+            dir.join("settings.json"),
+            serde_json::json!({ "update": { "enabled": false, "channel": "beta", "endpoint": manifest } }).to_string(),
+        ).unwrap();
+        let service = UpdateService::new(dir.clone(), PathBuf::new());
+        assert!(!service.status("2.0.0").configured);
+        let manual = service.check_now("2.0.0");
+        assert!(manual.available);
+        assert!(!manual.automatic_install_supported);
+        assert!(!service.settings_summary().enabled);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn stale_fork_manifest_does_not_offer_parent_installer() {
+        let status = update_status_from_manifest(
+            "2.0.0-beta.32",
+            "beta".to_string(),
+            serde_json::json!({
+                "version": "2.0.3",
+                "downloadUrl": "https://github.com/duxweb/codux/releases/download/v2.0.3/setup.exe",
+            }),
+        );
+        assert!(!status.available);
+        assert!(status.download_url.is_none());
+    }
+
+    #[test]
     fn latest_release_version_reads_and_normalizes_manifest_version() {
         let dir = std::env::temp_dir().join(format!(
             "codux-runtime-release-version-test-{}",
@@ -575,7 +641,10 @@ mod tests {
             }),
         );
 
-        assert!(status.available);
+        assert_eq!(
+            status.available,
+            !platform_keys_for_current_target().is_empty()
+        );
         if !platform_keys_for_current_target().is_empty() {
             assert_eq!(
                 status.download_url.as_deref(),
@@ -647,7 +716,8 @@ mod tests {
 
         assert_eq!(
             status.automatic_install_supported,
-            (cfg!(target_os = "macos") || cfg!(target_os = "windows"))
+            crate::app_info::updater_public_key().is_some()
+                && (cfg!(target_os = "macos") || cfg!(target_os = "windows"))
                 && !platform_keys_for_current_target().is_empty()
         );
     }
@@ -682,7 +752,7 @@ mod tests {
     }
 
     #[test]
-    fn checked_in_update_manifests_use_stable_windows_installer_url() {
+    fn checked_in_update_manifests_only_offer_fork_downloads() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(|path| path.parent())
@@ -693,13 +763,23 @@ mod tests {
             let path = root.join("updates").join(channel).join("latest.json");
             let manifest: Value = serde_json::from_slice(&fs::read(&path).expect("manifest"))
                 .expect("valid manifest");
-            let version = manifest["version"].as_str().expect("manifest version");
-            for platform in ["windows-x86_64", "windows-x86_64-nsis"] {
-                let url = manifest["platforms"][platform]["url"]
-                    .as_str()
-                    .expect("Windows updater URL");
-                assert!(url.ends_with("/codux-windows-x86_64-setup.exe"));
-                assert!(!url.contains(&format!("codux-{version}-windows")));
+            let platforms = manifest["platforms"]
+                .as_object()
+                .expect("manifest platforms");
+            if !platforms.is_empty() {
+                assert!(manifest_release_version(&manifest).is_ok());
+            }
+            for (platform, entry) in platforms {
+                for key in ["url", "manualUrl"] {
+                    if let Some(url) = entry[key].as_str() {
+                        assert!(
+                            url.starts_with("https://github.com/LChJo/codux/releases/download/")
+                        );
+                        if platform.starts_with("windows-") {
+                            assert!(url.ends_with("/codux-windows-x86_64-setup.exe"));
+                        }
+                    }
+                }
             }
         }
     }

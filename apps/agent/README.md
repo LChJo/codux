@@ -21,7 +21,7 @@ One line (macOS / Linux) — downloads the right prebuilt binary, installs it as
 `codux` on your `PATH`, no build toolchain needed:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/LChJo/codux/main/apps/agent/scripts/install.sh | sh
 ```
 
 Flags: `--beta` (newest beta-tagged release), `--version <x.y.z>` (pin a version),
@@ -30,18 +30,18 @@ Flags: `--beta` (newest beta-tagged release), `--version <x.y.z>` (pin a version
 Pass them after `sh -s --`, e.g. install the beta and set it up as a service:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/scripts/install.sh | sh -s -- --beta --setup
+curl -fsSL https://raw.githubusercontent.com/LChJo/codux/main/apps/agent/scripts/install.sh | sh -s -- --beta --setup
 ```
 
 Uninstall — stops the host, removes its OS service, deletes the binary (add
 `--purge` to also wipe `~/.codux-agent` config + pairings):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/scripts/install.sh | sh -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/LChJo/codux/main/apps/agent/scripts/install.sh | sh -s -- --uninstall
 ```
 
 Or do it by hand — download the `codux-<os>-<arch>` binary from
-[Releases](https://github.com/duxweb/codux/releases), put it on your `PATH`, then:
+[Releases](https://github.com/LChJo/codux/releases), put it on your `PATH`, then:
 
 ```bash
 codux config     # set it up (device name, relay)

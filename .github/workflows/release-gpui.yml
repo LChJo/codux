@@ -2,296 +2,167 @@ name: Release GPUI Desktop
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Source tag to build, for example v1.0.0-beta.1."
-        required: false
-        default: v1.0.0-beta.1
+        description: "Existing version tag on main, such as v2.0.0-beta.33."
+        required: true
         type: string
-      channel:
-        description: "Update channel to publish."
-        required: false
-        default: auto
-        type: choice
-        options:
-          - auto
-          - beta
-          - stable
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: codux-release
+  cancel-in-progress: false
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   MACOSX_DEPLOYMENT_TARGET: "14.0"
   CMAKE_OSX_DEPLOYMENT_TARGET: "14.0"
 
 jobs:
   metadata:
+    if: github.repository == 'LChJo/codux'
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.meta.outputs.version }}
-      channel: ${{ steps.meta.outputs.channel }}
-      source_ref: ${{ steps.ref.outputs.source_ref }}
+      tag: ${{ steps.source.outputs.tag }}
+      sha: ${{ steps.source.outputs.sha }}
+      version: ${{ steps.metadata.outputs.version }}
+      channel: ${{ steps.metadata.outputs.channel }}
     env:
-      SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
-
-      - name: Resolve source ref
-        id: ref
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release tag
+        id: source
         shell: bash
-        run: echo "source_ref=${SOURCE_REF}" >> "$GITHUB_OUTPUT"
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+        run: |
+          [[ "$SOURCE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          sha=$(git rev-parse --verify "refs/tags/$SOURCE_TAG^{commit}")
+          git merge-base --is-ancestor "$sha" refs/remotes/origin/main
+          git checkout --detach "$sha"
+          echo "tag=$SOURCE_TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Resolve release metadata
-        id: meta
-        shell: bash
+      - name: Generate release metadata
+        id: metadata
         env:
           RELEASE_NOTES_PATH: dist/release-notes.md
-        run: |
-          mkdir -p dist
-          requested_channel="${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'auto' }}"
-          node apps/desktop/scripts/release/prepare-release.mjs "${SOURCE_REF}" "${requested_channel}"
-
-      - name: Upload release notes
-        uses: actions/upload-artifact@v4
+        run: node apps/desktop/scripts/release/prepare-release.mjs "$SOURCE_TAG" auto --dry-run
+      - uses: actions/upload-artifact@v4
         with:
           name: release-notes
           path: dist/release-notes.md
           if-no-files-found: error
 
-  build:
+  desktop:
     needs: metadata
     strategy:
       fail-fast: false
       matrix:
         include:
-          - id: macos-aarch64
-            os: macos-26
-            target: aarch64-apple-darwin
-            artifact_suffix: -debug
-          - id: macos-x86_64
-            os: macos-26
-            target: x86_64-apple-darwin
-            artifact_suffix: -debug
-          - id: windows-x86_64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-
+          - { id: windows-x86_64, os: windows-latest, target: x86_64-pc-windows-msvc }
+          - { id: macos-aarch64, os: macos-26, target: aarch64-apple-darwin }
+          - { id: macos-x86_64, os: macos-26, target: x86_64-apple-darwin }
     runs-on: ${{ matrix.os }}
     env:
-      CARGO_BUILD_TARGET: ${{ matrix.target }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.metadata.outputs.source_ref }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.targets || matrix.target }}
-
-      - name: Restore Rust cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: rust-release-${{ runner.os }}-${{ matrix.id }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            rust-release-${{ runner.os }}-${{ matrix.id }}-
-            rust-release-${{ runner.os }}-
-
-      - name: Apply release version
-        shell: bash
-        env:
-          RELEASE_NOTES_PATH: dist/release-notes.md
-        run: |
-          mkdir -p dist
-          node apps/desktop/scripts/release/prepare-release.mjs "${{ needs.metadata.outputs.source_ref }}" "${{ needs.metadata.outputs.channel }}"
-
-      - name: Build
-        shell: bash
-        run: |
-          if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            pwsh -NoProfile -ExecutionPolicy Bypass -File tools/build-windows.ps1 -Target "${CARGO_BUILD_TARGET}"
-          else
-            cargo build --release --target "${CARGO_BUILD_TARGET}"
-          fi
-
-      - name: Stage built binary
-        shell: bash
-        run: |
-          rm -rf dist/binary
-          mkdir -p dist/binary
-          if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            cp "target/${CARGO_BUILD_TARGET}/release/codux.exe" dist/binary/codux.exe
-            cp "target/${CARGO_BUILD_TARGET}/release/codux-wrapper-helper.exe" dist/binary/codux-wrapper-helper.exe
-          elif [[ "${RUNNER_OS}" == "macOS" ]]; then
-            cp "target/${CARGO_BUILD_TARGET}/release/codux" dist/binary/codux
-          else
-            cp "target/${CARGO_BUILD_TARGET}/release/codux" dist/binary/codux
-          fi
-
-      - name: Upload built binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: built-binary-${{ matrix.id }}
-          path: dist/binary/*
-          if-no-files-found: error
-
-      - name: Save Rust cache
-        if: always()
-        continue-on-error: true
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: rust-release-${{ runner.os }}-${{ matrix.id }}-${{ hashFiles('Cargo.lock') }}-${{ github.run_id }}
-
-  package:
-    needs:
-      - metadata
-      - build
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - id: macos-aarch64
-            os: macos-26
-            target: aarch64-apple-darwin
-            artifact_suffix: -debug
-          - id: macos-x86_64
-            os: macos-26
-            target: x86_64-apple-darwin
-            artifact_suffix: -debug
-          - id: windows-x86_64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-
-    runs-on: ${{ matrix.os }}
-    env:
+      SOURCE_TAG: ${{ needs.metadata.outputs.tag }}
+      RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
       CARGO_BUILD_TARGET: ${{ matrix.target }}
       RELEASE_BUILD_ID: ${{ matrix.id }}
-      RELEASE_STAGE_DIR: release-artifacts
-      RELEASE_ARTIFACT_SUFFIX: ${{ matrix.artifact_suffix || '' }}
-      MACOS_ADHOC_SIGN: ${{ startsWith(matrix.id, 'macos-') && 'true' || '' }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
+      RELEASE_WRITE_SHA256: "true"
+      RELEASE_ALLOW_UNSIGNED: "true"
+      MACOS_ADHOC_SIGN: "true"
+      CODUX_UPDATER_PUBLIC_KEY: ${{ vars.CODUX_UPDATER_PUBLIC_KEY }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.metadata.outputs.source_ref }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+          ref: ${{ needs.metadata.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - name: Install NSIS
         if: runner.os == 'Windows'
-        shell: powershell
+        shell: pwsh
         run: choco install nsis -y --no-progress
-
-      - name: Apply release version
+      - name: Apply version and build
+        shell: bash
+        run: |
+          node apps/desktop/scripts/release/prepare-release.mjs "$SOURCE_TAG" "$RELEASE_CHANNEL"
+          cargo build --locked --release -p codux -p codux-wrapper-helper --target "$CARGO_BUILD_TARGET"
+      - name: Package desktop
         shell: bash
         env:
-          RELEASE_NOTES_PATH: dist/release-notes.md
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          mkdir -p dist
-          node apps/desktop/scripts/release/prepare-release.mjs "${{ needs.metadata.outputs.source_ref }}" "${{ needs.metadata.outputs.channel }}"
-
-      - name: Download built binary
-        uses: actions/download-artifact@v4
-        with:
-          name: built-binary-${{ matrix.id }}
-          path: dist/binary
-
-      - name: Restore built binary
-        shell: bash
-        run: |
-          mkdir -p "target/${CARGO_BUILD_TARGET}/release"
-          if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            cp dist/binary/codux.exe "target/${CARGO_BUILD_TARGET}/release/codux.exe"
-            cp dist/binary/codux-wrapper-helper.exe "target/${CARGO_BUILD_TARGET}/release/codux-wrapper-helper.exe"
-          elif [[ "${RUNNER_OS}" == "macOS" ]]; then
-            cp dist/binary/codux "target/${CARGO_BUILD_TARGET}/release/codux"
-            chmod +x "target/${CARGO_BUILD_TARGET}/release/codux"
-          else
-            cp dist/binary/codux "target/${CARGO_BUILD_TARGET}/release/codux"
-            chmod +x "target/${CARGO_BUILD_TARGET}/release/codux"
+          if [[ -n "$TAURI_SIGNING_PRIVATE_KEY" && -z "$CODUX_UPDATER_PUBLIC_KEY" ]] ||
+             [[ -z "$TAURI_SIGNING_PRIVATE_KEY" && -n "$CODUX_UPDATER_PUBLIC_KEY" ]]; then
+            echo "::error::Configure both the updater signing secret and its matching public key, or leave both empty."
+            exit 1
           fi
-
-      - name: Package
-        shell: bash
-        run: node apps/desktop/scripts/release/package-gpui.mjs
-
-      - name: Upload package artifacts
-        uses: actions/upload-artifact@v4
+          node apps/desktop/scripts/release/package-gpui.mjs
+      - uses: actions/upload-artifact@v4
         with:
-          name: package-${{ matrix.id }}
+          name: desktop-${{ matrix.id }}
           path: release-artifacts/${{ matrix.id }}/*
           if-no-files-found: error
 
+  agent:
+    needs: metadata
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-agent.yml
+    with:
+      tag: ${{ needs.metadata.outputs.tag }}
+      source_sha: ${{ needs.metadata.outputs.sha }}
+      channel: ${{ needs.metadata.outputs.channel }}
+      build_only: true
+
   publish:
-    needs:
-      - metadata
-      - package
+    needs: [metadata, desktop, agent]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
       RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
-      RELEASE_TAG: ${{ needs.metadata.outputs.source_ref }}
+      RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
       RELEASE_NOTES_PATH: dist/release-notes.md
       RELEASE_ARTIFACTS_DIR: release-artifacts
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.metadata.outputs.source_ref }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+          ref: ${{ needs.metadata.outputs.sha }}
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Download release notes
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: release-notes
           path: dist
-
-      - name: Download packages
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          pattern: package-*
+          pattern: "{desktop,agent}-*"
           path: release-artifacts
           merge-multiple: true
-
-      - name: Publish GitHub release and update metadata
-        run: node apps/desktop/scripts/release/publish-github-release.mjs
+      - name: Verify required assets and publish
+        shell: bash
+        run: |
+          test -s release-artifacts/codux-windows-x86_64-setup.exe
+          test -s release-artifacts/codux-macos-aarch64.dmg
+          test -s release-artifacts/codux-macos-x86_64.dmg
+          test -s release-artifacts/codux-linux-x86_64
+          test -s release-artifacts/codux-linux-aarch64
+          node apps/desktop/scripts/release/publish-github-release.mjs

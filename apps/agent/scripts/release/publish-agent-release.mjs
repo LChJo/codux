@@ -9,7 +9,7 @@ const root = process.cwd();
 const dryRun = process.argv.includes("--dry-run");
 const version = requiredEnv("RELEASE_VERSION");
 const tagName = process.env.RELEASE_TAG || `v${version}`;
-const repo = process.env.GITHUB_REPOSITORY || "duxweb/codux";
+const repo = process.env.GITHUB_REPOSITORY || "LChJo/codux";
 const artifactsDir = process.env.RELEASE_ARTIFACTS_DIR || path.join(root, "release-artifacts");
 
 const assets = collectAgentAssets(artifactsDir);

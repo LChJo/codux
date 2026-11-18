@@ -18,7 +18,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use url::Url;
 
-const TAURI_UPDATER_PUBLIC_KEY: &str = "RWTIDGGsK4geAihw4QK08H+tw5BUDYrQDww6GRCVQKWtH6RvOVe/huaA";
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppAboutMetadata {
@@ -183,7 +182,10 @@ pub fn install_update_with_progress(
     current_version: &str,
     mut on_progress: impl FnMut(UpdateInstallProgressEvent) + Send,
 ) -> Result<UpdateInstallResult, String> {
-    let status = update_status(settings, repo_root, current_version);
+    let mut update = settings.update.clone();
+    update.enabled = true; // Explicit install, independent of background checks.
+    let status = UpdateService::new(PathBuf::new(), repo_root)
+        .status_for_update_settings(&update, current_version);
     if !status.available {
         return Ok(UpdateInstallResult {
             installed: false,
@@ -193,6 +195,9 @@ pub fn install_update_with_progress(
             total_bytes: None,
             message: status.message,
         });
+    }
+    if !status.automatic_install_supported {
+        return Err("Install this update from the GitHub Release download.".to_string());
     }
 
     let download_url = status
@@ -522,13 +527,24 @@ fn verify_download_signature(path: &Path, signature: Option<&str>) -> Result<(),
     let Some(signature) = signature.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(());
     };
-    let public_key = PublicKey::from_base64(TAURI_UPDATER_PUBLIC_KEY)
-        .map_err(|error| format!("Invalid updater public key: {error}"))?;
+    let public_key = updater_public_key()
+        .ok_or_else(|| "This build has no valid updater public key.".to_string())?;
     let signature = decode_updater_signature(signature)?;
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
     public_key
         .verify(&bytes, &signature, true)
         .map_err(|error| format!("Downloaded update signature verification failed: {error}"))
+}
+
+pub(crate) fn updater_public_key() -> Option<PublicKey> {
+    let key = option_env!("CODUX_UPDATER_PUBLIC_KEY")?.trim();
+    PublicKey::from_base64(key)
+        .or_else(|_| PublicKey::decode(key))
+        .ok()
+        .or_else(|| {
+            let decoded = general_purpose::STANDARD.decode(key).ok()?;
+            PublicKey::decode(std::str::from_utf8(&decoded).ok()?).ok()
+        })
 }
 
 fn decode_updater_signature(signature: &str) -> Result<Signature, String> {

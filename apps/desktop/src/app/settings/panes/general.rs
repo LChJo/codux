@@ -322,7 +322,7 @@ pub(super) fn settings_general_pane(
                             "settings-check-update",
                             settings_text(language, "about.updates", "Check for Updates"),
                             false,
-                            !settings.update_enabled,
+                            false,
                             cx,
                             |app, _event, window, cx| app.open_update_dialog_window(window, cx),
                         ))

@@ -9,13 +9,13 @@ use std::time::Duration;
 
 use crate::{cmd_service, cmd_start, runstate};
 
-const LATEST_RELEASE_API: &str = "https://api.github.com/repos/duxweb/codux/releases/latest";
-const RELEASES_API: &str = "https://api.github.com/repos/duxweb/codux/releases";
+const LATEST_RELEASE_API: &str = "https://api.github.com/repos/LChJo/codux/releases/latest";
+const RELEASES_API: &str = "https://api.github.com/repos/LChJo/codux/releases";
 const STABLE_MANIFEST_URL: &str =
-    "https://raw.githubusercontent.com/duxweb/codux/main/updates/stable/latest.json";
+    "https://raw.githubusercontent.com/LChJo/codux/main/updates/stable/latest.json";
 const BETA_MANIFEST_URL: &str =
-    "https://raw.githubusercontent.com/duxweb/codux/main/updates/beta/latest.json";
-const REPO_DOWNLOAD_BASE: &str = "https://github.com/duxweb/codux/releases/download";
+    "https://raw.githubusercontent.com/LChJo/codux/main/updates/beta/latest.json";
+const REPO_DOWNLOAD_BASE: &str = "https://github.com/LChJo/codux/releases/download";
 const USER_AGENT: &str = "codux-agent-updater";
 
 #[derive(Deserialize)]
@@ -35,7 +35,7 @@ struct Asset {
 
 #[derive(Deserialize)]
 struct UpdateManifest {
-    version: String,
+    version: Option<String>,
 }
 
 pub fn run(current: &str, beta: bool) -> Result<(), String> {
@@ -152,50 +152,43 @@ fn fetch_manifest_release(
         .map_err(|error| format!("manifest lookup failed: {error}"))?
         .json::<UpdateManifest>()
         .map_err(|error| format!("invalid manifest payload: {error}"))?;
-    release_from_manifest_version(&manifest.version, channel)
+    let version = manifest
+        .version
+        .ok_or("no release has been published for this channel")?;
+    release_from_manifest_version(&version, channel)
 }
 
 fn release_from_manifest_version(version: &str, channel: Channel) -> Result<Release, String> {
     let version = version.trim().trim_start_matches('v');
-    match channel {
-        Channel::Stable if version.contains("-beta") => {
-            return Err(format!("stable manifest version is a beta: {version}"));
-        }
-        Channel::Beta if !version.contains("-beta") => {
-            return Err(format!("beta manifest version is not a beta: {version}"));
-        }
-        _ => {}
+    Version::parse(version).map_err(|error| format!("invalid release version: {error}"))?;
+    if matches!(channel, Channel::Stable) && release_tag_is_beta(version) {
+        return Err(format!("stable manifest version is a beta: {version}"));
     }
     let tag_name = format!("v{version}");
     Ok(Release {
         tag_name: tag_name.clone(),
         prerelease: false,
-        assets: agent_assets_for_version(version, &tag_name),
+        assets: manifest_agent_assets(&tag_name),
     })
 }
 
-fn agent_assets_for_version(version: &str, tag_name: &str) -> Vec<Asset> {
+fn manifest_agent_assets(tag_name: &str) -> Vec<Asset> {
     ["macos", "linux", "windows"]
         .into_iter()
         .flat_map(|os| {
             ["aarch64", "x86_64"]
                 .into_iter()
                 .filter(move |arch| !(os == "windows" && *arch == "aarch64"))
-                .flat_map(move |arch| agent_asset_names(version, os, arch))
+                .map(move |arch| {
+                    let extension = if os == "windows" { ".exe" } else { "" };
+                    format!("codux-{os}-{arch}{extension}")
+                })
         })
         .map(|name| Asset {
             browser_download_url: release_asset_url(tag_name, &name),
             name,
         })
         .collect()
-}
-
-fn agent_asset_names(version: &str, os: &str, arch: &str) -> Vec<String> {
-    let extension = if os == "windows" { ".exe" } else { "" };
-    vec![
-        format!("codux-agent-{version}-{os}-{arch}{extension}"),
-        format!("codux-{os}-{arch}{extension}"),
-    ]
 }
 
 fn release_asset_url(tag_name: &str, asset_name: &str) -> String {
@@ -210,7 +203,10 @@ fn select_beta_release(releases: Vec<Release>) -> Result<Release, String> {
 }
 
 fn release_tag_is_beta(tag_name: &str) -> bool {
-    tag_name.trim_start_matches('v').contains("-beta")
+    Version::parse(tag_name.trim_start_matches('v')).is_ok_and(|version| {
+        let pre = version.pre.as_str();
+        !pre.is_empty() && pre != "rc" && !pre.starts_with("rc.") && !pre.starts_with("rc-")
+    })
 }
 
 /// Choose the release asset for this OS + architecture.
@@ -314,32 +310,28 @@ mod tests {
     #[test]
     fn manifest_release_synthesizes_agent_assets() {
         let release = release_from_manifest_version("2.0.0-beta.10", Channel::Beta).unwrap();
-        let expected = current_agent_asset_name("2.0.0-beta.10");
+        let expected = current_legacy_agent_asset_name();
 
         assert_eq!(release.tag_name, "v2.0.0-beta.10");
         assert!(release.assets.iter().any(|asset| asset.name == expected));
         assert!(release.assets.iter().any(|asset| {
             asset.browser_download_url
                 == format!(
-                    "https://github.com/duxweb/codux/releases/download/v2.0.0-beta.10/{expected}"
+                    "https://github.com/LChJo/codux/releases/download/v2.0.0-beta.10/{expected}"
                 )
         }));
     }
 
     #[test]
-    fn manifest_release_rejects_stable_versions() {
-        let error = match release_from_manifest_version("2.0.0", Channel::Beta) {
-            Ok(_) => panic!("expected stable manifest version to fail"),
-            Err(error) => error,
-        };
-
-        assert_eq!(error, "beta manifest version is not a beta: 2.0.0");
+    fn stable_release_can_advance_the_beta_manifest() {
+        let release = release_from_manifest_version("2.0.0", Channel::Beta).unwrap();
+        assert_eq!(release.tag_name, "v2.0.0");
     }
 
     #[test]
     fn stable_manifest_release_accepts_rc_versions() {
         let release = release_from_manifest_version("2.0.0-rc.1", Channel::Stable).unwrap();
-        let expected = current_agent_asset_name("2.0.0-rc.1");
+        let expected = current_legacy_agent_asset_name();
 
         assert_eq!(release.tag_name, "v2.0.0-rc.1");
         assert!(release.assets.iter().any(|asset| asset.name == expected));

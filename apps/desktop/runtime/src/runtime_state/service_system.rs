@@ -15,6 +15,10 @@ impl RuntimeService {
         UpdateService::new(self.support_dir.clone(), repo_root).status(current_version)
     }
 
+    pub fn check_update_now(&self, repo_root: PathBuf, current_version: &str) -> UpdateStatus {
+        UpdateService::new(self.support_dir.clone(), repo_root).check_now(current_version)
+    }
+
     pub fn install_update(
         &self,
         repo_root: PathBuf,

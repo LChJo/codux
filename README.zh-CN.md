@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/duxweb/codux/releases/latest"><img src="https://img.shields.io/github/v/release/duxweb/codux?label=release&color=blue" alt="最新版本"></a>
-  <a href="https://github.com/duxweb/codux/releases"><img src="https://img.shields.io/github/downloads/duxweb/codux/total?label=downloads&color=brightgreen" alt="总下载量"></a>
+  <a href="https://github.com/LChJo/codux/releases/latest"><img src="https://img.shields.io/github/v/release/LChJo/codux?label=release&color=blue" alt="最新版本"></a>
+  <a href="https://github.com/LChJo/codux/releases"><img src="https://img.shields.io/github/downloads/LChJo/codux/total?label=downloads&color=brightgreen" alt="总下载量"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-8250df" alt="支持平台">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/duxweb/codux?color=orange" alt="开源协议"></a>
 </p>
@@ -19,7 +19,7 @@
 <p align="center">
   <a href="https://codux.work">官网</a> &middot;
   <a href="https://codux.work/zh-cn/getting-started/">文档</a> &middot;
-  <a href="https://github.com/duxweb/codux/releases/latest">下载</a> &middot;
+  <a href="https://github.com/LChJo/codux/releases/latest">下载</a> &middot;
   <a href="https://github.com/duxweb/codux-flutter/releases/latest">移动端</a> &middot;
   <a href="https://github.com/duxweb/codux/issues">反馈</a>
 </p>
@@ -58,11 +58,7 @@ Codux **不是** 又一个编辑器。它是给重度泡在 AI 编程 CLI 里的
 
 ## 三步上手
 
-macOS —— 用 [Homebrew](https://brew.sh) 安装：
-
-```bash
-brew install --cask duxweb/tap/codux
-```
+从 [GitHub Releases](https://github.com/LChJo/codux/releases) 下载安装包。
 
 1. **打开一个项目。** Git worktree、项目状态和会话按项目自动就位。
 2. **在内置终端里启动你的 AI CLI** —— `codex`、`claude`、`opencode` 都行。非侵入 wrapper 自动点亮实时状态、Token 统计和记忆注入，零配置。
@@ -148,19 +144,12 @@ Agent 烧掉的每一个 Token，都会喂养一只住在工作区里的像素�
 
 **桌面端**
 
-macOS —— 用 [Homebrew](https://brew.sh) 安装：
-
-```bash
-brew install --cask duxweb/tap/codux
-```
-
-或直接下载：
 
 | 平台 | 下载 |
 | :--- | :--- |
-| macOS · Apple 芯片 | [⬇ `codux-macos-aarch64.dmg`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-aarch64.dmg) |
-| macOS · Intel | [⬇ `codux-macos-x86_64.dmg`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-x86_64.dmg) |
-| Windows 11 · x64 | [⬇ `codux-windows-x86_64-setup.exe`](https://github.com/duxweb/codux/releases/latest/download/codux-windows-x86_64-setup.exe) |
+| macOS · Apple 芯片 | [⬇ `codux-macos-aarch64.dmg`](https://github.com/LChJo/codux/releases/latest/download/codux-macos-aarch64.dmg) |
+| macOS · Intel | [⬇ `codux-macos-x86_64.dmg`](https://github.com/LChJo/codux/releases/latest/download/codux-macos-x86_64.dmg) |
+| Windows 11 · x64 | [⬇ `codux-windows-x86_64-setup.exe`](https://github.com/LChJo/codux/releases/latest/download/codux-windows-x86_64-setup.exe) |
 
 macOS 打开 `.dmg` 拖进「应用程序」；Windows 双击安装。装好后打开一个项目、在终端启动 AI CLI 就行。
 
@@ -177,18 +166,18 @@ macOS 打开 `.dmg` 拖进「应用程序」；Windows 双击安装。装好后�
 macOS / Linux —— 一行装好（自动识别系统/架构，装成 `codux` 放进 `PATH`）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/LChJo/codux/main/apps/agent/scripts/install.sh | sh
 ```
 
 参数：`--beta` · `--version <x.y.z>` · `--dir <路径>` · `--setup` · `--mirror <前缀>`（GitHub 慢时走镜像）· `--uninstall`。或直接下载二进制：
 
 | 平台 | 下载 |
 | :--- | :--- |
-| macOS · Apple 芯片 | [⬇ `codux-macos-aarch64`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-aarch64) |
-| macOS · Intel | [⬇ `codux-macos-x86_64`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-x86_64) |
-| Linux · arm64 | [⬇ `codux-linux-aarch64`](https://github.com/duxweb/codux/releases/latest/download/codux-linux-aarch64) |
-| Linux · x64 | [⬇ `codux-linux-x86_64`](https://github.com/duxweb/codux/releases/latest/download/codux-linux-x86_64) |
-| Windows · x64 | [⬇ `codux-windows-x86_64.exe`](https://github.com/duxweb/codux/releases/latest/download/codux-windows-x86_64.exe) |
+| macOS · Apple 芯片 | [⬇ `codux-macos-aarch64`](https://github.com/LChJo/codux/releases/latest/download/codux-macos-aarch64) |
+| macOS · Intel | [⬇ `codux-macos-x86_64`](https://github.com/LChJo/codux/releases/latest/download/codux-macos-x86_64) |
+| Linux · arm64 | [⬇ `codux-linux-aarch64`](https://github.com/LChJo/codux/releases/latest/download/codux-linux-aarch64) |
+| Linux · x64 | [⬇ `codux-linux-x86_64`](https://github.com/LChJo/codux/releases/latest/download/codux-linux-x86_64) |
+| Windows · x64 | [⬇ `codux-windows-x86_64.exe`](https://github.com/LChJo/codux/releases/latest/download/codux-windows-x86_64.exe) |
 
 把二进制放到 `PATH` 上（命名为 `codux`），然后 `codux config` → `codux install` → `codux qrcode`。
 

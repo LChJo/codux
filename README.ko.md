@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/duxweb/codux/releases/latest"><img src="https://img.shields.io/github/v/release/duxweb/codux?label=release&color=blue" alt="Latest release"></a>
-  <a href="https://github.com/duxweb/codux/releases"><img src="https://img.shields.io/github/downloads/duxweb/codux/total?label=downloads&color=brightgreen" alt="Total downloads"></a>
+  <a href="https://github.com/LChJo/codux/releases/latest"><img src="https://img.shields.io/github/v/release/LChJo/codux?label=release&color=blue" alt="Latest release"></a>
+  <a href="https://github.com/LChJo/codux/releases"><img src="https://img.shields.io/github/downloads/LChJo/codux/total?label=downloads&color=brightgreen" alt="Total downloads"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-8250df" alt="Platform">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/duxweb/codux?color=orange" alt="License"></a>
 </p>
@@ -19,7 +19,7 @@
 <p align="center">
   <a href="https://codux.work">웹사이트</a> &middot;
   <a href="https://codux.work/getting-started/">문서</a> &middot;
-  <a href="https://github.com/duxweb/codux/releases/latest">다운로드</a> &middot;
+  <a href="https://github.com/LChJo/codux/releases/latest">다운로드</a> &middot;
   <a href="https://github.com/duxweb/codux-flutter/releases/latest">모바일</a> &middot;
   <a href="https://github.com/duxweb/codux/issues">피드백</a>
 </p>
@@ -58,11 +58,7 @@ Codux는 또 하나의 에디터가 아닙니다. AI 코딩 CLI를 생활처럼 
 
 ## 빠른 시작
 
-macOS: [Homebrew](https://brew.sh) 로 설치합니다.
-
-```bash
-brew install --cask duxweb/tap/codux
-```
+[GitHub Releases](https://github.com/LChJo/codux/releases)에서 데스크톱 설치 파일을 다운로드합니다.
 
 1. **프로젝트를 엽니다.** Git worktree, 프로젝트 상태, 프로젝트별 세션이 자동으로 준비됩니다.
 2. **내장 터미널에서 AI CLI를 시작합니다.** `codex`, `claude`, `opencode` 등을 실행하세요. non-invasive wrapper가 실시간 상태, 토큰 추적, 메모리 주입을 별도 설정 없이 활성화합니다.
@@ -148,19 +144,12 @@ agent가 소비하는 모든 토큰은 워크스페이스에 사는 픽셀 펫�
 
 **데스크톱 앱**
 
-macOS: [Homebrew](https://brew.sh) 로 설치합니다.
-
-```bash
-brew install --cask duxweb/tap/codux
-```
-
-또는 직접 다운로드하세요.
 
 | 플랫폼 | 다운로드 |
 | :--- | :--- |
-| macOS · Apple Silicon | [⬇ `codux-macos-aarch64.dmg`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-aarch64.dmg) |
-| macOS · Intel | [⬇ `codux-macos-x86_64.dmg`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-x86_64.dmg) |
-| Windows 11 · x64 | [⬇ `codux-windows-x86_64-setup.exe`](https://github.com/duxweb/codux/releases/latest/download/codux-windows-x86_64-setup.exe) |
+| macOS · Apple Silicon | [⬇ `codux-macos-aarch64.dmg`](https://github.com/LChJo/codux/releases/latest/download/codux-macos-aarch64.dmg) |
+| macOS · Intel | [⬇ `codux-macos-x86_64.dmg`](https://github.com/LChJo/codux/releases/latest/download/codux-macos-x86_64.dmg) |
+| Windows 11 · x64 | [⬇ `codux-windows-x86_64-setup.exe`](https://github.com/LChJo/codux/releases/latest/download/codux-windows-x86_64-setup.exe) |
 
 macOS에서는 `.dmg`를 열고 Codux를 Applications로 드래그합니다. Windows에서는 설치 프로그램을 더블 클릭합니다. 그런 다음 프로젝트를 열고 AI CLI를 시작하면 됩니다.
 
@@ -177,18 +166,18 @@ macOS에서는 `.dmg`를 열고 Codux를 Applications로 드래그합니다. Win
 macOS / Linux: 한 줄로 설치합니다(OS / arch 자동 감지, `codux`로 `PATH`에 설치).
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/LChJo/codux/main/apps/agent/scripts/install.sh | sh
 ```
 
 Flags: `--beta` · `--version <x.y.z>` · `--dir <path>` · `--setup` · `--mirror <prefix>`(GitHub가 느린 지역용) · `--uninstall`. 또는 바이너리를 직접 다운로드할 수 있습니다.
 
 | 플랫폼 | 다운로드 |
 | :--- | :--- |
-| macOS · Apple Silicon | [⬇ `codux-macos-aarch64`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-aarch64) |
-| macOS · Intel | [⬇ `codux-macos-x86_64`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-x86_64) |
-| Linux · arm64 | [⬇ `codux-linux-aarch64`](https://github.com/duxweb/codux/releases/latest/download/codux-linux-aarch64) |
-| Linux · x64 | [⬇ `codux-linux-x86_64`](https://github.com/duxweb/codux/releases/latest/download/codux-linux-x86_64) |
-| Windows · x64 | [⬇ `codux-windows-x86_64.exe`](https://github.com/duxweb/codux/releases/latest/download/codux-windows-x86_64.exe) |
+| macOS · Apple Silicon | [⬇ `codux-macos-aarch64`](https://github.com/LChJo/codux/releases/latest/download/codux-macos-aarch64) |
+| macOS · Intel | [⬇ `codux-macos-x86_64`](https://github.com/LChJo/codux/releases/latest/download/codux-macos-x86_64) |
+| Linux · arm64 | [⬇ `codux-linux-aarch64`](https://github.com/LChJo/codux/releases/latest/download/codux-linux-aarch64) |
+| Linux · x64 | [⬇ `codux-linux-x86_64`](https://github.com/LChJo/codux/releases/latest/download/codux-linux-x86_64) |
+| Windows · x64 | [⬇ `codux-windows-x86_64.exe`](https://github.com/LChJo/codux/releases/latest/download/codux-windows-x86_64.exe) |
 
 바이너리를 `codux`라는 이름으로 `PATH`에 두고 `codux config` → `codux install` → `codux qrcode`를 실행합니다.
 

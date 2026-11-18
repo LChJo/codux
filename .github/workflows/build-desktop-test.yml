@@ -1,13 +1,13 @@
 name: Build Desktop Test
 
 on:
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
+  RELEASE_ALLOW_UNSIGNED: "true"
   MACOSX_DEPLOYMENT_TARGET: "14.0"
   CMAKE_OSX_DEPLOYMENT_TARGET: "14.0"
 

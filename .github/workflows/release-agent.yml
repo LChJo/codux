@@ -1,9 +1,20 @@
 name: Release Agent
 
 on:
-  workflow_run:
-    workflows: ["Release GPUI Desktop"]
-    types: [completed]
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      channel:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+      build_only:
+        default: true
+        type: boolean
   workflow_dispatch:
     inputs:
       tag:
@@ -21,34 +32,36 @@ on:
           - stable
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   metadata:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && startsWith(github.event.workflow_run.head_branch, 'v')) }}
+    if: github.repository == 'LChJo/codux'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
       channel: ${{ steps.meta.outputs.channel }}
       source_ref: ${{ steps.ref.outputs.source_ref }}
+      source_sha: ${{ steps.checkout.outputs.commit }}
     steps:
       - name: Resolve source ref
         id: ref
         shell: bash
         env:
-          DISPATCH_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
-          WORKFLOW_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || '' }}
+          SOURCE_TAG: ${{ inputs.tag }}
         run: |
-          source_ref="${DISPATCH_TAG:-$WORKFLOW_TAG}"
-          echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
+          [[ "$SOURCE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          echo "source_ref=$SOURCE_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
         uses: actions/checkout@v4
+        id: checkout
         with:
-          ref: ${{ steps.ref.outputs.source_ref }}
+          ref: ${{ inputs.source_sha || format('refs/tags/{0}', steps.ref.outputs.source_ref) }}
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -62,7 +75,7 @@ jobs:
           RELEASE_NOTES_PATH: dist/release-notes.md
         run: |
           mkdir -p dist
-          requested_channel="${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'auto' }}"
+          requested_channel="${{ inputs.channel || 'auto' }}"
           node apps/desktop/scripts/release/prepare-release.mjs "${{ steps.ref.outputs.source_ref }}" "${requested_channel}"
 
   build:
@@ -101,7 +114,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.metadata.outputs.source_ref }}
+          ref: ${{ needs.metadata.outputs.source_sha }}
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -160,14 +174,14 @@ jobs:
               curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
               . "$CARGO_HOME/env"
               rustup target add "$CARGO_BUILD_TARGET"
-              cargo build -p codux-agent --release --target "$CARGO_BUILD_TARGET"
+              cargo build -p codux-agent --release --locked --target "$CARGO_BUILD_TARGET"
             '
           sudo chown -R "$(id -u):$(id -g)" target
 
       - name: Build agent
         if: runner.os != 'Linux'
         shell: bash
-        run: cargo build -p codux-agent --release --target "${CARGO_BUILD_TARGET}"
+        run: cargo build -p codux-agent --release --locked --target "${CARGO_BUILD_TARGET}"
 
       - name: Package agent
         shell: bash
@@ -192,6 +206,9 @@ jobs:
           key: agent-rust-release-${{ runner.os }}-${{ matrix.id }}-${{ hashFiles('Cargo.lock') }}-${{ github.run_id }}
 
   publish:
+    if: ${{ !inputs.build_only }}
+    permissions:
+      contents: write
     needs:
       - metadata
       - build
@@ -206,7 +223,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.metadata.outputs.source_ref }}
+          ref: refs/tags/${{ needs.metadata.outputs.source_ref }}
 
       - name: Setup Node
         uses: actions/setup-node@v4

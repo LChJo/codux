@@ -427,7 +427,8 @@ function signTauriUpdaterArtifact(filePath) {
 }
 
 function isReleaseBuild() {
-  return Boolean(process.env.GITHUB_ACTIONS || process.env.RELEASE_REQUIRE_TAURI_SIGNATURE === "true");
+  return process.env.RELEASE_REQUIRE_TAURI_SIGNATURE === "true"
+    || (Boolean(process.env.GITHUB_ACTIONS) && process.env.RELEASE_ALLOW_UNSIGNED !== "true");
 }
 
 function windowsNsisScript(packageDir, installerPath) {

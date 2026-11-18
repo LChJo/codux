@@ -89,7 +89,7 @@ function updateCargoLockPackageVersion(relativePath, packageName, nextVersion) {
   const filePath = path.join(root, relativePath);
   if (!fs.existsSync(filePath)) return;
   const content = fs.readFileSync(filePath, "utf8");
-  const pattern = new RegExp(`(name = "${escapeRegExp(packageName)}"\\nversion = )".*"`);
+  const pattern = new RegExp(`(name = "${escapeRegExp(packageName)}"\\r?\\nversion = )".*"`);
   fs.writeFileSync(filePath, content.replace(pattern, `$1"${nextVersion}"`), "utf8");
 }
 
@@ -187,6 +187,6 @@ function buildDownloadGuide() {
 }
 
 function releaseAssetUrl(assetName) {
-  const repo = process.env.GITHUB_REPOSITORY || "duxweb/codux";
-  return `https://github.com/${repo}/releases/latest/download/${encodeURIComponent(assetName)}`;
+  const repo = process.env.GITHUB_REPOSITORY || "LChJo/codux";
+  return `https://github.com/${repo}/releases/download/${encodeURIComponent(tagName)}/${encodeURIComponent(assetName)}`;
 }

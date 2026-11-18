@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/duxweb/codux/releases/latest"><img src="https://img.shields.io/github/v/release/duxweb/codux?label=release&color=blue" alt="Latest release"></a>
-  <a href="https://github.com/duxweb/codux/releases"><img src="https://img.shields.io/github/downloads/duxweb/codux/total?label=downloads&color=brightgreen" alt="Total downloads"></a>
+  <a href="https://github.com/LChJo/codux/releases/latest"><img src="https://img.shields.io/github/v/release/LChJo/codux?label=release&color=blue" alt="Latest release"></a>
+  <a href="https://github.com/LChJo/codux/releases"><img src="https://img.shields.io/github/downloads/LChJo/codux/total?label=downloads&color=brightgreen" alt="Total downloads"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-8250df" alt="Platform">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/duxweb/codux?color=orange" alt="License"></a>
 </p>
@@ -19,7 +19,7 @@
 <p align="center">
   <a href="https://codux.work">Website</a> &middot;
   <a href="https://codux.work/getting-started/">Docs</a> &middot;
-  <a href="https://github.com/duxweb/codux/releases/latest">Download</a> &middot;
+  <a href="https://github.com/LChJo/codux/releases/latest">Download</a> &middot;
   <a href="https://github.com/duxweb/codux-flutter/releases/latest">Mobile</a> &middot;
   <a href="https://github.com/duxweb/codux/issues">Feedback</a>
 </p>
@@ -58,11 +58,7 @@ Codux is **not** another editor. It's the control plane for developers who live 
 
 ## Quick Start
 
-macOS — install with [Homebrew](https://brew.sh):
-
-```bash
-brew install --cask duxweb/tap/codux
-```
+Download the desktop installer from [GitHub Releases](https://github.com/LChJo/codux/releases).
 
 1. **Open a project.** Git worktrees, project state, and per-project sessions are picked up automatically.
 2. **Start your AI CLI in the built-in terminal** — `codex`, `claude`, `opencode`, and friends. The non-invasive wrapper lights up live status, token tracking, and memory injection with zero configuration.
@@ -148,19 +144,12 @@ Completely useless. Absolutely essential.
 
 **Desktop app**
 
-macOS — install with [Homebrew](https://brew.sh):
-
-```bash
-brew install --cask duxweb/tap/codux
-```
-
-Or download directly:
 
 | Platform | Download |
 | :--- | :--- |
-| macOS · Apple Silicon | [⬇ `codux-macos-aarch64.dmg`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-aarch64.dmg) |
-| macOS · Intel | [⬇ `codux-macos-x86_64.dmg`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-x86_64.dmg) |
-| Windows 11 · x64 | [⬇ `codux-windows-x86_64-setup.exe`](https://github.com/duxweb/codux/releases/latest/download/codux-windows-x86_64-setup.exe) |
+| macOS · Apple Silicon | [⬇ `codux-macos-aarch64.dmg`](https://github.com/LChJo/codux/releases/latest/download/codux-macos-aarch64.dmg) |
+| macOS · Intel | [⬇ `codux-macos-x86_64.dmg`](https://github.com/LChJo/codux/releases/latest/download/codux-macos-x86_64.dmg) |
+| Windows 11 · x64 | [⬇ `codux-windows-x86_64-setup.exe`](https://github.com/LChJo/codux/releases/latest/download/codux-windows-x86_64-setup.exe) |
 
 Open the macOS `.dmg` and drag Codux to Applications; double-click the Windows installer. Then open a project, start your AI CLI, and go.
 
@@ -177,18 +166,18 @@ Download the Android APK from the [latest Codux Mobile release](https://github.c
 macOS / Linux — one line (auto-detects OS/arch, installs as `codux` on your `PATH`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/LChJo/codux/main/apps/agent/scripts/install.sh | sh
 ```
 
 Flags: `--beta` · `--version <x.y.z>` · `--dir <path>` · `--setup` · `--mirror <prefix>` (if GitHub is slow where you are) · `--uninstall`. Or download the binary directly:
 
 | Platform | Download |
 | :--- | :--- |
-| macOS · Apple Silicon | [⬇ `codux-macos-aarch64`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-aarch64) |
-| macOS · Intel | [⬇ `codux-macos-x86_64`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-x86_64) |
-| Linux · arm64 | [⬇ `codux-linux-aarch64`](https://github.com/duxweb/codux/releases/latest/download/codux-linux-aarch64) |
-| Linux · x64 | [⬇ `codux-linux-x86_64`](https://github.com/duxweb/codux/releases/latest/download/codux-linux-x86_64) |
-| Windows · x64 | [⬇ `codux-windows-x86_64.exe`](https://github.com/duxweb/codux/releases/latest/download/codux-windows-x86_64.exe) |
+| macOS · Apple Silicon | [⬇ `codux-macos-aarch64`](https://github.com/LChJo/codux/releases/latest/download/codux-macos-aarch64) |
+| macOS · Intel | [⬇ `codux-macos-x86_64`](https://github.com/LChJo/codux/releases/latest/download/codux-macos-x86_64) |
+| Linux · arm64 | [⬇ `codux-linux-aarch64`](https://github.com/LChJo/codux/releases/latest/download/codux-linux-aarch64) |
+| Linux · x64 | [⬇ `codux-linux-x86_64`](https://github.com/LChJo/codux/releases/latest/download/codux-linux-x86_64) |
+| Windows · x64 | [⬇ `codux-windows-x86_64.exe`](https://github.com/LChJo/codux/releases/latest/download/codux-windows-x86_64.exe) |
 
 Put the binary on your `PATH` as `codux`, then run `codux config` → `codux install` → `codux qrcode`.
 
