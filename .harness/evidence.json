@@ -509,6 +509,26 @@
       "location": {
         "path": ".github/workflows/release-gpui.yml"
       }
+    },
+    {
+      "id": "c3dce9d3-23cd-45ca-a842-2ea0acc3fb32",
+      "observedAt": "2026-11-18T07:31:22Z",
+      "hash": "70c0f69078f85a54f9e7a8198f53f2ea91d375674c87d4d268083fd644ece274",
+      "claim": "Desktop usage statistics aggregate configured worktrees by root project and chart today's usage by hour and longer ranges by calendar date.",
+      "kind": "source-code",
+      "location": {
+        "path": "apps/desktop/src/app/workspace_stats/data.rs"
+      }
+    },
+    {
+      "id": "1ffd0b2a-ce54-46c7-8a11-3c0b32cedde6",
+      "observedAt": "2026-11-18T07:31:22Z",
+      "hash": "ce8a0300e2990972b7b1f004603a82ddde3116c43ca76fd7fb27253b5afcd580",
+      "claim": "Global history summaries load daily totals and separate today and recent series even when the database only supports legacy bucket queries.",
+      "kind": "source-code",
+      "location": {
+        "path": "crates/codux-ai-sessions/src/summary.rs"
+      }
     }
   ],
   "schemaVersion": 1

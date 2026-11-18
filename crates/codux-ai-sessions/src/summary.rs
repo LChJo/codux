@@ -1,8 +1,8 @@
 use super::helpers::local_today_start_seconds;
 use super::queries::{
     load_global_project_totals, load_global_recent_sessions, load_global_recent_time_buckets,
-    load_global_today_cached_tokens, load_global_today_time_buckets, load_project_aggregates,
-    load_sessions, load_today_tokens,
+    load_global_today_cached_tokens, load_global_today_time_buckets, load_heatmap,
+    load_project_aggregates, load_sessions, load_today_tokens,
 };
 use super::{
     AIGlobalHistoryRangeSummary, AIGlobalHistorySummary, AIHistoryService, AIHistorySummary,
@@ -208,9 +208,9 @@ impl AIHistoryService {
             })
             .unwrap_or_else(|| {
                 (
-                    Vec::new(),
-                    load_global_recent_time_buckets(&conn, recent_start).unwrap_or_default(),
+                    load_heatmap(&conn, None).unwrap_or_default(),
                     load_global_today_time_buckets(&conn, today_start).unwrap_or_default(),
+                    load_global_recent_time_buckets(&conn, recent_start).unwrap_or_default(),
                     Vec::new(),
                     Vec::new(),
                     Vec::new(),

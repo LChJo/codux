@@ -191,6 +191,18 @@ fn global_summary_aggregates_projects_and_recent_sessions() {
     assert_eq!(summary.project_totals[0].project_path, "/tmp/codux-gpui");
     assert_eq!(summary.project_totals[0].session_count, 2);
     assert_eq!(summary.recent_sessions[0].title, "Other project");
+    assert_eq!(summary.heatmap.len(), 1);
+    assert_eq!(summary.heatmap[0].total_tokens, 175);
+    assert_eq!(summary.today_time_buckets.len(), 48);
+    assert_eq!(summary.recent_time_buckets.len(), 96);
+    assert_eq!(
+        summary
+            .recent_time_buckets
+            .iter()
+            .map(|bucket| bucket.total_tokens)
+            .sum::<i64>(),
+        175
+    );
 
     fs::remove_dir_all(support_dir).ok();
 }

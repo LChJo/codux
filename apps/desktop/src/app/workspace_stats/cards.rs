@@ -255,22 +255,14 @@ pub(super) fn stats_kpi_card(
 pub(super) fn stats_recent_trend_card(
     app_entity: gpui::Entity<CoduxApp>,
     snapshot: &StatsWorkspaceSnapshot,
-    container_width: Option<Pixels>,
     cx: &mut Context<workspace_views::StatsWorkspaceView>,
 ) -> impl IntoElement {
     let title = stats_text(&snapshot.language, "stats.recent_trend", "Usage Trend");
-    let has_usage = snapshot
+    let has_usage = snapshot.trend_buckets.iter().any(|bucket| {
+        bucket.total_tokens > 0 || bucket.cached_input_tokens > 0 || bucket.request_count > 0
+    });
+    let max_value = snapshot
         .trend_buckets
-        .iter()
-        .any(|bucket| bucket.total_tokens > 0 || bucket.cached_input_tokens > 0);
-    let visible_buckets = stats_trend_visible_buckets(container_width);
-    let data = snapshot
-        .trend_buckets
-        .iter()
-        .skip(snapshot.trend_buckets.len().saturating_sub(visible_buckets))
-        .copied()
-        .collect::<Vec<_>>();
-    let max_value = data
         .iter()
         .map(|bucket| bucket.total_tokens.max(0))
         .max()
@@ -290,8 +282,14 @@ pub(super) fn stats_recent_trend_card(
             )
             .into_any_element()
         } else {
-            stats_trend_bars(app_entity, data, max_value, snapshot.language.clone())
-                .into_any_element()
+            stats_trend_bars(
+                app_entity,
+                snapshot.trend_buckets.clone(),
+                max_value,
+                snapshot.language.clone(),
+                snapshot.time_range,
+            )
+            .into_any_element()
         })
 }
 
@@ -300,8 +298,9 @@ pub(super) fn stats_trend_bars(
     buckets: Vec<StatsTrendBucket>,
     max_value: i64,
     language: String,
+    range: StatsTimeRange,
 ) -> impl IntoElement {
-    let axis = stats_trend_axis_labels(&buckets, &language);
+    let axis = stats_trend_axis_labels(&buckets, &language, range);
     div()
         .mt(px(16.0))
         .flex()
@@ -323,7 +322,7 @@ pub(super) fn stats_trend_bars(
                     codux_tooltip_container(
                         app_entity.clone(),
                         SharedString::from(format!("stats-trend-bucket-{index}")),
-                        trend_bucket_tooltip(&language, bucket),
+                        trend_bucket_tooltip(&language, bucket, range),
                     )
                     .flex_1()
                     .min_w(px(0.0))

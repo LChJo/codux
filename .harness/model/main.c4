@@ -15,14 +15,14 @@ model {
       version "1"
     }
     desktop = component "Codux Desktop" {
-      description "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration. Terminal layouts restore dormant panes. Explicit selection starts shells, the power control stops sessions while retaining their panes, and closing a floating terminal window stops its session. Selection text snapshots keep copy available and stable across TUI redraws. AI settings expose global prompts and providers. CLI model, permission and effort defaults are configured through the native tools."
+      description "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration. Terminal layouts restore dormant panes. Explicit selection starts shells, the power control stops sessions while retaining their panes, and closing a floating terminal window stops its session. Selection text snapshots keep copy available and stable across TUI redraws. AI settings expose global prompts and providers. CLI model, permission and effort defaults are configured through the native tools. AI usage statistics group worktrees under configured root projects and chart the selected date range."
       metadata {
         harness_id "42a580c4-143d-4093-9051-4601fc90d4a3"
-        brief "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration. Terminal layouts restore dormant panes. Explicit selection starts shells, the power control stops sessions while retaining their panes, and closing a floating terminal window stops its session. Selection text snapshots keep copy available and stable across TUI redraws. AI settings expose global prompts and providers. CLI model, permission and effort defaults are configured through the native tools."
+        brief "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration. Terminal layouts restore dormant panes. Explicit selection starts shells, the power control stops sessions while retaining their panes, and closing a floating terminal window stops its session. Selection text snapshots keep copy available and stable across TUI redraws. AI settings expose global prompts and providers. CLI model, permission and effort defaults are configured through the native tools. AI usage statistics group worktrees under configured root projects and chart the selected date range."
         source "fact"
         status "verified"
-        evidence "f01500b8-70ac-404d-879d-535593dcff91 52962a4d-75b5-42ef-8e63-6b07d57beed2 995870f7-d95d-46f7-9613-70210b3db7b4 bb227975-e5d0-4a9e-8255-90c1c285e0bf 38e88cbb-fbfb-45fb-92ba-546df25d70f9 ebce4727-61d5-4d44-9987-b586b0297257 cfa11d57-2603-4734-8d33-10f5655f98f4 c837c7ef-96c2-45f7-a656-5475db53ccd3"
-        version "5"
+        evidence "f01500b8-70ac-404d-879d-535593dcff91 52962a4d-75b5-42ef-8e63-6b07d57beed2 995870f7-d95d-46f7-9613-70210b3db7b4 bb227975-e5d0-4a9e-8255-90c1c285e0bf 38e88cbb-fbfb-45fb-92ba-546df25d70f9 ebce4727-61d5-4d44-9987-b586b0297257 cfa11d57-2603-4734-8d33-10f5655f98f4 c837c7ef-96c2-45f7-a656-5475db53ccd3 c3dce9d3-23cd-45ca-a842-2ea0acc3fb32"
+        version "6"
       }
       terminal_links = component "Terminal Hyperlinks" {
         description "Prefers the OSC 8 URI stored on a screen cell over plain URL detection and passes the complete target with the label column range."
@@ -224,14 +224,14 @@ model {
       }
     }
     sessions = component "AI Session History" {
-      description "Shared session summaries, detail, restore, rename and removal operate on the usage database populated by the indexer."
+      description "Shared session summaries, detail, restore, rename and removal operate on the usage database populated by the indexer. Global summaries can supply daily and recent time buckets from older usage databases."
       metadata {
         harness_id "4722473a-5273-4b13-a004-c798edb77098"
-        brief "Shared session summaries, detail, restore, rename and removal operate on the usage database populated by the indexer."
+        brief "Shared session summaries, detail, restore, rename and removal operate on the usage database populated by the indexer. Global summaries can supply daily and recent time buckets from older usage databases."
         source "fact"
         status "verified"
-        evidence "3c9a658e-3e18-4ea3-8b7d-033c780bf3eb"
-        version "1"
+        evidence "3c9a658e-3e18-4ea3-8b7d-033c780bf3eb 1ffd0b2a-ce54-46c7-8a11-3c0b32cedde6"
+        version "2"
       }
     }
   }

@@ -87,39 +87,94 @@ pub(super) fn rank_rows_from_values(
 pub(super) fn stats_project_table_rows(
     global: &codux_runtime::ai_history::AIGlobalHistorySummary,
     range: Option<&codux_runtime::ai_history::AIGlobalHistoryRangeSummary>,
+    workspaces: &[ProjectWorkspaceRecord],
     include_cached: bool,
 ) -> Vec<StatsProjectRow> {
+    use codux_runtime::ai_history_normalized::normalized_history_path;
+
     let projects = range
         .map(|range| range.project_totals.as_slice())
         .unwrap_or(global.project_totals.as_slice());
-    let mut rows = projects
+    let workspace_paths = workspaces
         .iter()
-        .map(|project| {
-            let no_cache_tokens = project.total_tokens.max(0);
-            let cached_input_tokens = project.cached_input_tokens.max(0);
-            let total_tokens = codux_runtime::ai_history::display_tokens_with_unattributed(
-                no_cache_tokens,
-                cached_input_tokens,
+        .filter_map(|workspace| {
+            let path = normalized_history_path(&workspace.workspace_path)?;
+            Some((path, workspace))
+        })
+        .collect::<HashMap<_, _>>();
+    let mut grouped = HashMap::<(Option<&str>, String), StatsProjectRow>::new();
+    for project in projects {
+        let path = normalized_history_path(&project.project_path)
+            .unwrap_or_else(|| project.project_path.clone());
+        let workspace = workspace_paths.get(&path).copied().or_else(|| {
+            // Removed managed worktrees still have an identifiable project root.
+            Path::new(&path).ancestors().skip(1).find_map(|directory| {
+                let root = if directory.ends_with(".codux/worktrees") {
+                    directory.parent()?.parent()?
+                } else if directory.ends_with(".worktrees") {
+                    directory.parent()?
+                } else {
+                    return None;
+                };
+                let root = normalized_history_path(root.to_str()?)?;
+                workspace_paths
+                    .get(&root)
+                    .copied()
+                    .filter(|workspace| workspace.id == workspace.root_project_id)
+            })
+        });
+        let (key, name, display_path) = match workspace {
+            Some(workspace) => (
+                (
+                    Some(workspace.root_project_id.as_str()),
+                    workspace.root_project_path.clone(),
+                ),
+                workspace.root_project_name.as_str(),
+                workspace.root_project_path.as_str(),
+            ),
+            None => (
+                (None, path),
+                project.project_name.as_str(),
+                project.project_path.as_str(),
+            ),
+        };
+        let row = grouped.entry(key).or_insert_with(|| StatsProjectRow {
+            project: if name.trim().is_empty() {
+                display_path
+            } else {
+                name
+            }
+            .to_string(),
+            project_path: display_path.to_string(),
+            ..Default::default()
+        });
+        row.total_tokens = row.total_tokens.saturating_add(
+            codux_runtime::ai_history::display_tokens_with_unattributed(
+                project.total_tokens,
+                project.cached_input_tokens,
                 project.unattributed_tokens,
                 include_cached,
-            );
-            let project_label = if project.project_name.trim().is_empty() {
-                project.project_path.clone()
-            } else {
-                project.project_name.clone()
-            };
-            StatsProjectRow {
-                project: project_label,
-                project_path: project.project_path.clone(),
-                total_tokens,
-                no_cache_tokens,
-                input_tokens: project.input_tokens.max(0),
-                output_tokens: project.output_tokens.max(0),
-                cached_input_tokens,
-                request_count: project.request_count.max(0),
-                active_duration_seconds: project.active_duration_seconds.max(0),
-            }
-        })
+            ),
+        );
+        row.no_cache_tokens = row
+            .no_cache_tokens
+            .saturating_add(project.total_tokens.max(0));
+        row.input_tokens = row.input_tokens.saturating_add(project.input_tokens.max(0));
+        row.output_tokens = row
+            .output_tokens
+            .saturating_add(project.output_tokens.max(0));
+        row.cached_input_tokens = row
+            .cached_input_tokens
+            .saturating_add(project.cached_input_tokens.max(0));
+        row.request_count = row
+            .request_count
+            .saturating_add(project.request_count.max(0));
+        row.active_duration_seconds = row
+            .active_duration_seconds
+            .saturating_add(project.active_duration_seconds.max(0));
+    }
+    let mut rows = grouped
+        .into_values()
         .filter(|row| {
             row.total_tokens > 0 || row.request_count > 0 || row.active_duration_seconds > 0
         })
@@ -129,6 +184,7 @@ pub(super) fn stats_project_table_rows(
             .total_tokens
             .cmp(&left.total_tokens)
             .then_with(|| left.project.cmp(&right.project))
+            .then_with(|| left.project_path.cmp(&right.project_path))
     });
     rows
 }
@@ -221,27 +277,147 @@ pub(super) fn stats_trend_buckets(
     include_cached: bool,
     range: StatsTimeRange,
 ) -> Vec<StatsTrendBucket> {
-    let today = codux_runtime::ai_history_normalized::local_day_start_seconds(app_now_seconds());
-    let mut rows = global
-        .recent_time_buckets
-        .iter()
-        .filter(|bucket| range != StatsTimeRange::Today || bucket.start >= today)
-        .map(|bucket| StatsTrendBucket {
-            start_bits: bucket.start.to_bits(),
-            input_tokens: bucket.input_tokens.max(0),
-            output_tokens: bucket.output_tokens.max(0),
-            cached_input_tokens: bucket.cached_input_tokens.max(0),
-            no_cache_tokens: bucket.total_tokens.max(0),
-            total_tokens: codux_runtime::ai_history::display_tokens(
-                bucket.total_tokens.max(0),
-                bucket.cached_input_tokens.max(0),
-                include_cached,
-            ),
-            request_count: bucket.request_count.max(0),
+    stats_trend_buckets_at(global, include_cached, range, app_now_seconds())
+}
+
+pub(super) fn stats_trend_buckets_at(
+    global: &codux_runtime::ai_history::AIGlobalHistorySummary,
+    include_cached: bool,
+    range: StatsTimeRange,
+    now: f64,
+) -> Vec<StatsTrendBucket> {
+    let mut buckets = if range == StatsTimeRange::Today {
+        stats_hourly_trend_buckets(global, now)
+    } else {
+        stats_daily_trend_buckets(global, range, now)
+    };
+    for bucket in &mut buckets {
+        bucket.total_tokens = codux_runtime::ai_history::display_tokens(
+            bucket.no_cache_tokens,
+            bucket.cached_input_tokens,
+            include_cached,
+        );
+    }
+    buckets
+}
+
+fn stats_hourly_trend_buckets(
+    global: &codux_runtime::ai_history::AIGlobalHistorySummary,
+    now: f64,
+) -> Vec<StatsTrendBucket> {
+    let today = codux_runtime::ai_history_normalized::local_day_start_seconds(now) as i64;
+    let current_hour = (now as i64 - today) / STATS_TREND_HOUR_SECONDS;
+    let mut buckets = (0..=current_hour)
+        .map(|hour| {
+            let start = today + hour * STATS_TREND_HOUR_SECONDS;
+            StatsTrendBucket {
+                start,
+                end: start + STATS_TREND_HOUR_SECONDS,
+                ..Default::default()
+            }
         })
         .collect::<Vec<_>>();
-    if rows.len() > STATS_TREND_MAX_BUCKET_COUNT {
-        rows = rows.split_off(rows.len() - STATS_TREND_MAX_BUCKET_COUNT);
+
+    // The recent series uses fixed half-hour timestamps through the current hour,
+    // including the extra hour on a daylight-saving transition.
+    let half_hours = if global.recent_time_buckets.is_empty() {
+        &global.today_time_buckets
+    } else {
+        &global.recent_time_buckets
+    };
+    for half_hour in half_hours
+        .iter()
+        .filter(|bucket| bucket.start >= today as f64 && bucket.start <= now)
+    {
+        let hour = (half_hour.start as i64 - today) / STATS_TREND_HOUR_SECONDS;
+        if let Some(bucket) = buckets.get_mut(hour as usize) {
+            bucket.add_usage(
+                half_hour.input_tokens,
+                half_hour.output_tokens,
+                half_hour.total_tokens,
+                half_hour.cached_input_tokens,
+                half_hour.request_count,
+            );
+        }
     }
-    rows
+    buckets
+}
+
+fn stats_daily_trend_buckets(
+    global: &codux_runtime::ai_history::AIGlobalHistorySummary,
+    range: StatsTimeRange,
+    now: f64,
+) -> Vec<StatsTrendBucket> {
+    use codux_runtime::ai_history_normalized::{local_day_start_days_ago, local_day_start_seconds};
+
+    let Some(today) = chrono::Local.timestamp_opt(now as i64, 0).single() else {
+        return Vec::new();
+    };
+    let today = today.date_naive();
+    let days = match range {
+        StatsTimeRange::Today => unreachable!("today uses hourly buckets"),
+        StatsTimeRange::SevenDays => 7,
+        StatsTimeRange::ThirtyDays => 30,
+        StatsTimeRange::All => {
+            let Some(first_day) = global
+                .heatmap
+                .iter()
+                .filter_map(|day| {
+                    let date = chrono::Local.timestamp_opt(day.day as i64, 0).single()?;
+                    (date.date_naive() <= today).then_some(date.date_naive())
+                })
+                .min()
+            else {
+                return Vec::new();
+            };
+            (today.signed_duration_since(first_day).num_days() + 1) as usize
+        }
+    };
+    let days_per_bucket = days.div_ceil(STATS_TREND_MAX_DAILY_BUCKETS);
+    let mut boundaries = (0..days)
+        .step_by(days_per_bucket)
+        .map(|day| local_day_start_days_ago(now, (days - 1 - day) as u64) as i64)
+        .collect::<Vec<_>>();
+    let tomorrow = today
+        .succ_opt()
+        .and_then(|date| date.and_hms_opt(0, 0, 0))
+        .and_then(|time| chrono::Local.from_local_datetime(&time).earliest())
+        .map(|time| time.timestamp())
+        .unwrap_or_else(|| local_day_start_seconds(now) as i64 + 86_400);
+    boundaries.push(tomorrow);
+    let mut buckets = boundaries
+        .windows(2)
+        .map(|boundary| StatsTrendBucket {
+            start: boundary[0],
+            end: boundary[1],
+            ..Default::default()
+        })
+        .collect::<Vec<_>>();
+    for day in &global.heatmap {
+        let start = local_day_start_seconds(day.day) as i64;
+        let index = buckets.partition_point(|bucket| bucket.end <= start);
+        if let Some(bucket) = buckets
+            .get_mut(index)
+            .filter(|bucket| bucket.start <= start)
+        {
+            bucket.add_usage(
+                day.input_tokens,
+                day.output_tokens,
+                day.total_tokens,
+                day.cached_input_tokens,
+                day.request_count,
+            );
+        }
+    }
+    buckets
+}
+
+impl StatsTrendBucket {
+    fn add_usage(&mut self, input: i64, output: i64, total: i64, cached: i64, requests: i64) {
+        self.input_tokens = self.input_tokens.saturating_add(input.max(0));
+        self.output_tokens = self.output_tokens.saturating_add(output.max(0));
+        self.no_cache_tokens = self.no_cache_tokens.saturating_add(total.max(0));
+        self.cached_input_tokens = self.cached_input_tokens.saturating_add(cached.max(0));
+        self.request_count = self.request_count.saturating_add(requests.max(0));
+    }
 }

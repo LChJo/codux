@@ -506,7 +506,7 @@ pub(super) fn load_project_aggregates(
     today_start: f64,
 ) -> Result<ProjectHistoryAggregates, String> {
     Ok(ProjectHistoryAggregates {
-        heatmap: load_heatmap(conn, project_path)?,
+        heatmap: load_heatmap(conn, Some(project_path))?,
         today_time_buckets: load_today_time_buckets(conn, project_path, today_start)?,
         tool_breakdown: load_breakdown(conn, project_path, "source")?,
         model_breakdown: load_breakdown(conn, project_path, "model")?,
@@ -521,7 +521,15 @@ pub(super) struct ProjectHistoryAggregates {
     pub(super) model_breakdown: Vec<AIUsageBreakdownItem>,
 }
 
-fn load_heatmap(conn: &Connection, project_path: &str) -> Result<Vec<AIHeatmapDay>, String> {
+pub(super) fn load_heatmap(
+    conn: &Connection,
+    project_path: Option<&str>,
+) -> Result<Vec<AIHeatmapDay>, String> {
+    let project_filter = if project_path.is_some() {
+        "WHERE project_path = ?1"
+    } else {
+        ""
+    };
     let input_tokens_expr =
         if table_has_column(conn, "ai_history_file_usage_bucket", "input_tokens") {
             "COALESCE(SUM(input_tokens), 0)"
@@ -545,14 +553,14 @@ fn load_heatmap(conn: &Connection, project_path: &str) -> Result<Vec<AIHeatmapDa
                 COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
                 COALESCE(SUM(request_count), 0) AS request_count
             FROM ai_history_file_usage_bucket
-            WHERE project_path = ?1
+            {project_filter}
             GROUP BY bucket_start
             ORDER BY bucket_start ASC
             "#,
         ))
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map([project_path], |row| {
+        .query_map(rusqlite::params_from_iter(project_path), |row| {
             Ok((
                 row.get::<_, f64>(0)?,
                 row.get::<_, i64>(1)?.max(0),
@@ -631,21 +639,22 @@ pub(super) fn load_global_today_time_buckets(
     conn: &Connection,
     today_start: f64,
 ) -> Result<Vec<AITimeBucket>, String> {
-    load_global_time_buckets(conn, today_start, today_start)
+    load_global_time_buckets(conn, today_start, 48)
 }
 
 pub(super) fn load_global_recent_time_buckets(
     conn: &Connection,
     range_start: f64,
 ) -> Result<Vec<AITimeBucket>, String> {
-    load_global_time_buckets(conn, range_start, range_start)
+    load_global_time_buckets(conn, range_start, 96)
 }
 
 fn load_global_time_buckets(
     conn: &Connection,
-    query_start: f64,
-    display_start: f64,
+    range_start: f64,
+    bucket_count: u32,
 ) -> Result<Vec<AITimeBucket>, String> {
+    let range_end = range_start + f64::from(bucket_count) * 30.0 * 60.0;
     let input_tokens_expr =
         if table_has_column(conn, "ai_history_file_usage_bucket", "input_tokens") {
             "COALESCE(SUM(input_tokens), 0)"
@@ -670,14 +679,14 @@ fn load_global_time_buckets(
                 COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
                 COALESCE(SUM(request_count), 0) AS request_count
             FROM ai_history_file_usage_bucket
-            WHERE bucket_start >= ?1
+            WHERE bucket_start >= ?1 AND bucket_start < ?2
             GROUP BY bucket_start
             ORDER BY bucket_start ASC
             "#
         ))
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map([query_start], |row| {
+        .query_map((range_start, range_end), |row| {
             let start = row.get::<_, f64>(0)?;
             Ok(AITimeBucket {
                 start,
@@ -695,9 +704,9 @@ fn load_global_time_buckets(
         rows_by_start.insert(row.start as i64, row);
     }
 
-    Ok((0..48)
+    Ok((0..bucket_count)
         .map(|index| {
-            let start = display_start + f64::from(index) * 30.0 * 60.0;
+            let start = range_start + f64::from(index) * 30.0 * 60.0;
             rows_by_start
                 .remove(&(start as i64))
                 .unwrap_or(AITimeBucket {

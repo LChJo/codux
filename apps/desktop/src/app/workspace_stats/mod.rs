@@ -2,6 +2,7 @@ use super::*;
 use crate::app::ui_helpers::codux_tooltip_container;
 use chrono::{Datelike as _, TimeZone as _, Timelike as _};
 use codux_runtime::i18n::translate;
+use codux_runtime::project_store::{ProjectStore, ProjectWorkspaceRecord};
 use gpui::Rems;
 use gpui_component::{
     Size,
@@ -25,11 +26,9 @@ use data::*;
 use fingerprint::*;
 use format::stats_text;
 pub(in crate::app) use table::StatsProjectTableDelegate;
-const STATS_TREND_DEFAULT_BUCKET_COUNT: usize = 72;
-const STATS_TREND_MAX_BUCKET_COUNT: usize = 96;
-const STATS_TREND_BUCKET_SECONDS: f64 = 30.0 * 60.0;
+const STATS_TREND_MAX_DAILY_BUCKETS: usize = 30;
+const STATS_TREND_HOUR_SECONDS: i64 = 3600;
 const STATS_TREND_MAX_BAR_WIDTH: f32 = 7.0;
-const STATS_TREND_BUCKET_MIN_WIDTH: f32 = 12.0;
 const STATS_HEATMAP_ROWS: usize = 7;
 const STATS_HEATMAP_DEFAULT_COLUMNS: usize = 52;
 const STATS_HEATMAP_MIN_COLUMNS: usize = 8;
@@ -72,7 +71,7 @@ struct StatsRankRow {
     percent: f32,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(in crate::app) struct StatsProjectRow {
     project: String,
     project_path: String,
@@ -87,7 +86,8 @@ pub(in crate::app) struct StatsProjectRow {
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 struct StatsTrendBucket {
-    start_bits: u64,
+    start: i64,
+    end: i64,
     input_tokens: i64,
     output_tokens: i64,
     cached_input_tokens: i64,
@@ -119,8 +119,16 @@ impl StatsWorkspaceSnapshot {
 
 impl CoduxApp {
     pub(in crate::app) fn stats_workspace_snapshot(&self) -> StatsWorkspaceSnapshot {
+        let mut workspaces =
+            ProjectStore::new(self.state.support_dir.clone()).project_workspaces_snapshot();
+        workspaces.retain(|workspace| {
+            self.state.projects.iter().any(|project| {
+                project.id == workspace.root_project_id && project.runtime_target.is_local()
+            })
+        });
         StatsWorkspaceSnapshot::from_history(
             &self.state.ai_global_history,
+            &workspaces,
             self.state.settings.language.clone(),
             self.state.settings.statistics_mode.trim() == "includingCache",
             self.stats_time_range,
@@ -131,6 +139,7 @@ impl CoduxApp {
 impl StatsWorkspaceSnapshot {
     fn from_history(
         global: &codux_runtime::ai_history::AIGlobalHistorySummary,
+        workspaces: &[ProjectWorkspaceRecord],
         language: String,
         include_cached: bool,
         time_range: StatsTimeRange,
@@ -211,7 +220,7 @@ impl StatsWorkspaceSnapshot {
                     .map(|project| project.active_duration_seconds.max(0))
                     .sum()
             });
-        let project_rows = stats_project_table_rows(global, range, include_cached);
+        let project_rows = stats_project_table_rows(global, range, workspaces, include_cached);
         let tool_rows = stats_tool_rows(global, range, include_cached);
         let model_rows = stats_model_rows(global, range, include_cached);
         let heatmap = stats_global_heatmap(global, include_cached);
@@ -333,7 +342,6 @@ pub(in crate::app) fn stats_workspace_body(
                                                 .child(stats_recent_trend_card(
                                                     app_entity.clone(),
                                                     &snapshot,
-                                                    container_width,
                                                     cx,
                                                 )),
                                         )

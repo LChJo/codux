@@ -41,6 +41,7 @@ fn snapshot_keeps_all_heatmap_history_when_the_selected_range_changes() {
     for include_cached in [false, true] {
         let expected = StatsWorkspaceSnapshot::from_history(
             &global,
+            &[],
             "english".to_string(),
             include_cached,
             StatsTimeRange::All,
@@ -52,6 +53,7 @@ fn snapshot_keeps_all_heatmap_history_when_the_selected_range_changes() {
         ] {
             let selected = StatsWorkspaceSnapshot::from_history(
                 &global,
+                &[],
                 "english".to_string(),
                 include_cached,
                 range,
@@ -106,6 +108,7 @@ fn recovered_total_kpi_is_not_assigned_to_unknown_dates_or_known_breakdowns() {
 
     let all = StatsWorkspaceSnapshot::from_history(
         &global,
+        &[],
         "english".to_string(),
         true,
         StatsTimeRange::All,
@@ -120,6 +123,7 @@ fn recovered_total_kpi_is_not_assigned_to_unknown_dates_or_known_breakdowns() {
 
     let today = StatsWorkspaceSnapshot::from_history(
         &global,
+        &[],
         "english".to_string(),
         true,
         StatsTimeRange::Today,
@@ -127,6 +131,7 @@ fn recovered_total_kpi_is_not_assigned_to_unknown_dates_or_known_breakdowns() {
     assert_eq!(today.range_total_tokens, 42);
     let normalized = StatsWorkspaceSnapshot::from_history(
         &global,
+        &[],
         "english".to_string(),
         false,
         StatsTimeRange::All,
@@ -135,6 +140,7 @@ fn recovered_total_kpi_is_not_assigned_to_unknown_dates_or_known_breakdowns() {
     global.range_summaries.clear();
     let fallback = StatsWorkspaceSnapshot::from_history(
         &global,
+        &[],
         "english".to_string(),
         true,
         StatsTimeRange::All,
@@ -142,6 +148,7 @@ fn recovered_total_kpi_is_not_assigned_to_unknown_dates_or_known_breakdowns() {
     assert_eq!(fallback.range_total_tokens, 340);
     let today_fallback = StatsWorkspaceSnapshot::from_history(
         &global,
+        &[],
         "english".to_string(),
         true,
         StatsTimeRange::Today,
@@ -183,14 +190,14 @@ fn project_table_total_tokens_follow_selected_cache_mode() {
             ..Default::default()
         });
 
-    let rows = stats_project_table_rows(&global, None, false);
+    let rows = stats_project_table_rows(&global, None, &[], false);
 
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].no_cache_tokens, 100);
     assert_eq!(rows[0].cached_input_tokens, 40);
     assert_eq!(rows[0].total_tokens, 100);
     assert_eq!(
-        stats_project_table_rows(&global, None, true)[0].total_tokens,
+        stats_project_table_rows(&global, None, &[], true)[0].total_tokens,
         140
     );
 }
@@ -223,7 +230,7 @@ fn range_project_table_total_tokens_follow_selected_cache_mode() {
             ..Default::default()
         });
 
-    let rows = stats_project_table_rows(&global, Some(&range), false);
+    let rows = stats_project_table_rows(&global, Some(&range), &[], false);
 
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].project, "Range");
@@ -231,9 +238,68 @@ fn range_project_table_total_tokens_follow_selected_cache_mode() {
     assert_eq!(rows[0].cached_input_tokens, 12);
     assert_eq!(rows[0].total_tokens, 30);
     assert_eq!(
-        stats_project_table_rows(&global, Some(&range), true)[0].total_tokens,
+        stats_project_table_rows(&global, Some(&range), &[], true)[0].total_tokens,
         42
     );
+}
+
+#[test]
+fn project_table_groups_worktrees_by_configured_root() {
+    use codux_runtime::ai_history::{AIGlobalHistoryRangeSummary, AIProjectUsageSummary};
+
+    let workspace =
+        |id: &str, root_id: &str, name: &str, root: &str, path: &str| ProjectWorkspaceRecord {
+            id: id.into(),
+            root_project_id: root_id.into(),
+            root_project_name: name.into(),
+            root_project_path: root.into(),
+            workspace_path: path.into(),
+            git_default_push_remote_name: None,
+        };
+    let workspaces = [
+        workspace("a", "a", "aimana-debug", "/tmp/aimana", "/tmp/aimana"),
+        workspace("a-wt", "a", "aimana-debug", "/tmp/aimana", "/tmp/linked"),
+        workspace("joi", "joi", "joi", "/tmp/joi", "/tmp/joi"),
+    ];
+    let usage = |path: &str, branch: &str, requests: i64| AIProjectUsageSummary {
+        project_path: path.into(),
+        project_name: branch.into(),
+        total_tokens: 10 * requests,
+        input_tokens: 6 * requests,
+        output_tokens: 4 * requests,
+        cached_input_tokens: 3 * requests,
+        request_count: requests,
+        active_duration_seconds: 60 * requests,
+        ..Default::default()
+    };
+    let range = AIGlobalHistoryRangeSummary {
+        project_totals: vec![
+            usage("/tmp/aimana", "main", 1),
+            usage("/tmp/linked", "fix/feature", 2),
+            usage("/tmp/aimana/.codux/worktrees/removed", "fix/old", 3),
+            usage("/tmp/joi", "main", 4),
+        ],
+        ..Default::default()
+    };
+    let rows = stats_project_table_rows(&Default::default(), Some(&range), &workspaces, true);
+
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        rows[0],
+        StatsProjectRow {
+            project: "aimana-debug".into(),
+            project_path: "/tmp/aimana".into(),
+            total_tokens: 78,
+            no_cache_tokens: 60,
+            input_tokens: 36,
+            output_tokens: 24,
+            cached_input_tokens: 18,
+            request_count: 6,
+            active_duration_seconds: 360,
+        },
+    );
+    assert_eq!(rows[1].project, "joi");
+    assert_eq!(rows[1].total_tokens, 52);
 }
 
 #[test]
@@ -277,10 +343,10 @@ fn recovered_totals_are_included_only_with_cache_in_projects_and_rankings() {
     };
 
     for selected in [None, Some(&range)] {
-        let no_cache = stats_project_table_rows(&global, selected, false);
+        let no_cache = stats_project_table_rows(&global, selected, &[], false);
         assert_eq!(no_cache.len(), 1);
         assert_eq!(no_cache[0].total_tokens, 100);
-        let with_cache = stats_project_table_rows(&global, selected, true);
+        let with_cache = stats_project_table_rows(&global, selected, &[], true);
         assert_eq!(with_cache.len(), 2);
         assert_eq!(with_cache[0].project, "Recovered");
         assert_eq!(with_cache[0].total_tokens, 500);
@@ -335,11 +401,12 @@ fn trend_bucket_tooltip_total_matches_displayed_bar() {
     let start = chrono::Local
         .with_ymd_and_hms(2026, 7, 4, 13, 30, 0)
         .unwrap()
-        .timestamp() as f64;
+        .timestamp();
     let tooltip = trend_bucket_tooltip(
         "english",
         StatsTrendBucket {
-            start_bits: start.to_bits(),
+            start,
+            end: start + STATS_TREND_HOUR_SECONDS,
             input_tokens: 80,
             output_tokens: 20,
             cached_input_tokens: 40,
@@ -347,11 +414,12 @@ fn trend_bucket_tooltip_total_matches_displayed_bar() {
             no_cache_tokens: 100,
             request_count: 2,
         },
+        StatsTimeRange::Today,
     );
 
     assert_eq!(
         tooltip,
-        "07/04 13:30 - 14:00\nInput 80\nOutput 20\nCache 40\nTotal 100"
+        "07/04 13:30 - 14:30\nInput 80\nOutput 20\nCache 40\nTotal 100"
     );
 }
 
@@ -400,17 +468,24 @@ fn trend_bucket_axis_label_includes_date_and_time() {
     let start = chrono::Local
         .with_ymd_and_hms(2026, 7, 4, 13, 45, 0)
         .unwrap()
-        .timestamp() as f64;
+        .timestamp();
     let bucket = StatsTrendBucket {
-        start_bits: start.to_bits(),
+        start,
         ..Default::default()
     };
 
     assert_eq!(
-        trend_bucket_axis_label("simplifiedChinese", bucket),
+        trend_bucket_axis_label("simplifiedChinese", bucket, StatsTimeRange::Today),
         "7月4日 13:45"
     );
-    assert_eq!(trend_bucket_axis_label("english", bucket), "07/04 13:45");
+    assert_eq!(
+        trend_bucket_axis_label("english", bucket, StatsTimeRange::Today),
+        "07/04 13:45"
+    );
+    assert_eq!(
+        trend_bucket_axis_label("simplifiedChinese", bucket, StatsTimeRange::ThirtyDays),
+        "7月4日"
+    );
 }
 
 #[test]
@@ -423,12 +498,17 @@ fn trend_axis_indexes_do_not_duplicate_single_bucket() {
 
 #[test]
 fn trend_bucket_visual_total_respects_cache_mode() {
+    let now = chrono::Local
+        .with_ymd_and_hms(2026, 7, 4, 15, 0, 0)
+        .unwrap()
+        .timestamp() as f64;
+    let today = codux_runtime::ai_history_normalized::local_day_start_seconds(now);
     let mut global = codux_runtime::ai_history::AIGlobalHistorySummary::default();
     global
         .recent_time_buckets
         .push(codux_runtime::ai_history_normalized::AITimeBucket {
-            start: 0.0,
-            end: 1800.0,
+            start: today,
+            end: today + 1800.0,
             input_tokens: 80,
             output_tokens: 20,
             total_tokens: 100,
@@ -436,8 +516,8 @@ fn trend_bucket_visual_total_respects_cache_mode() {
             request_count: 2,
         });
 
-    let no_cache = stats_trend_buckets(&global, false, StatsTimeRange::All);
-    let with_cache = stats_trend_buckets(&global, true, StatsTimeRange::All);
+    let no_cache = stats_trend_buckets_at(&global, false, StatsTimeRange::Today, now);
+    let with_cache = stats_trend_buckets_at(&global, true, StatsTimeRange::Today, now);
 
     assert_eq!(no_cache[0].total_tokens, 100);
     assert_eq!(with_cache[0].total_tokens, 140);
@@ -445,6 +525,86 @@ fn trend_bucket_visual_total_respects_cache_mode() {
     assert_eq!(with_cache[0].no_cache_tokens, 100);
     assert_eq!(no_cache[0].cached_input_tokens, 40);
     assert_eq!(with_cache[0].cached_input_tokens, 40);
+}
+
+#[test]
+fn trend_uses_hourly_today_and_calendar_days_for_longer_ranges() {
+    use codux_runtime::ai_history_normalized::{
+        AIHeatmapDay, AITimeBucket, local_day_start_days_ago,
+    };
+
+    let now = chrono::Local
+        .with_ymd_and_hms(2026, 7, 4, 15, 15, 0)
+        .unwrap()
+        .timestamp() as f64;
+    let today = local_day_start_days_ago(now, 0);
+    let half_hour = |start: f64, total_tokens: i64| AITimeBucket {
+        start,
+        end: start + 1800.0,
+        total_tokens,
+        input_tokens: total_tokens,
+        output_tokens: 0,
+        cached_input_tokens: 3,
+        request_count: 1,
+    };
+    let global = codux_runtime::ai_history::AIGlobalHistorySummary {
+        recent_time_buckets: vec![
+            half_hour(today - 1800.0, 10),
+            half_hour(today + 3600.0, 20),
+            half_hour(today + 5400.0, 30),
+            half_hour(today + 15.0 * 3600.0, 5),
+            half_hour(today + 16.0 * 3600.0, 80),
+        ],
+        heatmap: [0, 6, 7, 29, 30, 90]
+            .into_iter()
+            .map(|days| AIHeatmapDay {
+                day: local_day_start_days_ago(now, days),
+                is_partial: false,
+                input_tokens: 20,
+                output_tokens: 5,
+                total_tokens: 25,
+                cached_input_tokens: 5,
+                request_count: 2,
+            })
+            .collect(),
+        ..Default::default()
+    };
+
+    let hourly = stats_trend_buckets_at(&global, true, StatsTimeRange::Today, now);
+    assert_eq!(hourly.len(), 16);
+    assert_eq!(hourly[0].start, today as i64);
+    assert_eq!(hourly[0].total_tokens, 0);
+    assert_eq!(hourly[1].start, today as i64 + 3600);
+    assert_eq!(hourly[1].end, today as i64 + 7200);
+    assert_eq!(hourly[1].total_tokens, 56);
+    assert_eq!(hourly[1].request_count, 2);
+    assert_eq!(hourly[15].total_tokens, 8);
+
+    for (range, days, total) in [
+        (StatsTimeRange::SevenDays, 7, 60),
+        (StatsTimeRange::ThirtyDays, 30, 120),
+    ] {
+        let daily = stats_trend_buckets_at(&global, true, range, now);
+        assert_eq!(daily.len(), days);
+        assert_eq!(
+            daily[0].start,
+            local_day_start_days_ago(now, (days - 1) as u64) as i64
+        );
+        assert_eq!(daily[1].total_tokens, 0);
+        assert_eq!(daily[days - 1].start, today as i64);
+        assert_eq!(
+            daily.iter().map(|bucket| bucket.total_tokens).sum::<i64>(),
+            total
+        );
+    }
+
+    let all = stats_trend_buckets_at(&global, false, StatsTimeRange::All, now);
+    assert!(all.len() <= STATS_TREND_MAX_DAILY_BUCKETS);
+    assert_eq!(all[0].start, local_day_start_days_ago(now, 90) as i64);
+    assert_eq!(
+        all.iter().map(|bucket| bucket.total_tokens).sum::<i64>(),
+        150
+    );
 }
 
 #[test]

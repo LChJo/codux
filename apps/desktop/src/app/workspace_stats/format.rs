@@ -98,36 +98,29 @@ pub(super) fn stats_heatmap_visible_columns(container_width: Option<Pixels>) -> 
         .min(STATS_HEATMAP_MAX_COLUMNS as f32) as usize
 }
 
-pub(super) fn stats_trend_visible_buckets(container_width: Option<Pixels>) -> usize {
-    let Some(width) = container_width else {
-        return STATS_TREND_DEFAULT_BUCKET_COUNT;
-    };
-    let content_width = (width.as_f32() - 40.0).max(0.0);
-    let two_column_min_width = 360.0 * 2.0 + 16.0;
-    let card_width = if content_width >= two_column_min_width {
-        (content_width - 16.0) / 2.0
-    } else {
-        content_width
-    };
-    let inner_width = (card_width - 28.0).max(STATS_TREND_BUCKET_MIN_WIDTH);
-    (inner_width / STATS_TREND_BUCKET_MIN_WIDTH)
-        .floor()
-        .max(12.0)
-        .min(STATS_TREND_MAX_BUCKET_COUNT as f32) as usize
-}
-
 pub(super) fn stats_project_table_width(container_width: Option<Pixels>) -> f32 {
     container_width
         .map(|width| (width.as_f32() - 40.0 - 28.0).max(STATS_TABLE_BASE_WIDTH))
         .unwrap_or(STATS_TABLE_BASE_WIDTH)
 }
 
-pub(super) fn trend_bucket_time_range(bucket: StatsTrendBucket) -> String {
-    let timestamp = f64::from_bits(bucket.start_bits);
-    let start = chrono::Local.timestamp_opt(timestamp as i64, 0).single();
-    let end = chrono::Local
-        .timestamp_opt((timestamp + STATS_TREND_BUCKET_SECONDS) as i64, 0)
-        .single();
+fn trend_bucket_time_range(
+    language: &str,
+    bucket: StatsTrendBucket,
+    range: StatsTimeRange,
+) -> String {
+    if range != StatsTimeRange::Today {
+        let start = trend_date_label(language, bucket.start);
+        let last_day = trend_date_label(language, bucket.end - 1);
+        return if start == last_day {
+            start
+        } else {
+            format!("{start} – {last_day}")
+        };
+    }
+
+    let start = chrono::Local.timestamp_opt(bucket.start, 0).single();
+    let end = chrono::Local.timestamp_opt(bucket.end, 0).single();
     match (start, end) {
         (Some(start), Some(end)) => format!(
             "{:02}/{:02} {:02}:{:02} - {:02}:{:02}",
@@ -142,39 +135,35 @@ pub(super) fn trend_bucket_time_range(bucket: StatsTrendBucket) -> String {
     }
 }
 
-pub(super) fn trend_bucket_axis_label(language: &str, bucket: StatsTrendBucket) -> String {
-    let timestamp = f64::from_bits(bucket.start_bits);
-    match chrono::Local.timestamp_opt(timestamp as i64, 0).single() {
+fn trend_date_label(language: &str, timestamp: i64) -> String {
+    match chrono::Local.timestamp_opt(timestamp, 0).single() {
         Some(time) => match locale_from_language_setting(language).as_str() {
-            "zh-Hans" | "zh-Hant" | "ja" => format!(
-                "{}月{}日 {:02}:{:02}",
-                time.month(),
-                time.day(),
-                time.hour(),
-                time.minute()
-            ),
-            "ko" => format!(
-                "{}월 {}일 {:02}:{:02}",
-                time.month(),
-                time.day(),
-                time.hour(),
-                time.minute()
-            ),
-            _ => format!(
-                "{:02}/{:02} {:02}:{:02}",
-                time.month(),
-                time.day(),
-                time.hour(),
-                time.minute()
-            ),
+            "zh-Hans" | "zh-Hant" | "ja" => format!("{}月{}日", time.month(), time.day()),
+            "ko" => format!("{}월 {}일", time.month(), time.day()),
+            _ => format!("{:02}/{:02}", time.month(), time.day()),
         },
         None => String::new(),
     }
 }
 
+pub(super) fn trend_bucket_axis_label(
+    language: &str,
+    bucket: StatsTrendBucket,
+    range: StatsTimeRange,
+) -> String {
+    let date = trend_date_label(language, bucket.start);
+    if range == StatsTimeRange::Today
+        && let Some(time) = chrono::Local.timestamp_opt(bucket.start, 0).single()
+    {
+        return format!("{date} {:02}:{:02}", time.hour(), time.minute());
+    }
+    date
+}
+
 pub(super) fn stats_trend_axis_labels(
     buckets: &[StatsTrendBucket],
     language: &str,
+    range: StatsTimeRange,
 ) -> Vec<AnyElement> {
     if buckets.is_empty() {
         return Vec::new();
@@ -183,12 +172,16 @@ pub(super) fn stats_trend_axis_labels(
         .into_iter()
         .enumerate()
         .map(|(position, index)| {
+            let mut bucket = buckets[index];
+            if range == StatsTimeRange::All && position > 0 && index == buckets.len() - 1 {
+                bucket.start = bucket.end - 1;
+            }
             let mut item = div()
                 .flex_1()
                 .min_w_0()
                 .overflow_hidden()
                 .whitespace_nowrap()
-                .child(trend_bucket_axis_label(language, buckets[index]));
+                .child(trend_bucket_axis_label(language, bucket, range));
             if position == 1 && buckets.len() >= 3 {
                 item = item.text_align(gpui::TextAlign::Center);
             } else if position > 0 {
@@ -211,11 +204,15 @@ pub(super) fn stats_trend_axis_indexes(bucket_count: usize) -> Vec<usize> {
     }
 }
 
-pub(super) fn trend_bucket_tooltip(language: &str, bucket: StatsTrendBucket) -> String {
+pub(super) fn trend_bucket_tooltip(
+    language: &str,
+    bucket: StatsTrendBucket,
+    range: StatsTimeRange,
+) -> String {
     let total = bucket.total_tokens;
     format!(
         "{}\n{} {}\n{} {}\n{} {}\n{} {}",
-        trend_bucket_time_range(bucket),
+        trend_bucket_time_range(language, bucket, range),
         stats_text(language, "stats.tooltip.input", "Input"),
         compact_number(bucket.input_tokens),
         stats_text(language, "stats.tooltip.output", "Output"),
