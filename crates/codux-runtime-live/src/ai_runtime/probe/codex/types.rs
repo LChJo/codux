@@ -22,6 +22,10 @@ pub(super) struct CodexPayloadFields<'a> {
     #[serde(borrow)]
     pub(super) phase: Option<Cow<'a, str>>,
     #[serde(borrow)]
+    pub(super) turn_id: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    pub(super) error: Option<&'a RawValue>,
+    #[serde(borrow)]
     pub(super) role: Option<Cow<'a, str>>,
     #[serde(borrow)]
     pub(super) cwd: Option<Cow<'a, str>>,
@@ -49,7 +53,7 @@ pub(super) struct CodexPayloadFields<'a> {
     /// `on-request`, `on-failure`, `untrusted`, ...). `never` means no command
     /// approval can ever block, so a pending call there is codex working.
     #[serde(borrow)]
-    pub(super) approval_policy: Option<Cow<'a, str>>,
+    pub(super) approval_policy: Option<&'a RawValue>,
 }
 
 #[derive(Default, Deserialize)]

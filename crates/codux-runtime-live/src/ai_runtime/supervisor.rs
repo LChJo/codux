@@ -12,11 +12,14 @@ use crate::ai_runtime::{
     probe::{claude::ClaudeProbeCache, probe_runtime_with_claude_cache},
     registry::AIRuntimeRegistry,
     screen_signal::detect_screen_signal,
-    snapshot::{AIRuntimeCompletionEvent, AIRuntimeStateSnapshot},
+    snapshot::{AIRuntimeCompletionEvent, AIRuntimeStateSnapshot, AISessionSnapshot},
     state::canonical_tool_name,
     store::{AIRuntimeStateMutation, AIRuntimeStateStore},
     store::{probe_request_for_session, should_poll_runtime_session},
-    terminal_status::{TERMINAL_COMMAND_OSC_SOURCE, TerminalStatusEvent, TerminalStatusState},
+    terminal_status::{
+        TERMINAL_COMMAND_OSC_SOURCE, TERMINAL_LIFECYCLE_SOURCE, TerminalStatusEvent,
+        TerminalStatusState,
+    },
     tool_driver::{runtime_screen_patterns, screen_starts_idle_tool},
 };
 use serde::Serialize;
@@ -84,6 +87,17 @@ struct AIRuntimeSupervisorLoopContext {
     runtime_event_dir: PathBuf,
     binding_dir: PathBuf,
 }
+
+const CODEX_RUNTIME_STATUS_SOURCE: &str = "codex-runtime";
+
+#[derive(Clone, PartialEq)]
+struct CodexTurnStatus {
+    terminal_instance_id: Option<String>,
+    state: TerminalStatusState,
+    turn_started_at: Option<f64>,
+}
+
+type CodexTerminalStates = HashMap<String, CodexTurnStatus>;
 
 impl AIRuntimeSupervisor {
     pub fn new() -> Self {
@@ -246,78 +260,52 @@ fn supervisor_loop(
     let AIRuntimeSupervisorLoopContext {
         registry,
         state,
-        transcript_monitors,
         binding_scan,
-        events,
         terminal_statuses,
         runtime_event_dir,
         binding_dir,
-    } = context;
+        ..
+    } = &context;
     let mut claude_cache = ClaudeProbeCache::default();
+    let mut codex_terminals = CodexTerminalStates::new();
     while let Ok(message) = rx.recv() {
         match message {
             AIRuntimeSupervisorMessage::HookFrame(frame) => {
-                handle_hook_frame(
-                    &frame,
-                    &state,
-                    &transcript_monitors,
-                    &events,
-                    &mut claude_cache,
-                );
+                handle_hook_frame(&frame, &context, &mut codex_terminals, &mut claude_cache);
             }
             AIRuntimeSupervisorMessage::DrainEventDir => {
                 // Single-threaded drain: both the FS watcher and the periodic
                 // fallback funnel here, so files are read+deleted exactly once
                 // (no cross-thread double-read / duplicate hooks).
-                for frame in drain_runtime_event_dir(&runtime_event_dir, now_seconds()) {
-                    handle_hook_frame(
-                        &frame,
-                        &state,
-                        &transcript_monitors,
-                        &events,
-                        &mut claude_cache,
-                    );
+                for frame in drain_runtime_event_dir(runtime_event_dir, now_seconds()) {
+                    handle_hook_frame(&frame, &context, &mut codex_terminals, &mut claude_cache);
                 }
             }
             AIRuntimeSupervisorMessage::ScanBindings => {
-                let mutation = handle_binding_scan(&state, &binding_scan, &binding_dir);
-                after_mutation(&state, &transcript_monitors, &events, mutation);
+                let mutation = handle_binding_scan(state, binding_scan, binding_dir);
+                after_mutation(&context, &mut codex_terminals, mutation);
             }
             AIRuntimeSupervisorMessage::ScanBindingFile(file_event) => {
-                let mutation = handle_binding_file_event(&state, &binding_scan, file_event);
-                after_mutation(&state, &transcript_monitors, &events, mutation);
+                let mutation = handle_binding_file_event(state, binding_scan, file_event);
+                after_mutation(&context, &mut codex_terminals, mutation);
             }
             AIRuntimeSupervisorMessage::Poll => {
                 let mutation =
-                    poll_runtime_sessions(&state, &registry, "interval", None, &mut claude_cache);
-                after_mutation(&state, &transcript_monitors, &events, mutation);
+                    poll_runtime_sessions(state, registry, "interval", None, &mut claude_cache);
+                after_mutation(&context, &mut codex_terminals, mutation);
             }
             AIRuntimeSupervisorMessage::ScreenSignal(terminal_id) => {
-                let mutation = apply_screen_signal_for_terminal(&state, &registry, &terminal_id);
-                after_mutation(&state, &transcript_monitors, &events, mutation);
+                let mutation = apply_screen_signal_for_terminal(state, registry, &terminal_id);
+                after_mutation(&context, &mut codex_terminals, mutation);
             }
             AIRuntimeSupervisorMessage::TerminalStatus(status) => {
-                if let Ok(mut statuses) = terminal_statuses.lock() {
-                    if status.state == TerminalStatusState::Idle {
-                        if statuses.get(&status.terminal_id).is_some_and(|current| {
-                            matches!(
-                                current.state,
-                                TerminalStatusState::Working | TerminalStatusState::Waiting
-                            ) && status.updated_at >= current.updated_at
-                        }) {
-                            statuses.remove(&status.terminal_id);
-                        }
-                    } else if status.source != TERMINAL_COMMAND_OSC_SOURCE {
-                        let should_update = statuses
-                            .get(&status.terminal_id)
-                            .map(|current| status.updated_at >= current.updated_at)
-                            .unwrap_or(true);
-                        if should_update {
-                            statuses.insert(status.terminal_id.clone(), status.clone());
-                        }
-                    }
+                if status.source == TERMINAL_LIFECYCLE_SOURCE
+                    || codex_terminals
+                        .get(&status.terminal_id)
+                        .is_none_or(|runtime| runtime.accepts_hint(&status))
+                {
+                    publish_terminal_status(&context, status);
                 }
-                push_event(&events, AIRuntimeSupervisorEvent::TerminalStatus { status });
             }
             AIRuntimeSupervisorMessage::TranscriptTail(terminal_ids) => {
                 let terminal_ids = terminal_ids.into_iter().collect::<HashSet<_>>();
@@ -325,13 +313,13 @@ fn supervisor_loop(
                     continue;
                 }
                 let mutation = poll_runtime_sessions(
-                    &state,
-                    &registry,
+                    state,
+                    registry,
                     "transcript-tail",
                     Some(&terminal_ids),
                     &mut claude_cache,
                 );
-                after_mutation(&state, &transcript_monitors, &events, mutation);
+                after_mutation(&context, &mut codex_terminals, mutation);
             }
             AIRuntimeSupervisorMessage::RemoveSession { terminal_id, reply } => {
                 let mutation = AIRuntimeStateMutation {
@@ -342,7 +330,7 @@ fn supervisor_loop(
                 if let Ok(mut statuses) = terminal_statuses.lock() {
                     statuses.remove(&terminal_id);
                 }
-                after_mutation(&state, &transcript_monitors, &events, mutation);
+                after_mutation(&context, &mut codex_terminals, mutation);
                 let _ = reply.send(removed);
             }
         }
@@ -403,9 +391,8 @@ fn handle_binding_file_event(
 
 fn handle_hook_frame(
     frame: &[u8],
-    state: &AIRuntimeStateStore,
-    transcript_monitors: &TranscriptMonitorMap,
-    events: &Arc<Mutex<Vec<AIRuntimeSupervisorEvent>>>,
+    context: &AIRuntimeSupervisorLoopContext,
+    codex_terminals: &mut CodexTerminalStates,
     claude_cache: &mut ClaudeProbeCache,
 ) {
     let Some(payload) = runtime_frame_to_hook(frame) else {
@@ -433,14 +420,16 @@ fn handle_hook_frame(
         ),
     );
     push_event(
-        events,
+        &context.events,
         AIRuntimeSupervisorEvent::RuntimeEvent {
             event: Box::new(AIRuntimeEvent::Hook {
                 payload: payload.clone(),
             }),
         },
     );
-    let mutation = state.apply_hook_with_claude_cache(payload, Some(claude_cache));
+    let mutation = context
+        .state
+        .apply_hook_with_claude_cache(payload, Some(claude_cache));
     runtime_log_line(
         "runtime-ingress",
         if mutation.did_change {
@@ -449,23 +438,26 @@ fn handle_hook_frame(
             "apply hook result=no-change"
         },
     );
-    after_mutation(state, transcript_monitors, events, mutation);
+    after_mutation(context, codex_terminals, mutation);
 }
 
 fn after_mutation(
-    state: &AIRuntimeStateStore,
-    transcript_monitors: &TranscriptMonitorMap,
-    events: &Arc<Mutex<Vec<AIRuntimeSupervisorEvent>>>,
+    context: &AIRuntimeSupervisorLoopContext,
+    codex_terminals: &mut CodexTerminalStates,
     mutation: AIRuntimeStateMutation,
 ) {
     // The monitored-session set only shifts when the state changed, so skip the
     // lock + full codex-session clone on the (common) no-op message.
     if mutation.did_change {
-        refresh_transcript_monitors(transcript_monitors, &state.transcript_monitored_sessions());
-        let snapshot = state.snapshot();
+        refresh_transcript_monitors(
+            &context.transcript_monitors,
+            &context.state.transcript_monitored_sessions(),
+        );
+        let snapshot = context.state.snapshot();
         crate::blackboard::observe_sessions(&snapshot.sessions);
+        reconcile_codex_terminal_statuses(context, codex_terminals, &snapshot.sessions);
         push_event(
-            events,
+            &context.events,
             AIRuntimeSupervisorEvent::State {
                 snapshot: Box::new(snapshot),
             },
@@ -478,12 +470,127 @@ fn after_mutation(
     };
     for completion in completions {
         push_event(
-            events,
+            &context.events,
             AIRuntimeSupervisorEvent::Completion {
                 completion: Box::new(completion),
             },
         );
     }
+}
+
+impl CodexTurnStatus {
+    fn accepts_hint(&self, hint: &TerminalStatusEvent) -> bool {
+        if self.terminal_instance_id != hint.terminal_instance_id {
+            return true;
+        }
+        match hint.state {
+            TerminalStatusState::Completed => false,
+            TerminalStatusState::Idle => self.state == TerminalStatusState::Idle,
+            TerminalStatusState::Working => self.state != TerminalStatusState::Waiting,
+            _ => true,
+        }
+    }
+}
+
+fn reconcile_codex_terminal_statuses(
+    context: &AIRuntimeSupervisorLoopContext,
+    known: &mut CodexTerminalStates,
+    sessions: &[AISessionSnapshot],
+) {
+    let mut previous = std::mem::take(known);
+    for session in sessions.iter().filter(|session| session.tool == "codex") {
+        let state = match session.state.as_str() {
+            "responding" => TerminalStatusState::Working,
+            "needsInput" => TerminalStatusState::Waiting,
+            "failed" => TerminalStatusState::Error,
+            _ if session.has_completed_turn => TerminalStatusState::Completed,
+            _ => TerminalStatusState::Idle,
+        };
+        let next = CodexTurnStatus {
+            terminal_instance_id: session.terminal_instance_id.clone(),
+            state,
+            turn_started_at: session
+                .active_turn_started_at
+                .or(session.completed_turn_started_at),
+        };
+        let old = previous.remove(&session.terminal_id);
+        if old.as_ref() != Some(&next) && (state != TerminalStatusState::Idle || old.is_some()) {
+            publish_codex_status(
+                context,
+                &session.terminal_id,
+                &next,
+                Some(&session.project_id),
+            );
+        }
+        known.insert(session.terminal_id.clone(), next);
+    }
+    for (terminal_id, mut old) in previous {
+        if matches!(
+            old.state,
+            TerminalStatusState::Working | TerminalStatusState::Waiting
+        ) {
+            old.state = TerminalStatusState::Idle;
+            publish_codex_status(context, &terminal_id, &old, None);
+        }
+    }
+}
+
+fn publish_codex_status(
+    context: &AIRuntimeSupervisorLoopContext,
+    terminal_id: &str,
+    turn: &CodexTurnStatus,
+    project_id: Option<&str>,
+) {
+    let binding = context.registry.binding(terminal_id);
+    let project_id = binding
+        .as_ref()
+        .map(|binding| {
+            binding
+                .root_project_id
+                .clone()
+                .unwrap_or_else(|| binding.project_id.clone())
+        })
+        .or_else(|| project_id.map(str::to_string));
+    publish_terminal_status(
+        context,
+        TerminalStatusEvent {
+            terminal_id: terminal_id.to_string(),
+            terminal_instance_id: turn.terminal_instance_id.clone(),
+            project_id,
+            worktree_id: binding.and_then(|binding| binding.worktree_id),
+            state: turn.state,
+            updated_at: now_seconds(),
+            source: CODEX_RUNTIME_STATUS_SOURCE.to_string(),
+        },
+    );
+}
+
+fn publish_terminal_status(context: &AIRuntimeSupervisorLoopContext, status: TerminalStatusEvent) {
+    if let Ok(mut statuses) = context.terminal_statuses.lock() {
+        let current = statuses.get(&status.terminal_id);
+        if status.state == TerminalStatusState::Idle {
+            if current.is_some_and(|current| {
+                status.updated_at >= current.updated_at
+                    && (matches!(
+                        current.state,
+                        TerminalStatusState::Working | TerminalStatusState::Waiting
+                    ) || matches!(
+                        status.source.as_str(),
+                        TERMINAL_LIFECYCLE_SOURCE | CODEX_RUNTIME_STATUS_SOURCE
+                    ))
+            }) {
+                statuses.remove(&status.terminal_id);
+            }
+        } else if status.source != TERMINAL_COMMAND_OSC_SOURCE
+            && current.is_none_or(|current| status.updated_at >= current.updated_at)
+        {
+            statuses.insert(status.terminal_id.clone(), status.clone());
+        }
+    }
+    push_event(
+        &context.events,
+        AIRuntimeSupervisorEvent::TerminalStatus { status },
+    );
 }
 
 fn poll_runtime_sessions(
@@ -813,6 +920,74 @@ fn now_seconds() -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codex_runtime_status_rejects_completion_hint_and_tracks_turn_boundaries() {
+        use std::io::Write as _;
+        let supervisor = AIRuntimeSupervisor::new();
+        let dir = std::env::temp_dir().join(format!("codux-turn-status-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let registry = AIRuntimeRegistry::shared();
+        registry.upsert(crate::ai_runtime::registry::AIRuntimeTerminalBinding {
+            terminal_id: "codex-term".to_string(),
+            project_id: "project-1".to_string(),
+            root_project_id: Some("root-1".to_string()),
+            worktree_id: Some("worktree-1".to_string()),
+            cwd: dir.display().to_string(),
+            is_active: true,
+            ..Default::default()
+        });
+        supervisor
+            .start(registry, dir.join("events"), dir.join("bindings"))
+            .unwrap();
+        let transcript = dir.join("rollout.jsonl");
+        let mut file = std::fs::File::create(&transcript).unwrap();
+        let now = now_seconds();
+        let start = serde_json::json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1","started_at":now}});
+        let answer = serde_json::json!({"type":"response_item","payload":{"type":"message","role":"assistant","phase":"final_answer","content":[]}});
+        writeln!(file, "{start}\n{answer}").unwrap();
+        let hook = serde_json::json!({"kind":"ai-hook","payload":{
+            "kind":"promptSubmitted","terminalID":"codex-term","projectID":"project-1",
+            "projectName":"Codux","projectPath":dir,"sessionTitle":"Task","tool":"codex",
+            "metadata":{"transcriptPath":transcript},"updatedAt":now
+        }});
+        supervisor
+            .submit_frame(hook.to_string().into_bytes())
+            .unwrap();
+        let state = || {
+            supervisor
+                .terminal_statuses_snapshot()
+                .first()
+                .map(|status| status.state)
+        };
+        wait_for(|| state() == Some(TerminalStatusState::Working));
+        supervisor
+            .submit_terminal_status(TerminalStatusEvent {
+                terminal_id: "codex-term".to_string(),
+                terminal_instance_id: None,
+                project_id: None,
+                worktree_id: None,
+                state: TerminalStatusState::Completed,
+                updated_at: now_seconds(),
+                source: "terminal-progress-osc".to_string(),
+            })
+            .unwrap();
+        supervisor.poll_once().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert_eq!(state(), Some(TerminalStatusState::Working));
+        let complete = serde_json::json!({"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","completed_at":now_seconds()}});
+        writeln!(file, "{complete}").unwrap();
+        supervisor.poll_once().unwrap();
+        wait_for(|| state() == Some(TerminalStatusState::Completed));
+        assert_eq!(
+            supervisor.terminal_statuses_snapshot()[0]
+                .worktree_id
+                .as_deref(),
+            Some("worktree-1")
+        );
+        drop(file);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn supervisor_applies_hook_frames_and_drains_events() {

@@ -303,11 +303,11 @@ fn terminal_title_spinner_drives_turn_level_status() {
     let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Waiting);
     assert_eq!(status.source, "terminal-title-osc");
 
-    // Approved: spinner returns, then the turn finishes back to a plain title.
+    // Approved: spinner returns. A plain title later withdraws the hint.
     push_output(&mut watcher, &terminal_id, "\x1b]0;⠹ | Data\x07".as_bytes());
     wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Working);
     push_output(&mut watcher, &terminal_id, "\x1b]0;Data\x07".as_bytes());
-    let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Completed);
+    let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Idle);
     assert_eq!(status.source, "terminal-title-osc");
 
     // Reordered title items: the spinner counts anywhere, not just leading.

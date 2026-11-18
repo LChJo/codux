@@ -57,6 +57,10 @@ impl AIRuntimeRegistry {
         }
     }
 
+    pub(crate) fn binding(&self, terminal_id: &str) -> Option<AIRuntimeTerminalBinding> {
+        self.terminals.lock().ok()?.get(terminal_id).cloned()
+    }
+
     /// Register a terminal's rendered screen (held weakly) so the runtime can
     /// scrape it for the screen-based `needsInput` signal.
     pub fn register_screen(

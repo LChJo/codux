@@ -28,6 +28,7 @@ pub fn status_for_runtime_state(state: &str) -> &'static str {
     match state {
         "responding" => "running",
         "needsInput" => "needs-input",
+        "failed" => "error",
         _ => "idle",
     }
 }

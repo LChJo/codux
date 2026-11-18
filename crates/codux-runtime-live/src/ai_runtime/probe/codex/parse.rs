@@ -33,6 +33,9 @@ pub(super) struct CodexParsedState {
     pub(super) response_state: Option<String>,
     pub(super) was_interrupted: bool,
     pub(super) has_completed_turn: bool,
+    failed: bool,
+    explicit_turn: bool,
+    turn_id: Option<String>,
     pub(super) origin: String,
     pub(super) plan: Option<AIPlanSnapshot>,
     /// The session's approval policy from the latest `turn_context`. `never`
@@ -262,12 +265,14 @@ fn parse_codex_runtime_line(
     }
 
     if row_type == Some("turn_context") {
-        if let Some(approval_policy) = payload
-            .approval_policy
-            .as_deref()
-            .and_then(|value| normalized_string(Some(value)))
+        if let Some(turn_id) = payload.turn_id.as_deref()
+            && state.turn_id.as_deref() != Some(turn_id)
         {
-            state.approval_policy = Some(approval_policy);
+            start_turn(state, timestamp, Some(turn_id));
+            *usage_at_turn_start = latest_cumulative_usage.clone();
+        }
+        if let Some(approval_policy) = payload.approval_policy {
+            state.approval_policy = serde_json::from_str::<String>(approval_policy.get()).ok();
         }
         if project_path
             .map(|project| payload.cwd.as_deref() == Some(project))
@@ -361,15 +366,14 @@ fn update_codex_turn_state(
         if user_message_at > state.last_user_message_at {
             state.last_user_message_at = user_message_at;
             if let Some(user_message_at) = user_message_at
-                && state
-                    .completed_at
-                    .is_some_and(|completed_at| user_message_at > completed_at)
+                && (state.started_at.is_none()
+                    || state
+                        .completed_at
+                        .is_some_and(|completed_at| user_message_at > completed_at))
             {
-                state.started_at = Some(user_message_at);
+                start_turn(state, Some(user_message_at), None);
+                state.explicit_turn = false;
                 *usage_at_turn_start = latest_cumulative_usage.clone();
-                state.completed_at = None;
-                state.was_interrupted = false;
-                state.has_completed_turn = false;
             }
         }
     }
@@ -379,11 +383,10 @@ fn update_codex_turn_state(
         || (row_type == Some("response_item")
             && event_type == Some("message")
             && payload.phase.as_deref() == Some("final_answer"));
-    if is_final_answer {
+    if is_final_answer && !state.explicit_turn {
         let completed_at = timestamp.or(state.updated_at);
-        if completed_at >= state.completed_at {
+        if completed_at >= state.completed_at && !state.was_interrupted {
             state.completed_at = completed_at;
-            state.was_interrupted = false;
             state.has_completed_turn = true;
         }
         return;
@@ -393,26 +396,28 @@ fn update_codex_turn_state(
         return;
     }
     match event_type {
-        Some("task_started") => {
-            state.started_at = payload.started_at.or(timestamp);
+        Some("task_started" | "turn_started") => {
+            start_turn(
+                state,
+                timestamp.or(payload.started_at),
+                payload.turn_id.as_deref(),
+            );
             *usage_at_turn_start = latest_cumulative_usage.clone();
-            state.was_interrupted = false;
-            state.has_completed_turn = false;
         }
-        Some("task_complete") => {
-            let completed_at = payload.completed_at.or(timestamp);
-            if completed_at >= state.completed_at {
-                state.completed_at = completed_at;
-                state.was_interrupted = false;
-                state.has_completed_turn = true;
+        Some("task_complete" | "turn_complete" | "turn_aborted") => {
+            if let (Some(current), Some(ended)) =
+                (state.turn_id.as_deref(), payload.turn_id.as_deref())
+                && current != ended
+            {
+                return;
             }
-        }
-        Some("turn_aborted") => {
-            let completed_at = payload.completed_at.or(timestamp);
+            let completed_at = timestamp.or(payload.completed_at);
             if completed_at >= state.completed_at {
                 state.completed_at = completed_at;
-                state.was_interrupted = true;
-                state.has_completed_turn = false;
+                state.explicit_turn = true;
+                state.failed = payload.error.is_some();
+                state.was_interrupted = event_type == Some("turn_aborted") || state.failed;
+                state.has_completed_turn = !state.was_interrupted;
             }
         }
         Some("token_count") => {
@@ -420,6 +425,18 @@ fn update_codex_turn_state(
         }
         _ => {}
     }
+}
+
+fn start_turn(state: &mut CodexParsedState, at: Option<f64>, turn_id: Option<&str>) {
+    state.explicit_turn = true;
+    state.turn_id = turn_id.map(str::to_string);
+    state.started_at = at;
+    state.completed_at = None;
+    state.was_interrupted = false;
+    state.has_completed_turn = false;
+    state.failed = false;
+    state.last_function_call_at = None;
+    state.last_function_output_at = None;
 }
 
 fn update_codex_usage(
@@ -476,6 +493,7 @@ fn finish_codex_state(
         );
     }
     state.response_state = match (state.started_at, state.completed_at) {
+        (_, Some(_)) if state.failed => Some("failed".to_string()),
         (Some(started_at), Some(completed_at)) if completed_at >= started_at => {
             Some("idle".to_string())
         }
@@ -484,7 +502,7 @@ fn finish_codex_state(
         _ => None,
     };
     let final_usage = match state.response_state.as_deref() {
-        Some("idle") => latest_cumulative_usage,
+        Some("idle" | "failed") => latest_cumulative_usage,
         _ => None,
     };
     if let Some(final_usage) = final_usage {
@@ -512,6 +530,55 @@ fn finish_codex_state(
 mod tests {
     use super::*;
     use crate::ai_runtime::constants::NEEDS_INPUT_IDLE_SECONDS;
+
+    #[test]
+    fn codex_169_waits_for_matching_turn_completion_after_final_answer() {
+        let rows = [
+            r#"{"timestamp":"2026-11-18T10:00:00.123Z","type":"event_msg","payload":{"type":"task_started","turn_id":"active","started_at":1794996000}}"#,
+            r#"{"timestamp":"2026-11-18T10:00:02Z","type":"response_item","payload":{"type":"message","role":"assistant","phase":"final_answer","content":[]}}"#,
+            r#"{"timestamp":"2026-11-18T10:00:03Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"previous"}}"#,
+            r#"{"timestamp":"2026-11-18T10:00:04Z","type":"event_msg","payload":{"type":"turn_complete","turn_id":"active"}}"#,
+        ];
+        let parse = |count| {
+            parse_codex_runtime_lines(
+                rows[..count].iter().map(|row| row.to_string()),
+                None,
+                None,
+                None,
+            )
+            .unwrap()
+        };
+        let running = parse(3);
+        assert_eq!(running.response_state.as_deref(), Some("responding"));
+        assert!(!running.has_completed_turn);
+        let finished = parse(4);
+        assert_eq!(finished.response_state.as_deref(), Some("idle"));
+        assert!(finished.has_completed_turn);
+    }
+
+    #[test]
+    fn codex_failed_turn_and_new_turn_in_same_second_do_not_show_completed() {
+        let rows = [
+            r#"{"timestamp":"2026-11-18T10:00:00.100Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"one","error":{"message":"failed"}}}"#,
+            r#"{"timestamp":"2026-11-18T10:00:00.200Z","type":"event_msg","payload":{"type":"turn_started","turn_id":"two"}}"#,
+            r#"{"timestamp":"2026-11-18T10:00:00.300Z","type":"event_msg","payload":{"type":"turn_aborted","turn_id":"two"}}"#,
+        ];
+        let parse = |count| {
+            parse_codex_runtime_lines(
+                rows[..count].iter().map(|row| row.to_string()),
+                None,
+                None,
+                None,
+            )
+            .unwrap()
+        };
+        assert_eq!(parse(1).response_state.as_deref(), Some("failed"));
+        assert_eq!(parse(2).response_state.as_deref(), Some("responding"));
+        let aborted = parse(3);
+        assert_eq!(aborted.response_state.as_deref(), Some("idle"));
+        assert!(aborted.was_interrupted);
+        assert!(!aborted.has_completed_turn);
+    }
 
     #[test]
     fn parses_latest_update_plan_from_response_item() {

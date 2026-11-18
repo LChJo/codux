@@ -155,7 +155,7 @@ pub(in crate::ai_runtime::store) fn apply_runtime_snapshot_unlocked(
             .unwrap_or(prompt_turn_started_at);
         active_turn_started_at = Some(started);
         runtime_turn_started_at = Some(started);
-    } else if snapshot.response_state.as_deref() == Some("idle")
+    } else if matches!(snapshot.response_state.as_deref(), Some("idle" | "failed"))
         && (session.state == "responding"
             || session.state == "needsInput"
             || snapshot.was_interrupted
@@ -194,7 +194,11 @@ pub(in crate::ai_runtime::store) fn apply_runtime_snapshot_unlocked(
                     && (snapshot.has_completed_turn || snapshot.was_interrupted)
                     && snapshot.completed_at.is_some_and(|ended| ended >= *started)
             });
-            state = "idle".to_string();
+            state = snapshot
+                .response_state
+                .as_deref()
+                .unwrap_or("idle")
+                .to_string();
             active_turn_started_at = None;
             runtime_turn_started_at = None;
             was_interrupted = !silent_stale_prelaunch_open_turn && snapshot.was_interrupted;

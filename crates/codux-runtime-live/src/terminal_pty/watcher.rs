@@ -103,8 +103,8 @@ impl AIRuntimeTerminalOutputWatcher {
 
     // codex paints turn state into its OSC 0 title (braille spinner while
     // responding, "Action Required" while blocked); transitions map onto the
-    // status channel. A plain title after a spinner is a finished turn; after
-    // an Action Required prefix it is a dismissed prompt, which only clears.
+    // status channel. A plain title only withdraws the visible hint. The
+    // runtime lifecycle, rather than the title, confirms completion.
     fn handle_title_signal(&mut self, signal: TerminalTitleAgentSignal) {
         let previous = self.last_title_signal.replace(signal);
         if previous == Some(signal) {
@@ -114,8 +114,9 @@ impl AIRuntimeTerminalOutputWatcher {
             TerminalTitleAgentSignal::Working => TerminalStatusState::Working,
             TerminalTitleAgentSignal::Waiting => TerminalStatusState::Waiting,
             TerminalTitleAgentSignal::Plain => match previous {
-                Some(TerminalTitleAgentSignal::Working) => TerminalStatusState::Completed,
-                Some(TerminalTitleAgentSignal::Waiting) => TerminalStatusState::Idle,
+                Some(TerminalTitleAgentSignal::Working | TerminalTitleAgentSignal::Waiting) => {
+                    TerminalStatusState::Idle
+                }
                 _ => return,
             },
         };
