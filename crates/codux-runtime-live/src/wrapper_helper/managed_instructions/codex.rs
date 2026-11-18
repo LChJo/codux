@@ -96,9 +96,12 @@ fn developer_parts(bytes: &[u8]) -> Result<Vec<String>, String> {
         if item["role"] != "developer" {
             continue;
         }
-        let content = item["content"]
-            .as_array()
-            .ok_or("Unsupported Codex developer metadata")?;
+        // Codex >= 0.169 adds non-message developer entries (e.g.
+        // `type = "additional_tools"`) that carry tools instead of text.
+        // Only message entries hold developer instructions.
+        let Some(content) = item["content"].as_array() else {
+            continue;
+        };
         for part in content {
             if part["type"] != "input_text" {
                 return Err("Unsupported Codex developer content".into());
@@ -382,5 +385,42 @@ mod tests {
         );
         assert!(configured_difference(parts(&["old"]), parts(&["new"])).is_err());
         assert!(configured_difference(parts(&["one", "two"]), vec![]).is_err());
+    }
+
+    #[test]
+    fn developer_parts_skips_non_message_developer_entries() {
+        // Shape emitted by `codex debug prompt-input` on codex 0.169.x: the
+        // tool bundle is a developer entry without a `content` array.
+        let input = serde_json::json!([
+            {
+                "type": "additional_tools",
+                "id": "at_01a1ec06-69b0-7d71-a406-c27b7cdad8a9",
+                "role": "developer",
+                "tools": [{
+                    "type": "namespace",
+                    "name": "functions",
+                    "tools": []
+                }]
+            },
+            {
+                "type": "message",
+                "role": "developer",
+                "content": [{"type": "input_text", "text": "runtime rules"}]
+            },
+            {
+                "type": "message",
+                "role": "developer",
+                "content": [{"type": "input_text", "text": "user rules"}]
+            },
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "hello"}]
+            }
+        ]);
+        assert_eq!(
+            developer_parts(&serde_json::to_vec(&input).unwrap()).unwrap(),
+            vec!["runtime rules".to_string(), "user rules".to_string()]
+        );
     }
 }
