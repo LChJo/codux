@@ -15,14 +15,14 @@ model {
       version "1"
     }
     desktop = component "Codux Desktop" {
-      description "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration. Terminal layouts restore dormant panes; explicit selection starts shells and the power control stops sessions while retaining their panes. Selection text snapshots keep copy available and stable across TUI redraws. AI settings expose global prompts and providers; CLI model, permission and effort defaults are configured through the native tools."
+      description "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration. Terminal layouts restore dormant panes. Explicit selection starts shells, the power control stops sessions while retaining their panes, and closing a floating terminal window stops its session. Selection text snapshots keep copy available and stable across TUI redraws. AI settings expose global prompts and providers. CLI model, permission and effort defaults are configured through the native tools."
       metadata {
         harness_id "42a580c4-143d-4093-9051-4601fc90d4a3"
-        brief "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration. Terminal layouts restore dormant panes; explicit selection starts shells and the power control stops sessions while retaining their panes. Selection text snapshots keep copy available and stable across TUI redraws. AI settings expose global prompts and providers; CLI model, permission and effort defaults are configured through the native tools."
+        brief "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration. Terminal layouts restore dormant panes. Explicit selection starts shells, the power control stops sessions while retaining their panes, and closing a floating terminal window stops its session. Selection text snapshots keep copy available and stable across TUI redraws. AI settings expose global prompts and providers. CLI model, permission and effort defaults are configured through the native tools."
         source "fact"
         status "verified"
-        evidence "f01500b8-70ac-404d-879d-535593dcff91 52962a4d-75b5-42ef-8e63-6b07d57beed2 995870f7-d95d-46f7-9613-70210b3db7b4 bb227975-e5d0-4a9e-8255-90c1c285e0bf 38e88cbb-fbfb-45fb-92ba-546df25d70f9 ebce4727-61d5-4d44-9987-b586b0297257 cfa11d57-2603-4734-8d33-10f5655f98f4"
-        version "4"
+        evidence "f01500b8-70ac-404d-879d-535593dcff91 52962a4d-75b5-42ef-8e63-6b07d57beed2 995870f7-d95d-46f7-9613-70210b3db7b4 bb227975-e5d0-4a9e-8255-90c1c285e0bf 38e88cbb-fbfb-45fb-92ba-546df25d70f9 ebce4727-61d5-4d44-9987-b586b0297257 cfa11d57-2603-4734-8d33-10f5655f98f4 c837c7ef-96c2-45f7-a656-5475db53ccd3"
+        version "5"
       }
       terminal_links = component "Terminal Hyperlinks" {
         description "Prefers the OSC 8 URI stored on a screen cell over plain URL detection and passes the complete target with the label column range."
@@ -158,14 +158,14 @@ model {
       }
     }
     pty = component "Terminal PTY" {
-      description "Local TerminalDriver backed by portable_pty owns shell spawning, input, resize, output capture and bounded history."
+      description "Local TerminalDriver backed by portable_pty owns shell spawning, input, resize, output capture and bounded history. On Windows each terminal uses a Job Object to terminate its shell and tracked descendants together."
       metadata {
         harness_id "e8b98821-d823-402a-954b-704422261521"
-        brief "Local TerminalDriver backed by portable_pty owns shell spawning, input, resize, output capture and bounded history."
+        brief "Local TerminalDriver backed by portable_pty owns shell spawning, input, resize, output capture and bounded history. On Windows each terminal uses a Job Object to terminate its shell and tracked descendants together."
         source "fact"
         status "verified"
-        evidence "9cbea364-53a6-48ab-8c6f-c661c7e79f7c"
-        version "1"
+        evidence "9cbea364-53a6-48ab-8c6f-c661c7e79f7c 9fb13b3b-cb43-4e11-8413-e2c78f180996"
+        version "2"
       }
     }
     git = component "Git Engine" {

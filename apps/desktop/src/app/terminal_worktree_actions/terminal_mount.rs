@@ -260,18 +260,14 @@ impl CoduxApp {
         // A hosted terminal is not owned by the local manager, so close it through
         // its runtime controller before removing the desktop binding.
         if let Some(pane) = self.terminal_pane_registry.get(terminal_id) {
-            pane.close_hosted_session();
+            pane.close_hosted_session()?;
         }
-        let lifecycle_removed = self.remove_registered_terminal_pane(terminal_id);
-        let exists = self
+        let killed = self
             .terminal_manager
-            .list()
-            .iter()
-            .any(|session| session.id == terminal_id);
-        if exists {
-            self.terminal_manager
-                .kill(terminal_id)
-                .map_err(|error| error.to_string())?;
+            .kill_if_present(terminal_id)
+            .map_err(|error| error.to_string())?;
+        let lifecycle_removed = self.remove_registered_terminal_pane(terminal_id);
+        if killed {
             // Tell connected mobile clients the terminal set changed so they
             // reconcile their view instead of showing the closed session's
             // stale content. (A no-op when no device is connected.)

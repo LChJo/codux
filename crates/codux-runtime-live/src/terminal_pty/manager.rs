@@ -364,12 +364,24 @@ impl TerminalManager {
     }
 
     pub fn kill(&self, session_id: &str) -> Result<()> {
-        let Some(session) = self.sessions.lock().remove(session_id) else {
+        if !self.kill_if_present(session_id)? {
             return Err(anyhow!("terminal session not found: {session_id}"));
-        };
+        }
+        Ok(())
+    }
 
+    pub fn kill_if_present(&self, session_id: &str) -> Result<bool> {
+        let mut sessions = self.sessions.lock();
+        let Some(session) = sessions.get(session_id) else {
+            return Ok(false);
+        };
+        session.kill()?;
+        let session = sessions
+            .remove(session_id)
+            .expect("terminal session is locked");
+        drop(sessions);
         self.remove_ai_runtime_terminal(&session);
-        session.kill()
+        Ok(true)
     }
 
     pub fn kill_and_wait(&self, session_id: &str, timeout: Duration) -> Result<()> {

@@ -709,8 +709,7 @@ impl CoduxApp {
             .last_quit_request_at
             .is_some_and(|last| now.duration_since(last) <= QUIT_CONFIRM_WINDOW)
         {
-            self.is_exiting = true;
-            codux_runtime::config::flush_all_config_writes();
+            self.shutdown_main_window(cx);
             cx.quit();
             return;
         }
@@ -750,14 +749,19 @@ impl CoduxApp {
     fn shutdown_runtime_state(&mut self) {
         codux_runtime::config::flush_all_config_writes();
 
-        let terminal_manager = self.terminal_manager.clone();
+        // The application may exit as soon as its last window is removed.
+        for terminal in self.terminal_manager.list() {
+            if let Err(error) = self.terminal_manager.kill_if_present(&terminal.id) {
+                self.runtime_trace(
+                    "terminal",
+                    &format!("shutdown failed to close terminal {}: {error}", terminal.id),
+                );
+            }
+        }
         let runtime_service = self.runtime_service.clone();
         let _ = std::thread::Builder::new()
             .name("codux-runtime-shutdown".to_string())
             .spawn(move || {
-                for terminal in terminal_manager.list() {
-                    let _ = terminal_manager.kill(&terminal.id);
-                }
                 runtime_service.shutdown_runtime_state();
             });
     }

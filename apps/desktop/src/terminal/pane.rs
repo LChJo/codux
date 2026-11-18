@@ -373,7 +373,7 @@ impl TerminalPane {
     /// Reap the runtime PTY for a hosted pane on a user-initiated close. Local
     /// panes are killed separately. Project switching does not call this, so the
     /// hosted shell remains available for re-attachment.
-    pub fn close_hosted_session(&self) -> bool {
+    pub fn close_hosted_session(&self) -> Result<(), String> {
         self.session.close_hosted()
     }
 
@@ -825,13 +825,15 @@ impl TerminalSessionBinding {
     }
 
     /// Fire the runtime PTY close for a hosted binding.
-    fn close_hosted(&self) -> bool {
+    fn close_hosted(&self) -> Result<(), String> {
         let Some(hosted) = self.inner.lock().hosted.clone() else {
-            return false;
+            return Ok(());
         };
-        hosted.controller.close_terminal_fire(&hosted.session_id);
+        if !hosted.controller.close_terminal_fire(&hosted.session_id) {
+            return Err("could not send the terminal close request to its host".to_string());
+        }
         unregister_hosted_terminal(hosted.controller.as_ref(), &hosted.session_id);
-        true
+        Ok(())
     }
 
     fn hosted_close_target(&self) -> Option<HostedTerminalCloseTarget> {

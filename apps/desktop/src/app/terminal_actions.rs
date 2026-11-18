@@ -600,6 +600,18 @@ impl CoduxApp {
         if pane_index >= self.terminals[tab_index].panes.len() {
             return;
         }
+        let tab = &self.terminals[tab_index];
+        let Some(terminal_id) =
+            Self::terminal_slot_terminal_id(tab, pane_index, &tab.panes[pane_index])
+        else {
+            self.status_message =
+                "terminal pane cannot be floated without a stable session".to_string();
+            self.invalidate_terminal_workspace(cx);
+            return;
+        };
+        if self.terminal_attach_in_flight.contains(&terminal_id) {
+            return;
+        }
 
         let pane_count = self.terminals[tab_index].panes.len();
         let top_ratios = terminal_top_ratios_for_panes(
@@ -623,15 +635,9 @@ impl CoduxApp {
         self.refresh_terminal_slot_snapshots();
         let tab_view_id = self.terminals[tab_index].id;
         let mut slot = self.terminals[tab_index].panes.remove(pane_index);
+        slot.terminal_id = Some(terminal_id);
         let title = slot.title.clone();
         if slot.pane.is_none() {
-            if slot.terminal_id.is_none() {
-                self.terminals[tab_index].panes.insert(pane_index, slot);
-                self.status_message =
-                    "terminal pane cannot be floated without a stable session".to_string();
-                self.invalidate_terminal_workspace(cx);
-                return;
-            }
             let pty_config = self.terminal_pty_config_for_slot(&slot);
             match TerminalPane::spawn_with_pty_config(
                 cx,
@@ -662,19 +668,7 @@ impl CoduxApp {
             .as_ref()
             .map(|project| project.id.clone());
         let pane_view = slot.pane.as_ref().map(|pane| pane.view.clone());
-        let app_entity = cx.entity();
-        let float_view = terminal_float_window(
-            TerminalFloatRequest {
-                title: title.clone(),
-                app_entity,
-                project_id,
-                tab_view_id,
-                pane_index,
-                split_location,
-                slot,
-            },
-            cx,
-        );
+        let float_view = terminal_float_window(title.clone(), cx.entity(), slot, cx);
         let close_view = float_view.clone();
         let root_view = float_view.clone();
         let restore_view = float_view.clone();
@@ -693,8 +687,7 @@ impl CoduxApp {
                 macos_window::configure_child_window_controls(window);
                 let close_view = close_view.clone();
                 window.on_window_should_close(cx, move |_window, cx| {
-                    close_view.update(cx, |view, cx| view.restore_to_parent(cx));
-                    true
+                    close_view.update(cx, |view, cx| view.close_session(cx))
                 });
                 if let Some(view) = &focus_view {
                     view.read(cx).focus_handle().focus(window, cx);
@@ -705,7 +698,16 @@ impl CoduxApp {
         match result {
             Ok(handle) => self.register_child_window_handle(handle.into()),
             Err(error) => {
-                restore_view.update(cx, |view, cx| view.restore_to_parent(cx));
+                if let Some(slot) = restore_view.update(cx, |view, _| view.take_slot()) {
+                    self.restore_floated_terminal_slot(
+                        project_id,
+                        tab_view_id,
+                        pane_index,
+                        split_location,
+                        slot,
+                        cx,
+                    );
+                }
                 self.status_message = format!("failed to float terminal pane: {error}");
                 self.invalidate_terminal_workspace(cx);
                 return;
@@ -794,6 +796,36 @@ impl CoduxApp {
         if pane_index >= self.terminals[tab_index].panes.len() {
             return;
         }
+        let tab = &self.terminals[tab_index];
+        let Some(terminal_id) =
+            Self::terminal_slot_terminal_id(tab, pane_index, &tab.panes[pane_index])
+        else {
+            self.status_message = "terminal split has no terminal id".to_string();
+            self.invalidate_terminal_workspace(cx);
+            return;
+        };
+        if self.terminal_attach_in_flight.contains(&terminal_id) {
+            return;
+        }
+        let still_referenced = self.terminals.iter().enumerate().any(|(other_tab, tab)| {
+            tab.panes.iter().enumerate().any(|(index, slot)| {
+                (other_tab != tab_index || index != pane_index)
+                    && Self::terminal_slot_terminal_id(tab, index, slot).as_deref()
+                        == Some(terminal_id.as_str())
+            })
+        });
+        let cleanup = if still_referenced {
+            None
+        } else {
+            match self.kill_terminal_session_if_present(&terminal_id) {
+                Ok(cleanup) => Some(cleanup),
+                Err(error) => {
+                    self.status_message = format!("failed to close terminal: {error}");
+                    self.invalidate_terminal_workspace(cx);
+                    return;
+                }
+            }
+        };
         let pane_count = self.terminals[tab_index].panes.len();
         let top_ratios = terminal_top_ratios_for_panes(
             self.state.terminal_layout.top_ratios.clone(),
@@ -813,31 +845,8 @@ impl CoduxApp {
         .unwrap_or(TerminalSplitNode::Leaf { pane: 0 });
         let split_tree = terminal_split_tree_remove_pane(&tree, pane_index);
         self.refresh_terminal_slot_snapshots();
-        let removed = self.terminals[tab_index].panes.remove(pane_index);
-        let terminal_id = removed
-            .terminal_id
-            .clone()
-            .or_else(|| self.terminals[tab_index].terminal_id.clone())
-            .unwrap_or_default();
-        if terminal_id.trim().is_empty() {
-            self.terminals[tab_index].panes.insert(pane_index, removed);
-            self.status_message = "terminal split has no terminal id".to_string();
-            self.invalidate_terminal_workspace(cx);
-            return;
-        }
+        self.terminals[tab_index].panes.remove(pane_index);
         self.set_terminal_split_tree(split_tree);
-        let still_referenced = self.terminals.iter().any(|tab| {
-            tab.panes.iter().enumerate().any(|(index, slot)| {
-                Self::terminal_slot_terminal_id(tab, index, slot).as_deref()
-                    == Some(terminal_id.as_str())
-            })
-        });
-        let kill_result = if still_referenced {
-            Ok(None)
-        } else {
-            self.kill_terminal_session_if_present(&terminal_id)
-                .map(Some)
-        };
         let next_active_terminal_id = self.terminals[tab_index]
             .panes
             .get(pane_index.saturating_sub(1))
@@ -846,15 +855,9 @@ impl CoduxApp {
         self.select_active_terminal_runtime_id(next_active_terminal_id.as_deref());
         self.focus_active_terminal(window, cx);
         self.sync_terminal_state_after_layout_change(cx);
-        match kill_result {
-            Ok(Some(cleanup)) if cleanup.lifecycle_removed => {
-                self.sync_project_lifecycle_state(cx);
-                self.invalidate_task_column(cx);
-            }
-            Ok(_) => {}
-            Err(error) => {
-                self.status_message = format!("terminal split closed; PTY cleanup failed: {error}");
-            }
+        if cleanup.is_some_and(|cleanup| cleanup.lifecycle_removed) {
+            self.sync_project_lifecycle_state(cx);
+            self.invalidate_task_column(cx);
         }
         self.invalidate_terminal_workspace(cx);
     }

@@ -3,7 +3,9 @@ use codux_terminal_core::{
     TerminalSessionSnapshot, TerminalViewportState,
 };
 use parking_lot::Mutex;
-use portable_pty::{Child, ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
+#[cfg(not(windows))]
+use portable_pty::ChildKiller;
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::{
     collections::{HashMap, VecDeque},
     fs,
@@ -14,6 +16,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use uuid::Uuid;
+
+#[cfg(windows)]
+mod windows_job;
 
 const DEFAULT_COLS: u16 = 100;
 const DEFAULT_ROWS: u16 = 32;
@@ -49,7 +54,10 @@ pub struct LocalPtyProcess {
 
 struct LocalPtyProcessControl {
     child: Mutex<Box<dyn Child + Send + Sync>>,
+    #[cfg(not(windows))]
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+    #[cfg(windows)]
+    job: windows_job::TerminalJob,
     pty_master: Mutex<Box<dyn MasterPty + Send>>,
     // Captured at spawn; read without locking `child` (the wait thread holds that lock for the process lifetime → deadlock).
     shell_pid: Option<u32>,
@@ -75,25 +83,55 @@ impl LocalPtyProcessHandle {
     }
 
     pub fn kill(&self) -> Result<(), String> {
-        // Kill the whole process group (the shell is its group leader via PTY setsid) so AI descendants die too — else they hold the PTY slave open and leak the reader fd+thread until app restart.
+        #[cfg(windows)]
+        return self
+            .inner
+            .job
+            .terminate()
+            .map_err(|error| error.to_string());
+
         #[cfg(unix)]
-        if let Some(pid) = self.inner.shell_pid {
-            unsafe { libc::killpg(pid as libc::pid_t, libc::SIGKILL) };
+        {
+            // Interactive shells can run the foreground command in its own process group.
+            let foreground_group = self.inner.pty_master.lock().process_group_leader();
+            let shell_group = self.inner.shell_pid.map(|pid| pid as libc::pid_t);
+            if let Some(group) = foreground_group.filter(|group| Some(*group) != shell_group) {
+                unsafe { libc::killpg(group, libc::SIGKILL) };
+            }
+            if let Some(group) = shell_group {
+                if unsafe { libc::killpg(group, libc::SIGKILL) } == 0 {
+                    return Ok(());
+                }
+            }
         }
+        #[cfg(not(windows))]
         self.inner
             .killer
             .lock()
             .kill()
+            .or_else(|error| {
+                #[cfg(unix)]
+                if error.raw_os_error() == Some(libc::ESRCH) {
+                    return Ok(());
+                }
+                Err(error)
+            })
             .map_err(|error| error.to_string())
     }
 
     pub fn wait_exit_code(&self) -> Option<i32> {
-        self.inner
+        let exit_code = self
+            .inner
             .child
             .lock()
             .wait()
             .ok()
-            .map(|status| i32::try_from(status.exit_code()).unwrap_or(i32::MAX))
+            .map(|status| i32::try_from(status.exit_code()).unwrap_or(i32::MAX));
+        #[cfg(windows)]
+        if exit_code.is_some() {
+            let _ = self.inner.job.terminate();
+        }
+        exit_code
     }
 
     /// Spawn shell PID (its descendant is the AI CLI, for hook-free tool detection); reads the spawn-time value, never locks `child`.
@@ -148,15 +186,6 @@ pub fn spawn_local_pty(config: LocalPtySpawnConfig) -> Result<LocalPtyProcess, S
     for (key, value) in &config.env {
         command_builder.env(key, value);
     }
-    let child = pair
-        .slave
-        .spawn_command(command_builder)
-        .map_err(|error| format!("failed to spawn shell {}: {error}", config.shell))?;
-    let killer = child.clone_killer();
-    // Capture the PID now, before the wait thread takes `child.lock()` for good.
-    let shell_pid = child.process_id();
-    drop(pair.slave);
-
     let writer = pair
         .master
         .take_writer()
@@ -165,10 +194,27 @@ pub fn spawn_local_pty(config: LocalPtySpawnConfig) -> Result<LocalPtyProcess, S
         .master
         .try_clone_reader()
         .map_err(|error| format!("failed to clone PTY reader: {error}"))?;
+    #[cfg(windows)]
+    let job = windows_job::TerminalJob::new()
+        .map_err(|error| format!("failed to create terminal job: {error}"))?;
+    let child = pair
+        .slave
+        .spawn_command(command_builder)
+        .map_err(|error| format!("failed to spawn shell {}: {error}", config.shell))?;
+    #[cfg(windows)]
+    let child = job
+        .attach(child)
+        .map_err(|error| format!("failed to assign shell to terminal job: {error}"))?;
+    // Capture the PID now, before the wait thread takes `child.lock()` for good.
+    let shell_pid = child.process_id();
+    drop(pair.slave);
     let control = LocalPtyProcessHandle {
         inner: Arc::new(LocalPtyProcessControl {
+            #[cfg(not(windows))]
+            killer: Mutex::new(child.clone_killer()),
             child: Mutex::new(child),
-            killer: Mutex::new(killer),
+            #[cfg(windows)]
+            job,
             pty_master: Mutex::new(pair.master),
             shell_pid,
         }),

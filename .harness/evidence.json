@@ -302,12 +302,32 @@
     },
     {
       "id": "995870f7-d95d-46f7-9613-70210b3db7b4",
-      "observedAt": "2026-11-11T10:46:01.4837542Z",
-      "hash": "ca6262bae1347fee52876669c7b1314af55cff50fd1243b6a2c43ba8ecc2b45f",
+      "observedAt": "2026-11-18T01:00:13.7284437Z",
+      "hash": "8a1ea4fddd5402435ec35870138c18d37f13f8223d5577d52908ab386fb694e2",
       "claim": "Explicit pane selection starts a terminal; stopping kills its session, clears output and retains the dormant pane and identity.",
       "kind": "source-code",
       "location": {
         "path": "apps/desktop/src/app/terminal_actions.rs"
+      }
+    },
+    {
+      "id": "c837c7ef-96c2-45f7-a656-5475db53ccd3",
+      "observedAt": "2026-11-18T01:00:13.7284437Z",
+      "hash": "66c2a0b0b97fc685b660afca27f6b2e66c3c7d2144fa852190a70aca5dfaee60",
+      "claim": "Closing a floating terminal window stops its session and removes the desktop binding.",
+      "kind": "source-code",
+      "location": {
+        "path": "apps/desktop/src/app/terminal_float.rs"
+      }
+    },
+    {
+      "id": "9fb13b3b-cb43-4e11-8413-e2c78f180996",
+      "observedAt": "2026-11-18T01:00:13.7284437Z",
+      "hash": "0061c02bb8273e4b9c861703c07b060f6740bd8a484e6a761014710ff0d69199",
+      "claim": "A dedicated Windows Job Object terminates each PTY shell and its tracked descendants on close.",
+      "kind": "source-code",
+      "location": {
+        "path": "crates/codux-terminal-pty/src/windows_job.rs"
       }
     },
     {

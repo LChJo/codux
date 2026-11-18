@@ -228,7 +228,7 @@ use self::{
     task_column::{
         TaskColumnHeaderView, TaskColumnView, TaskTerminalListView, TaskWorktreeListView,
     },
-    terminal_float::{TerminalFloatRequest, terminal_float_window},
+    terminal_float::terminal_float_window,
     terminal_state::{
         SpawnTerminalTabsInput, TerminalSplitDirection, TerminalSplitLocation, TerminalSplitScope,
         collapsed_terminal_slots_from_layout, normalize_terminal_restore_state,

@@ -1,70 +1,66 @@
 use super::*;
 
-pub(in crate::app) struct TerminalFloatRequest {
-    pub(in crate::app) title: String,
-    pub(in crate::app) app_entity: gpui::Entity<CoduxApp>,
-    pub(in crate::app) project_id: Option<String>,
-    pub(in crate::app) tab_view_id: usize,
-    pub(in crate::app) pane_index: usize,
-    pub(in crate::app) split_location: Option<TerminalSplitLocation>,
-    pub(in crate::app) slot: TerminalPaneSlot,
-}
-
 pub(in crate::app) fn terminal_float_window(
-    request: TerminalFloatRequest,
+    title: String,
+    app_entity: gpui::Entity<CoduxApp>,
+    slot: TerminalPaneSlot,
     cx: &mut Context<CoduxApp>,
 ) -> gpui::Entity<TerminalFloatWindow> {
-    let TerminalFloatRequest {
-        title,
-        app_entity,
-        project_id,
-        tab_view_id,
-        pane_index,
-        split_location,
-        slot,
-    } = request;
-    cx.new(|_| TerminalFloatWindow {
-        title,
-        restore: Some(TerminalFloatRestore {
+    cx.new(|cx| {
+        // Programmatic window removal can bypass the native close callback.
+        cx.on_release(|view: &mut TerminalFloatWindow, cx| {
+            view.close_session(cx);
+        })
+        .detach();
+        TerminalFloatWindow {
+            title,
+            slot: Some(slot),
             app_entity,
-            project_id,
-            tab_view_id,
-            pane_index,
-            split_location,
-            slot,
-        }),
+        }
     })
 }
 
 pub(in crate::app) struct TerminalFloatWindow {
     title: String,
-    restore: Option<TerminalFloatRestore>,
-}
-
-struct TerminalFloatRestore {
+    slot: Option<TerminalPaneSlot>,
     app_entity: gpui::Entity<CoduxApp>,
-    project_id: Option<String>,
-    tab_view_id: usize,
-    pane_index: usize,
-    split_location: Option<TerminalSplitLocation>,
-    slot: TerminalPaneSlot,
 }
 
 impl TerminalFloatWindow {
-    pub(in crate::app) fn restore_to_parent(&mut self, cx: &mut Context<Self>) {
-        let Some(restore) = self.restore.take() else {
-            return;
+    pub(in crate::app) fn take_slot(&mut self) -> Option<TerminalPaneSlot> {
+        self.slot.take()
+    }
+
+    pub(in crate::app) fn close_session(&mut self, cx: &mut App) -> bool {
+        let Some(terminal_id) = self
+            .slot
+            .as_ref()
+            .and_then(|slot| slot.terminal_id.as_deref())
+        else {
+            return true;
         };
-        restore.app_entity.update(cx, |app, cx| {
-            app.restore_floated_terminal_slot(
-                restore.project_id,
-                restore.tab_view_id,
-                restore.pane_index,
-                restore.split_location,
-                restore.slot,
-                cx,
-            )
+        let closed = self.app_entity.update(cx, |app, cx| {
+            match app.kill_terminal_session_if_present(terminal_id) {
+                Ok(cleanup) => {
+                    if cleanup.lifecycle_removed {
+                        app.sync_project_lifecycle_state(cx);
+                        app.invalidate_task_column(cx);
+                    }
+                    app.status_message = app.text("terminal.closed", "Closed terminal.");
+                    app.invalidate_terminal_workspace(cx);
+                    true
+                }
+                Err(error) => {
+                    app.status_message = format!("failed to close terminal: {error}");
+                    app.invalidate_terminal_workspace(cx);
+                    false
+                }
+            }
         });
+        if closed {
+            self.take_slot();
+        }
+        closed
     }
 }
 
@@ -76,11 +72,7 @@ impl Render for TerminalFloatWindow {
                 .min_h_0()
                 .bg(color(theme::BG_TERMINAL))
                 .child(
-                    match self
-                        .restore
-                        .as_ref()
-                        .and_then(|restore| restore.slot.pane.as_ref())
-                    {
+                    match self.slot.as_ref().and_then(|slot| slot.pane.as_ref()) {
                         Some(pane) => gpui::AnyView::from(pane.view.clone())
                             .cached(gpui::StyleRefinement::default().flex().size_full())
                             .into_any_element(),
