@@ -67,16 +67,19 @@ impl CodexParsedState {
         }
     }
 
-    /// Mid-turn with a command/patch call written but unanswered past the idle
-    /// gap, under a policy that can still prompt -- codex is blocked on approval.
+    /// Preserve the wait inference for legacy logs without turn IDs. Modern
+    /// rollouts omit both approval requests and command starts, so the same
+    /// pending call can mean either execution or a prompt. Live screen/OSC
+    /// signals distinguish those cases for the current CLI.
     pub(super) fn needs_user_input(&self, now: f64) -> bool {
-        is_awaiting_user_decision(
-            self.response_state.as_deref() == Some("responding"),
-            self.prompts_possible(),
-            self.pending_function_call(),
-            self.last_function_call_at.unwrap_or(0.0),
-            now,
-        )
+        self.turn_id.is_none()
+            && is_awaiting_user_decision(
+                self.response_state.as_deref() == Some("responding"),
+                self.prompts_possible(),
+                self.pending_function_call(),
+                self.last_function_call_at.unwrap_or(0.0),
+                now,
+            )
     }
 }
 
@@ -642,6 +645,22 @@ mod tests {
         let call_at = state.last_function_call_at.expect("call timestamp");
         assert!(!state.needs_user_input(call_at + NEEDS_INPUT_IDLE_SECONDS - 0.5));
         assert!(state.needs_user_input(call_at + NEEDS_INPUT_IDLE_SECONDS + 0.5));
+    }
+
+    #[test]
+    fn codex_169_running_tool_does_not_infer_wait_from_elapsed_time() {
+        let rows = [
+            r#"{"timestamp":"2026-11-18T10:00:00Z","type":"event_msg","payload":{"type":"task_started","turn_id":"active"}}"#,
+            r#"{"timestamp":"2026-11-18T10:00:01Z","type":"turn_context","payload":{"turn_id":"active","approval_policy":"on-request"}}"#,
+            r#"{"timestamp":"2026-11-18T10:00:02Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"c1","arguments":"{}"}}"#,
+        ];
+        let state =
+            parse_codex_runtime_lines(rows.into_iter().map(str::to_string), None, None, None)
+                .unwrap();
+        assert!(state.pending_function_call());
+        assert_eq!(state.response_state.as_deref(), Some("responding"));
+        let call_at = state.last_function_call_at.unwrap();
+        assert!(!state.needs_user_input(call_at + NEEDS_INPUT_IDLE_SECONDS + 60.0));
     }
 
     #[test]

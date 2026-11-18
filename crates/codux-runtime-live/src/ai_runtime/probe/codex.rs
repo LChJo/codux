@@ -47,11 +47,8 @@ pub(crate) fn probe_codex_runtime(
         updated_at = updated_at.max(completed_at);
     }
 
-    // Pure-file approval wait: a command/patch call is written with no result
-    // yet, the approval policy can still prompt, and it has sat idle past the
-    // gap. (codex sessions re-probe on a quiet-session interval, so for
-    // non-`never` policies this can surface a few seconds late; `never` -- the
-    // common headless setup -- gates it off entirely.)
+    // Only legacy rollouts infer approval waits from a missing tool result.
+    // Current Codex terminals expose waiting through live screen/OSC signals.
     let mut response_state = parsed.response_state.clone();
     if stale_prelaunch_open_turn {
         response_state = Some("idle".to_string());

@@ -17,8 +17,8 @@ use crate::ai_runtime::{
     store::{AIRuntimeStateMutation, AIRuntimeStateStore},
     store::{probe_request_for_session, should_poll_runtime_session},
     terminal_status::{
-        TERMINAL_COMMAND_OSC_SOURCE, TERMINAL_LIFECYCLE_SOURCE, TerminalStatusEvent,
-        TerminalStatusState,
+        TERMINAL_COMMAND_OSC_SOURCE, TERMINAL_LIFECYCLE_SOURCE, TERMINAL_TITLE_OSC_SOURCE,
+        TerminalStatusEvent, TerminalStatusState,
     },
     tool_driver::{runtime_screen_patterns, screen_starts_idle_tool},
 };
@@ -298,14 +298,14 @@ fn supervisor_loop(
                 let mutation = apply_screen_signal_for_terminal(state, registry, &terminal_id);
                 after_mutation(&context, &mut codex_terminals, mutation);
             }
-            AIRuntimeSupervisorMessage::TerminalStatus(status) => {
-                if status.source == TERMINAL_LIFECYCLE_SOURCE
-                    || codex_terminals
-                        .get(&status.terminal_id)
-                        .is_none_or(|runtime| runtime.accepts_hint(&status))
-                {
-                    publish_terminal_status(&context, status);
+            AIRuntimeSupervisorMessage::TerminalStatus(mut status) => {
+                if let Some(runtime) = codex_terminals.get(&status.terminal_id) {
+                    let Some(state) = runtime.status_for_hint(&status) else {
+                        continue;
+                    };
+                    status.state = state;
                 }
+                publish_terminal_status(&context, status);
             }
             AIRuntimeSupervisorMessage::TranscriptTail(terminal_ids) => {
                 let terminal_ids = terminal_ids.into_iter().collect::<HashSet<_>>();
@@ -479,15 +479,24 @@ fn after_mutation(
 }
 
 impl CodexTurnStatus {
-    fn accepts_hint(&self, hint: &TerminalStatusEvent) -> bool {
-        if self.terminal_instance_id != hint.terminal_instance_id {
-            return true;
+    fn status_for_hint(&self, hint: &TerminalStatusEvent) -> Option<TerminalStatusState> {
+        if self.terminal_instance_id != hint.terminal_instance_id
+            || hint.source == TERMINAL_LIFECYCLE_SOURCE
+        {
+            return Some(hint.state);
         }
         match hint.state {
-            TerminalStatusState::Completed => false,
-            TerminalStatusState::Idle => self.state == TerminalStatusState::Idle,
-            TerminalStatusState::Working => self.state != TerminalStatusState::Waiting,
-            _ => true,
+            TerminalStatusState::Completed => None,
+            TerminalStatusState::Idle if hint.source == TERMINAL_TITLE_OSC_SOURCE => {
+                // The title withdrew its hint. Keep a known active turn visible.
+                Some(match self.state {
+                    TerminalStatusState::Working | TerminalStatusState::Waiting => self.state,
+                    _ => TerminalStatusState::Idle,
+                })
+            }
+            TerminalStatusState::Idle if self.state != TerminalStatusState::Idle => None,
+            TerminalStatusState::Working if self.state == TerminalStatusState::Waiting => None,
+            _ => Some(hint.state),
         }
     }
 }
@@ -975,6 +984,23 @@ mod tests {
         supervisor.poll_once().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(50));
         assert_eq!(state(), Some(TerminalStatusState::Working));
+        let title_status = |state| TerminalStatusEvent {
+            terminal_id: "codex-term".to_string(),
+            terminal_instance_id: None,
+            project_id: Some("root-1".to_string()),
+            worktree_id: Some("worktree-1".to_string()),
+            state,
+            updated_at: now_seconds(),
+            source: TERMINAL_TITLE_OSC_SOURCE.to_string(),
+        };
+        supervisor
+            .submit_terminal_status(title_status(TerminalStatusState::Waiting))
+            .unwrap();
+        wait_for(|| state() == Some(TerminalStatusState::Waiting));
+        supervisor
+            .submit_terminal_status(title_status(TerminalStatusState::Idle))
+            .unwrap();
+        wait_for(|| state() == Some(TerminalStatusState::Working));
         let complete = serde_json::json!({"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","completed_at":now_seconds()}});
         writeln!(file, "{complete}").unwrap();
         supervisor.poll_once().unwrap();
