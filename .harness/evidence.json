@@ -332,8 +332,8 @@
     },
     {
       "id": "9fb13b3b-cb43-4e11-8413-e2c78f180996",
-      "observedAt": "2026-11-18T05:12:49Z",
-      "hash": "5f459bb7bf3d183189eaf87cfe29f1664a1b839e8eb54801abc8e93985bb1a44",
+      "observedAt": "2026-11-18T05:33:23Z",
+      "hash": "9be1da11e59074977f8a4ac3cea5e3ae494dbf37f87950db33d658708f320e19",
       "claim": "A dedicated Windows Job Object terminates each PTY shell and its tracked descendants on close.",
       "kind": "source-code",
       "location": {

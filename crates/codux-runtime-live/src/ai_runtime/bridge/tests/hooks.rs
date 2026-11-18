@@ -454,18 +454,19 @@ fn omp_wrapper_preserves_explicit_args_and_passthrough_commands() {
         .unwrap();
     assert!(profiled_launch.status.success());
     let profiled_launch_args = String::from_utf8_lossy(&profiled_launch.stdout);
-    assert!(
-        profiled_launch_args
-            .lines()
-            .any(|arg| arg == "configured-model"),
-        "{profiled_launch_args}"
-    );
-    assert!(
-        profiled_launch_args
-            .lines()
-            .any(|arg| arg == "Managed prompt"),
-        "{profiled_launch_args}"
-    );
+    let profiled_args = profiled_launch_args.lines().collect::<Vec<_>>();
+    let [
+        "--append-system-prompt",
+        "Managed prompt",
+        "--profile",
+        "work",
+        "--config",
+        config,
+    ] = profiled_args.as_slice()
+    else {
+        panic!("unexpected profiled OMP launch arguments: {profiled_launch_args}");
+    };
+    assert!(config.ends_with("/managed-config/omp.yml"), "{config}");
     fs::remove_dir_all(dir).unwrap();
 }
 

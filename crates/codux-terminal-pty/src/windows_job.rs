@@ -70,13 +70,65 @@ mod tests {
     use super::*;
     use crate::{LocalPtyCommandMode, LocalPtySpawnConfig, spawn_local_pty};
     use std::{
-        fs, thread,
+        fs,
+        os::windows::process::CommandExt,
+        path::PathBuf,
+        process::{self, Command, Stdio},
+        thread,
         time::{Duration, Instant},
     };
     use windows_sys::Win32::{
         Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT},
-        System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject},
+        System::Threading::{
+            DETACHED_PROCESS, OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject,
+        },
     };
+
+    const FIXTURE: &str = "windows_job::tests::pty_process_tree_fixture";
+    const FIXTURE_DIRECTORY: &str = "CODUX_TEST_PTY_FIXTURE_DIRECTORY";
+    const FIXTURE_ROLE: &str = "CODUX_TEST_PTY_FIXTURE_ROLE";
+
+    fn spawn_detached_fixture(role: &str) -> io::Result<process::Child> {
+        Command::new(std::env::current_exe()?)
+            .arg(FIXTURE)
+            .env(FIXTURE_ROLE, role)
+            .creation_flags(DETACHED_PROCESS)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+    }
+
+    #[test]
+    fn pty_process_tree_fixture() {
+        // The regression test runs this fixture in separate OS processes.
+        let Some(directory) = std::env::var_os(FIXTURE_DIRECTORY).map(PathBuf::from) else {
+            return;
+        };
+        let role = std::env::var(FIXTURE_ROLE).unwrap();
+        let result = match role.as_str() {
+            "shell" => {
+                let start = directory.join("start");
+                while !start.is_file() {
+                    thread::sleep(Duration::from_millis(25));
+                }
+                spawn_detached_fixture("child").map(|_| ())
+            }
+            "child" => spawn_detached_fixture("idle").and_then(|grandchild| {
+                fs::write(
+                    directory.join("pids.txt"),
+                    format!("{}\n{}\n", process::id(), grandchild.id()),
+                )
+            }),
+            "idle" => Ok(()),
+            _ => panic!("unknown PTY test fixture role: {role}"),
+        };
+        if let Err(error) = result {
+            let _ = fs::write(directory.join("fixture-error.txt"), error.to_string());
+            panic!("could not prepare PTY fixture ({role}): {error}");
+        }
+        thread::sleep(Duration::from_secs(90));
+    }
 
     #[test]
     fn closing_pty_terminates_shell_and_detached_descendants() {
@@ -84,56 +136,32 @@ mod tests {
         fs::create_dir(&directory).unwrap();
         let pid_file = directory.join("pids.txt");
         let error_file = directory.join("fixture-error.txt");
-        let script = directory.join("fixture.ps1");
-        fs::write(
-            &script,
-            r#"param([switch]$Descendant)
-$ErrorActionPreference = 'Stop'
-$powershell = Join-Path $PSHOME 'powershell.exe'
-try {
-    if ($Descendant) {
-        $grandchild = Start-Process -FilePath $powershell -ArgumentList '-NoProfile -Command Start-Sleep -Seconds 90' -WindowStyle Hidden -PassThru
-        Set-Content -LiteralPath (Join-Path $PSScriptRoot 'pids.txt') -Value @($PID, $grandchild.Id)
-    } else {
-        $start = Join-Path $PSScriptRoot 'start'
-        while (-not (Test-Path -LiteralPath $start)) { Start-Sleep -Milliseconds 25 }
-        $arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '" -Descendant'
-        Start-Process -FilePath $powershell -ArgumentList $arguments -WindowStyle Hidden
-    }
-    Start-Sleep -Seconds 90
-} catch {
-    Set-Content -LiteralPath (Join-Path $PSScriptRoot 'fixture-error.txt') -Encoding UTF8 -Value ($_ | Out-String)
-    exit 1
-}
-"#,
-        )
-        .unwrap();
-        let other_config = LocalPtySpawnConfig {
-            shell: "cmd.exe".into(),
+        let mut config = LocalPtySpawnConfig {
+            shell: std::env::current_exe()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
             cwd: None,
-            initial_command: None,
+            initial_command: Some(FIXTURE.into()),
             cols: 80,
             rows: 24,
-            env: Default::default(),
-            clear_env: false,
-            command_mode: LocalPtyCommandMode::Default,
-        };
-        let other_terminal = spawn_local_pty(other_config.clone()).unwrap();
-        let terminal = spawn_local_pty(LocalPtySpawnConfig {
-            shell: "powershell.exe".into(),
-            initial_command: Some("& $env:CODUX_TEST_PTY_SCRIPT".into()),
             env: [
-                ("DMUX_PS_HOOK_SCRIPT".into(), String::new()),
                 (
-                    "CODUX_TEST_PTY_SCRIPT".into(),
-                    script.to_string_lossy().into_owned(),
+                    FIXTURE_DIRECTORY.into(),
+                    directory.to_string_lossy().into_owned(),
                 ),
+                (FIXTURE_ROLE.into(), "idle".into()),
             ]
             .into(),
+            clear_env: false,
             command_mode: LocalPtyCommandMode::InteractiveLogin,
-            ..other_config
-        })
-        .unwrap();
+        };
+        let mut other_terminal = spawn_local_pty(config.clone()).unwrap();
+        // ConPTY can block a process until its output is consumed.
+        thread::spawn(move || io::copy(&mut other_terminal.reader, &mut io::sink()));
+        config.env.insert(FIXTURE_ROLE.into(), "shell".into());
+        let mut terminal = spawn_local_pty(config).unwrap();
+        thread::spawn(move || io::copy(&mut terminal.reader, &mut io::sink()));
         // Release the fixture only after the PTY shell has joined its job.
         fs::write(directory.join("start"), []).unwrap();
 
@@ -167,6 +195,12 @@ try {
             .map(process_handle)
             .collect::<Vec<_>>();
         let other_handle = process_handle(other_terminal.control.process_id().unwrap());
+        for handle in &handles {
+            assert_eq!(
+                unsafe { WaitForSingleObject(handle.as_raw_handle(), 0) },
+                WAIT_TIMEOUT
+            );
+        }
         terminal.control.kill().unwrap();
         assert!(terminal.control.wait_exit_code().is_some());
         for handle in handles {
