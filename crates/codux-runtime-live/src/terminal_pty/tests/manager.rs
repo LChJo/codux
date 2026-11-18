@@ -102,20 +102,46 @@ fn baseline_restores_parsed_history_after_many_in_place_redraws() {
     assert_eq!(before, session.screen_snapshot());
 }
 
+#[cfg(windows)]
+#[test]
+fn terminal_instance_identity_fixture() {
+    if std::env::var_os("CODUX_TEST_TERMINAL_INSTANCE_FIXTURE").is_none() {
+        return;
+    }
+    let instance = std::env::var("DMUX_SESSION_INSTANCE_ID").unwrap();
+    // Write directly to the PTY, bypassing libtest's output capture.
+    writeln!(std::io::stdout(), "INSTANCE={instance}").unwrap();
+    std::thread::sleep(Duration::from_secs(30));
+}
+
 #[test]
 fn terminal_process_and_runtime_binding_share_one_generated_instance_identity() {
     let manager = TerminalManager::new();
-    let config = TerminalPtyConfig {
+    let mut config = TerminalPtyConfig {
         terminal_id: Some(format!("identity-{}", Uuid::new_v4())),
         cwd: Some(std::env::temp_dir().to_string_lossy().into_owned()),
-        shell: Some(if cfg!(windows) { "powershell.exe" } else { "/bin/sh" }.into()),
-        command: Some(if cfg!(windows) {
-            "Write-Output ('INSTANCE=' + $env:DMUX_SESSION_INSTANCE_ID); Start-Sleep -Seconds 30"
-        } else {
-            "printf 'INSTANCE=%s\\n' \"$DMUX_SESSION_INSTANCE_ID\"; sleep 30"
-        }.into()),
         ..Default::default()
     };
+    #[cfg(windows)]
+    {
+        // The process only needs to report its environment. Avoid the
+        // interactive PowerShell startup and the runner's user profile.
+        config.shell = Some(
+            std::env::current_exe()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
+        );
+        config.command =
+            Some("terminal_pty::tests::manager::terminal_instance_identity_fixture".into());
+        config.env = Some([("CODUX_TEST_TERMINAL_INSTANCE_FIXTURE".into(), "1".into())].into());
+    }
+    #[cfg(not(windows))]
+    {
+        config.shell = Some("/bin/sh".into());
+        config.command =
+            Some("printf 'INSTANCE=%s\\n' \"$DMUX_SESSION_INSTANCE_ID\"; sleep 30".into());
+    }
     let (session, output) = manager
         .attach_or_create_with_context(config, None, Arc::new(|_| true))
         .unwrap();

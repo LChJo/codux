@@ -68,12 +68,15 @@ impl TerminalJob {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{LocalPtyCommandMode, LocalPtySpawnConfig, spawn_local_pty};
+    use crate::{LocalPtyCommandMode, LocalPtyProcessHandle, LocalPtySpawnConfig, spawn_local_pty};
+    use codux_terminal_core::{HeadlessTerminalScreen, TerminalPtyResponder};
     use std::{
         fs,
+        io::{Read, Write},
         os::windows::process::CommandExt,
         path::PathBuf,
         process::{self, Command, Stdio},
+        sync::Arc,
         thread,
         time::{Duration, Instant},
     };
@@ -97,6 +100,31 @@ mod tests {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
+    }
+
+    fn spawn_fixture_terminal(config: LocalPtySpawnConfig) -> LocalPtyProcessHandle {
+        let cols = usize::from(config.cols);
+        let rows = usize::from(config.rows);
+        let mut process = spawn_local_pty(config).unwrap();
+        // ConPTY may request the cursor position before running the fixture.
+        let writer = parking_lot::Mutex::new(process.writer);
+        let responder: TerminalPtyResponder = Arc::new(move |reply| {
+            let mut writer = writer.lock();
+            let _ = writer.write_all(reply);
+            let _ = writer.flush();
+        });
+        thread::spawn(move || {
+            let mut screen =
+                HeadlessTerminalScreen::new_with_responder(cols, rows, 0, Some(responder));
+            let mut bytes = [0; 4096];
+            while let Ok(count) = process.reader.read(&mut bytes) {
+                if count == 0 {
+                    break;
+                }
+                screen.process(&bytes[..count]);
+            }
+        });
+        process.control
     }
 
     #[test]
@@ -156,12 +184,9 @@ mod tests {
             clear_env: false,
             command_mode: LocalPtyCommandMode::InteractiveLogin,
         };
-        let mut other_terminal = spawn_local_pty(config.clone()).unwrap();
-        // ConPTY can block a process until its output is consumed.
-        thread::spawn(move || io::copy(&mut other_terminal.reader, &mut io::sink()));
+        let other_terminal = spawn_fixture_terminal(config.clone());
         config.env.insert(FIXTURE_ROLE.into(), "shell".into());
-        let mut terminal = spawn_local_pty(config).unwrap();
-        thread::spawn(move || io::copy(&mut terminal.reader, &mut io::sink()));
+        let terminal = spawn_fixture_terminal(config);
         // Release the fixture only after the PTY shell has joined its job.
         fs::write(directory.join("start"), []).unwrap();
 
@@ -190,19 +215,19 @@ mod tests {
             assert!(!handle.is_null(), "could not open process {pid}");
             unsafe { OwnedHandle::from_raw_handle(handle) }
         };
-        let handles = std::iter::once(terminal.control.process_id().unwrap())
+        let handles = std::iter::once(terminal.process_id().unwrap())
             .chain(descendants)
             .map(process_handle)
             .collect::<Vec<_>>();
-        let other_handle = process_handle(other_terminal.control.process_id().unwrap());
+        let other_handle = process_handle(other_terminal.process_id().unwrap());
         for handle in &handles {
             assert_eq!(
                 unsafe { WaitForSingleObject(handle.as_raw_handle(), 0) },
                 WAIT_TIMEOUT
             );
         }
-        terminal.control.kill().unwrap();
-        assert!(terminal.control.wait_exit_code().is_some());
+        terminal.kill().unwrap();
+        assert!(terminal.wait_exit_code().is_some());
         for handle in handles {
             assert_eq!(
                 unsafe { WaitForSingleObject(handle.as_raw_handle(), 5_000) },
@@ -213,8 +238,8 @@ mod tests {
             unsafe { WaitForSingleObject(other_handle.as_raw_handle(), 0) },
             WAIT_TIMEOUT
         );
-        other_terminal.control.kill().unwrap();
-        assert!(other_terminal.control.wait_exit_code().is_some());
+        other_terminal.kill().unwrap();
+        assert!(other_terminal.wait_exit_code().is_some());
         fs::remove_dir_all(directory).unwrap();
     }
 }
