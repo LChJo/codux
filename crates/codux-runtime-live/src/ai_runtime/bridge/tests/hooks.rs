@@ -337,13 +337,19 @@ fn omp_wrapper_preserves_explicit_args_and_passthrough_commands() {
         .output()
         .unwrap();
 
-    assert!(output.status.success());
+    assert!(
+        output.status.success(),
+        "wrapper should execute fake omp, stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let args = String::from_utf8_lossy(&output.stdout);
     assert!(args.lines().any(|arg| arg == "user-model"), "{args}");
     assert!(args.lines().any(|arg| arg == "write"), "{args}");
-    assert!(args.lines().any(|arg| arg == "User prompt"), "{args}");
+    assert!(
+        args.contains("--append-system-prompt\nUser prompt\n\nManaged prompt\n"),
+        "{args}"
+    );
     assert!(!args.lines().any(|arg| arg == "configured-model"), "{args}");
-    assert!(!args.lines().any(|arg| arg == "Managed prompt"), "{args}");
     assert!(!args.lines().any(|arg| arg == "yolo"), "{args}");
 
     let passthrough = Command::new(bridge.wrapper_bin_dir().join("omp"))

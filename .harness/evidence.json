@@ -171,6 +171,16 @@
       }
     },
     {
+      "id": "4bad048a-5b34-41f0-81e4-7bb7583cb8b4",
+      "observedAt": "2026-11-18T05:12:49Z",
+      "hash": "6c525a52e604d65ade1c70c04d915bfd6dcd8bf43d30a0cc4505d4b5b8487b18",
+      "claim": "The project watcher uses the resolved root to record project-relative file activity when the project is opened through a path alias.",
+      "kind": "source-code",
+      "location": {
+        "path": "crates/codux-runtime-live/src/blackboard.rs"
+      }
+    },
+    {
       "id": "b2a07822-1b1f-4373-a0a4-96953bed1e7e",
       "observedAt": "2026-11-08T07:39:19.4671481Z",
       "hash": "7d40e9f006402df354dbb1dcdddd8054647cbc8493c9d22d6ad2548d0379fd65",
@@ -322,8 +332,8 @@
     },
     {
       "id": "9fb13b3b-cb43-4e11-8413-e2c78f180996",
-      "observedAt": "2026-11-18T01:00:13.7284437Z",
-      "hash": "0061c02bb8273e4b9c861703c07b060f6740bd8a484e6a761014710ff0d69199",
+      "observedAt": "2026-11-18T05:12:49Z",
+      "hash": "5f459bb7bf3d183189eaf87cfe29f1664a1b839e8eb54801abc8e93985bb1a44",
       "claim": "A dedicated Windows Job Object terminates each PTY shell and its tracked descendants on close.",
       "kind": "source-code",
       "location": {

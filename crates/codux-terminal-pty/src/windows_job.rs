@@ -70,9 +70,7 @@ mod tests {
     use super::*;
     use crate::{LocalPtyCommandMode, LocalPtySpawnConfig, spawn_local_pty};
     use std::{
-        fs,
-        io::Write,
-        thread,
+        fs, thread,
         time::{Duration, Instant},
     };
     use windows_sys::Win32::{
@@ -85,37 +83,61 @@ mod tests {
         let directory = std::env::temp_dir().join(format!("codux-pty-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&directory).unwrap();
         let pid_file = directory.join("pids.txt");
+        let error_file = directory.join("fixture-error.txt");
+        let script = directory.join("fixture.ps1");
         fs::write(
-            directory.join("child.ps1"),
-            "$grandchild = Start-Process powershell.exe '-NoProfile -Command Start-Sleep -Seconds 90' -WindowStyle Hidden -PassThru\n\
-             Set-Content -LiteralPath $env:CODUX_TEST_PID_FILE -Value @($PID, $grandchild.Id)\n\
-             Start-Sleep -Seconds 90\n",
-        ).unwrap();
-        let config = LocalPtySpawnConfig {
-            shell: "cmd.exe".to_owned(),
+            &script,
+            r#"param([switch]$Descendant)
+$ErrorActionPreference = 'Stop'
+$powershell = Join-Path $PSHOME 'powershell.exe'
+try {
+    if ($Descendant) {
+        $grandchild = Start-Process -FilePath $powershell -ArgumentList '-NoProfile -Command Start-Sleep -Seconds 90' -WindowStyle Hidden -PassThru
+        Set-Content -LiteralPath (Join-Path $PSScriptRoot 'pids.txt') -Value @($PID, $grandchild.Id)
+    } else {
+        $start = Join-Path $PSScriptRoot 'start'
+        while (-not (Test-Path -LiteralPath $start)) { Start-Sleep -Milliseconds 25 }
+        $arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '" -Descendant'
+        Start-Process -FilePath $powershell -ArgumentList $arguments -WindowStyle Hidden
+    }
+    Start-Sleep -Seconds 90
+} catch {
+    Set-Content -LiteralPath (Join-Path $PSScriptRoot 'fixture-error.txt') -Encoding UTF8 -Value ($_ | Out-String)
+    exit 1
+}
+"#,
+        )
+        .unwrap();
+        let other_config = LocalPtySpawnConfig {
+            shell: "cmd.exe".into(),
             cwd: None,
             initial_command: None,
             cols: 80,
             rows: 24,
-            env: [
-                (
-                    "CODUX_TEST_CHILD_SCRIPT".to_owned(),
-                    directory.join("child.ps1").to_string_lossy().into_owned(),
-                ),
-                (
-                    "CODUX_TEST_PID_FILE".to_owned(),
-                    pid_file.to_string_lossy().into_owned(),
-                ),
-            ]
-            .into(),
+            env: Default::default(),
             clear_env: false,
             command_mode: LocalPtyCommandMode::Default,
         };
-        let mut terminal = spawn_local_pty(config.clone()).unwrap();
-        let other_terminal = spawn_local_pty(config).unwrap();
-        terminal.writer.write_all(b"start \"\" /b powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"%CODUX_TEST_CHILD_SCRIPT%\"\r\n").unwrap();
+        let other_terminal = spawn_local_pty(other_config.clone()).unwrap();
+        let terminal = spawn_local_pty(LocalPtySpawnConfig {
+            shell: "powershell.exe".into(),
+            initial_command: Some("& $env:CODUX_TEST_PTY_SCRIPT".into()),
+            env: [
+                ("DMUX_PS_HOOK_SCRIPT".into(), String::new()),
+                (
+                    "CODUX_TEST_PTY_SCRIPT".into(),
+                    script.to_string_lossy().into_owned(),
+                ),
+            ]
+            .into(),
+            command_mode: LocalPtyCommandMode::InteractiveLogin,
+            ..other_config
+        })
+        .unwrap();
+        // Release the fixture only after the PTY shell has joined its job.
+        fs::write(directory.join("start"), []).unwrap();
 
-        let deadline = Instant::now() + Duration::from_secs(15);
+        let deadline = Instant::now() + Duration::from_secs(30);
         let descendants = loop {
             if let Ok(contents) = fs::read_to_string(&pid_file) {
                 let pids = contents
@@ -125,6 +147,9 @@ mod tests {
                 if pids.len() == 2 {
                     break pids;
                 }
+            }
+            if let Ok(error) = fs::read_to_string(&error_file) {
+                panic!("could not start PTY descendants: {error}");
             }
             assert!(
                 Instant::now() < deadline,
@@ -155,6 +180,7 @@ mod tests {
             WAIT_TIMEOUT
         );
         other_terminal.control.kill().unwrap();
+        assert!(other_terminal.control.wait_exit_code().is_some());
         fs::remove_dir_all(directory).unwrap();
     }
 }

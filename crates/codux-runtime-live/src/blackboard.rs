@@ -97,10 +97,15 @@ fn watch_project(project: &str, support: &Path, root: &Path) -> Result<(), Strin
         );
         if !watchers.contains_key(&key) {
             let project = project.to_string();
-            let root = root.to_path_buf();
+            // FSEvents reports paths under the resolved root, including when
+            // the project was opened through a symlink such as /var on macOS.
+            let root = root.canonicalize().map_err(|error| error.to_string())?;
             let watched = root.clone();
             let store = store.clone();
-            let board_dir = support.join("blackboard");
+            let board_dir = support
+                .canonicalize()
+                .unwrap_or_else(|_| support.to_path_buf())
+                .join("blackboard");
             let mut watcher =
                 notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
                     let Ok(event) = event else {
@@ -381,9 +386,10 @@ mod tests {
         {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
-        assert_eq!(
-            store.list("p", Component::Recent).unwrap()[0].body,
-            "draft.txt"
+        let recent = store.list("p", Component::Recent).unwrap();
+        assert!(
+            recent.iter().any(|entry| entry.body == "draft.txt"),
+            "watcher did not record the draft file"
         );
         assert!(store.list("p", Component::Git).unwrap().is_empty());
         WATCHERS

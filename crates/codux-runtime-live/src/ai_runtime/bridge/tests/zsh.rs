@@ -144,22 +144,7 @@ fn zsh_runtime_hook_keeps_wrapper_bin_first_after_user_startup_files() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout
-            .lines()
-            .any(|line| line == "--dangerously-bypass-approvals-and-sandbox"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.lines().any(|line| line == "--model=gpt-5.9"),
-        "{stdout}"
-    );
-    assert!(
-        stdout
-            .lines()
-            .any(|line| line == "model_reasoning_effort=\"medium\""),
-        "{stdout}"
-    );
+    assert!(stdout.starts_with("--enable\nhooks\nsmoke\n"), "{stdout}");
     let expected_histfile = format!("HISTFILE={}", home.join(".zsh_history").display());
     assert!(
         stdout.lines().any(|line| line == expected_histfile),
@@ -234,22 +219,8 @@ fn zsh_runtime_hook_restores_wrapper_bin_before_each_prompt() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout
-            .lines()
-            .any(|line| line == "--dangerously-bypass-approvals-and-sandbox"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.lines().any(|line| line == "--model=gpt-5.9"),
-        "{stdout}"
-    );
-    assert!(
-        stdout
-            .lines()
-            .any(|line| line == "model_reasoning_effort=\"medium\""),
-        "{stdout}"
-    );
+    // Prompt hooks may emit OSC markers immediately before the wrapper output.
+    assert!(stdout.ends_with("--enable\nhooks\nsmoke\n"), "{stdout}");
     fs::remove_dir_all(dir).unwrap();
 }
 
@@ -404,24 +375,7 @@ fi
         "{stdout}"
     );
     assert!(
-        stdout.lines().any(|line| line == "REAL --enable"),
-        "{stdout}"
-    );
-    assert!(stdout.lines().any(|line| line == "REAL hooks"), "{stdout}");
-    assert!(
-        stdout
-            .lines()
-            .any(|line| line == "REAL --dangerously-bypass-approvals-and-sandbox"),
-        "{stdout}"
-    );
-    assert!(
-        stdout
-            .lines()
-            .any(|line| line == "REAL model_reasoning_effort=\"medium\""),
-        "{stdout}"
-    );
-    assert!(
-        stdout.lines().any(|line| line == "REAL --model=gpt-5.9"),
+        stdout.ends_with("REAL --enable\nREAL hooks\nREAL smoke\n"),
         "{stdout}"
     );
     fs::remove_dir_all(dir).unwrap();

@@ -371,11 +371,33 @@ set -eu
 cmd="${2:-}"
 case "$cmd" in
   managed-instructions)
-    [ "${3:-}" = --nul ] && [ "${4:-}" = kimi ] || exit 64
-    # Test-only argv transport; real Kimi rendering is covered by helper tests.
-    printf '%s\000' --agent-file "${5}"
+    [ "${3:-}" = --nul ] && [ "${6:-}" = -- ] || exit 64
+    strategy="$4"
+    context="$5"
     shift 6
-    for arg in "$@"; do printf '%s\000' "$arg"; done
+    # Exercise the wrapper's NUL-delimited protocol with its test inputs.
+    # The native helper tests cover configuration lookup and escaping.
+    case "$strategy" in
+      codex)
+        printf '%s\000' -c "developer_instructions=\"$(cat "$context")\"" "$@"
+        ;;
+      kimi-launch)
+        printf '%s\000' python '' --agent-file "$context" "$@"
+        ;;
+      append)
+        while [ "$#" -gt 0 ]; do
+          if [ "$1" = --append-system-prompt ]; then
+            printf '%s\000' "$1"
+            printf '%s\n\n%s\000' "$2" "$(cat "$context")"
+            shift 2
+          else
+            printf '%s\000' "$1"
+            shift
+          fi
+        done
+        ;;
+      *) exit 64 ;;
+    esac
     ;;
   tool-memory-injection)
     case "${TOOL_NAME:-}" in

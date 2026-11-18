@@ -202,14 +202,14 @@ model {
       }
     }
     blackboard = component "Project Blackboard" {
-      description "Project-scoped storage and dispatch shared by desktop, agent and terminal tools, including terminal ownership."
+      description "Project-scoped storage and dispatch shared by desktop, agent and terminal tools, including terminal ownership and file activity relative to the resolved project root."
       metadata {
         harness_id "90972566-9314-483b-95ea-3abceeaf6446"
-        brief "Project-scoped storage and dispatch shared by desktop, agent and terminal tools, including terminal ownership."
+        brief "Project-scoped storage and dispatch shared by desktop, agent and terminal tools, including terminal ownership and file activity relative to the resolved project root."
         source "fact"
         status "verified"
-        evidence "74398c55-67f8-4748-b803-cffc468c4ffd"
-        version "1"
+        evidence "74398c55-67f8-4748-b803-cffc468c4ffd 4bad048a-5b34-41f0-81e4-7bb7583cb8b4"
+        version "2"
       }
     }
     ai_history = component "AI Usage History" {
