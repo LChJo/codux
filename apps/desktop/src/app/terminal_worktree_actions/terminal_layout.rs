@@ -1,6 +1,13 @@
 use super::*;
 
 impl CoduxApp {
+    pub(in crate::app) fn observed_terminal_layout_runtime_revision(&self, layout_key: &str) -> u64 {
+        self.terminal_layout_runtime_revision
+            .as_ref()
+            .filter(|(key, _)| key == layout_key)
+            .map_or(0, |(_, revision)| *revision)
+    }
+
     pub(in crate::app) fn sync_terminal_state_after_layout_change(
         &mut self,
         _cx: &mut Context<Self>,
@@ -112,11 +119,15 @@ impl CoduxApp {
         if terminal_layout_is_foreign_to_owner(&self.state.terminal_layout, &key.worktree_id) {
             return;
         }
+        let runtime_revision = self.observed_terminal_layout_runtime_revision(
+            &super::app_state::worktree_terminal_storage_key(&key),
+        );
         self.terminal_layout_cache.insert(
             key,
             super::app_state::TerminalLayoutCacheEntry {
                 layout: self.state.terminal_layout.clone(),
                 runtime: self.state.terminal_runtime.clone(),
+                runtime_revision,
             },
         );
     }
@@ -156,6 +167,7 @@ impl CoduxApp {
                 && self.terminal_restore_epoch == expected_restore_epoch
             {
                 self.terminal_layout_loading = false;
+                self.reconcile_remote_terminal_layout(cx);
                 self.sync_terminal_state_for_project_switch();
                 self.terminal_restore_epoch = self.terminal_restore_epoch.saturating_add(1);
                 self.invalidate_terminal_workspace(cx);
@@ -276,6 +288,7 @@ impl CoduxApp {
                 }
                 if restore_token.is_some() {
                     app.terminal_layout_loading = false;
+                    app.reconcile_remote_terminal_layout(cx);
                     if error.is_none() {
                         app.sync_terminal_state_for_project_switch();
                         app.terminal_restore_epoch = app.terminal_restore_epoch.saturating_add(1);
@@ -314,15 +327,6 @@ impl CoduxApp {
             });
         })
         .detach();
-    }
-
-    pub(in crate::app) fn cached_terminal_layout_state(
-        &self,
-        key: &WorktreeScopeKey,
-    ) -> Option<(TerminalLayoutSummary, TerminalRuntimeSummary)> {
-        self.terminal_layout_cache
-            .get(key)
-            .map(|entry| (entry.layout.clone(), entry.runtime.clone()))
     }
 
     fn lightweight_terminal_runtime_summary(&self) -> TerminalRuntimeSummary {

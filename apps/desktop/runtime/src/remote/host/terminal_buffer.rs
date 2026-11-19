@@ -407,24 +407,16 @@ impl RemoteHostRuntime {
             return true;
         };
         let service = TerminalLayoutService::new(self.support_dir.clone());
-        let mut layout = service.load(Some(&scope.layout_key));
-        let before_total = layout.top_panes.len() + layout.tabs.len();
-        layout
-            .top_panes
-            .retain(|pane| pane.terminal_id != terminal_id);
-        layout.tabs.retain(|tab| tab.terminal_id != terminal_id);
-        let after_total = layout.top_panes.len() + layout.tabs.len();
-        // Nothing matched: this layout summary didn't actually own the terminal.
-        if after_total == before_total {
-            return false;
+        match service.remove_runtime_terminal(&scope.layout_key, terminal_id) {
+            Ok(removed) => removed,
+            Err(error) => {
+                crate::runtime_trace::runtime_trace(
+                    "terminal-layout",
+                    &format!("failed to remove terminal {terminal_id} from layout: {error}"),
+                );
+                false
+            }
         }
-        // A controller may close the LAST terminal in a layout (after_total == 0).
-        // Persist the now-empty summary so the desktop reconcile tears its pane
-        // down too. Previously closing the only terminal in a worktree bailed out
-        // here (before_total <= 1 / after_total == 0), so it silently no-opped on
-        // both ends -- the desktop split AND the pad tab both lingered.
-        let _ = service.save_summary(&scope.layout_key, layout);
-        true
     }
 }
 

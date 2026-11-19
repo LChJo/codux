@@ -302,8 +302,8 @@
     },
     {
       "id": "52962a4d-75b5-42ef-8e63-6b07d57beed2",
-      "observedAt": "2026-11-17T10:00:11.463414Z",
-      "hash": "3ec63bb373243e1adc12f05bf40b774c83b2d0854eed57e514991ec58f9f4a9a",
+      "observedAt": "2026-11-19T02:52:44Z",
+      "hash": "44555b675743716e14159a7a2a8bc1dbe336642c9c3b060c9fa458d03fb8ba34",
       "claim": "Terminal layout restoration keeps dormant pane identities without launching shells and only mounts existing live sessions.",
       "kind": "source-code",
       "location": {
@@ -312,8 +312,8 @@
     },
     {
       "id": "995870f7-d95d-46f7-9613-70210b3db7b4",
-      "observedAt": "2026-11-18T01:00:13.7284437Z",
-      "hash": "8a1ea4fddd5402435ec35870138c18d37f13f8223d5577d52908ab386fb694e2",
+      "observedAt": "2026-11-19T02:52:44Z",
+      "hash": "746cea282551daab6d740bba1620e1a5f63ec9aaf1c0950f299ccad29d308a13",
       "claim": "Explicit pane selection starts a terminal; stopping kills its session, clears output and retains the dormant pane and identity.",
       "kind": "source-code",
       "location": {
@@ -588,6 +588,26 @@
       "kind": "source-code",
       "location": {
         "path": "apps/desktop/src/app/sidebars/git/history.rs"
+      }
+    },
+    {
+      "id": "f0f09380-4c20-43ff-b4d3-be1b70844d51",
+      "observedAt": "2026-11-19T02:52:44Z",
+      "hash": "363cfc1610a1d6adf03df3c7fd466a326afca2f1dfdafe80aca76b269321b21a",
+      "claim": "Terminal restore selects the scoped persistent layout when its runtime revision advances, keeping the mobile terminal identity in the restore plan.",
+      "kind": "source-code",
+      "location": {
+        "path": "apps/desktop/src/app/project_actions/terminal_restore.rs"
+      }
+    },
+    {
+      "id": "9a981eb4-5a27-4308-8f07-8a78d326ffea",
+      "observedAt": "2026-11-19T02:52:44Z",
+      "hash": "8426b22cb237a08b086f8a5ddb98d1a4880ca70fb03e48bc1cdc2e9f5833aebb",
+      "claim": "The layout store serializes runtime mutations and desktop snapshot writes and compares worktree revisions to prevent a stale desktop write from removing a mobile-created terminal.",
+      "kind": "source-code",
+      "location": {
+        "path": "apps/desktop/runtime/src/terminal_layout.rs"
       }
     }
   ],

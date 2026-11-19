@@ -392,6 +392,74 @@ fn remote_terminal_create_emits_layout_changed_event() {
 }
 
 #[test]
+fn mobile_terminal_survives_a_queued_desktop_snapshot_for_its_worktree() {
+    let support_dir = temp_support_dir("codux-mobile-terminal-stale-layout");
+    write_two_project_state(&support_dir);
+    let runtime = Arc::new(RemoteHostRuntime::new(support_dir.clone()));
+    let service = TerminalLayoutService::new(support_dir.clone());
+    let layout_key = terminal_layout_storage_key("project-b", "worktree-b");
+    let other_key = terminal_layout_storage_key("project-a", "project-a");
+    let desktop_id = "gpui-term-worktree-b-1";
+    let stale_layout = service
+        .save_from_gpui(
+            &layout_key,
+            Vec::new(),
+            vec![TerminalPaneSummary {
+                title: "Desktop".to_string(),
+                terminal_id: desktop_id.to_string(),
+            }],
+            vec![1.0],
+            0.24,
+        )
+        .expect("save desktop layout");
+    let stale_revision = service.runtime_revision(&layout_key);
+    let mobile_id = uuid::Uuid::new_v4().to_string();
+    let request = RemoteEnvelope {
+        kind: "terminal.create".to_string(),
+        device_id: Some("device-1".to_string()),
+        session_id: Some(mobile_id.clone()),
+        request_id: None,
+        seq: None,
+        payload: json!({
+            "terminalId": mobile_id,
+            "projectId": "project-b",
+            "worktreeId": "worktree-b",
+        }),
+    };
+
+    runtime.handle_terminal_create(&request);
+    let terminals = runtime.terminal_manager();
+    let original_session = terminals.session(&mobile_id).expect("mobile PTY");
+    assert!(service.runtime_revision(&layout_key) > stale_revision);
+    assert_eq!(service.runtime_revision(&other_key), 0);
+    assert!(
+        !service
+            .save_desktop_snapshot(&layout_key, stale_layout, stale_revision)
+            .unwrap()
+    );
+    let layout = service.load(Some(&layout_key));
+    assert_eq!(layout.top_panes[0].terminal_id, desktop_id);
+    assert_eq!(layout.top_panes[1].terminal_id, mobile_id);
+    assert!(service.load(Some(&other_key)).top_panes.is_empty());
+
+    let config = runtime
+        .remote_terminal_plan_from_envelope(&request, Some(&mobile_id), false)
+        .unwrap()
+        .config;
+    let (attached, _) = terminals
+        .attach_or_create_with_context(config, None, Arc::new(|_| true))
+        .expect("attach the desktop to the mobile PTY");
+    original_session
+        .kill()
+        .expect("stop the original mobile PTY");
+    assert!(attached.wait_for_exit(Duration::from_secs(10)));
+    terminals
+        .kill_and_wait_if_present(&mobile_id, Duration::from_secs(10))
+        .unwrap();
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
 fn remote_terminal_close_removes_layout_entry_and_kills_last_terminal() {
     let support_dir = temp_support_dir("codux-remote-close-layout-entry");
     write_two_project_state(&support_dir);

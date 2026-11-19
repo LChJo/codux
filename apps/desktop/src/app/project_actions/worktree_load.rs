@@ -193,8 +193,9 @@ impl CoduxApp {
             return;
         }
         let runtime_service = self.runtime_service.clone();
+        let runtime_revision = self.observed_terminal_layout_runtime_revision(&owner_id);
         codux_runtime::async_runtime::spawn_blocking(move || {
-            if let Err(error) = runtime_service.save_terminal_layout_with_grid(
+            if let Err(error) = runtime_service.save_desktop_terminal_layout_snapshot(
                 &owner_id,
                 codux_runtime::terminal_layout::TerminalLayoutSummary {
                     tabs: layout_snapshot.tabs,
@@ -206,6 +207,7 @@ impl CoduxApp {
                     collapsed_panes: layout_snapshot.collapsed_panes,
                     ..Default::default()
                 },
+                runtime_revision,
             ) {
                 codux_runtime::runtime_trace::runtime_trace(
                     "terminal-layout",

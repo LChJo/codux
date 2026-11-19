@@ -168,6 +168,7 @@ impl CoduxApp {
             terminal_manager,
             boot_pending_terminals,
             terminal_layout_loading: false,
+            terminal_layout_runtime_revision: None,
             active_terminal_id,
             active_terminal_runtime_ids: HashMap::new(),
             terminal_layout_cache: HashMap::new(),

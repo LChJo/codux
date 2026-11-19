@@ -1263,9 +1263,7 @@ impl CoduxApp {
                 }
             }
         }
-        if remote_terminal_layout_events > 0 {
-            self.reconcile_remote_terminal_layout(cx);
-        }
+        self.reconcile_remote_terminal_layout(cx);
         for (project_id, project_path) in changed_worktree_projects {
             if self
                 .state

@@ -219,11 +219,16 @@ impl RemoteHostRuntime {
         if layout_key.trim().is_empty() {
             return;
         }
-        let _ = TerminalLayoutService::new(self.support_dir.clone()).ensure_terminal(
+        if let Err(error) = TerminalLayoutService::new(self.support_dir.clone()).ensure_terminal(
             layout_key,
             terminal_id,
             title,
-        );
+        ) {
+            crate::runtime_trace::runtime_trace(
+                "terminal-layout",
+                &format!("failed to persist remote terminal {terminal_id} in {layout_key}: {error}"),
+            );
+        }
     }
 
     pub(super) fn remote_project_scope_with_worktree(

@@ -1,8 +1,15 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 const TERMINAL_LAYOUT_NAMESPACE: &str = "terminal-layout";
 const DEFAULT_BOTTOM_RATIO: f64 = 0.24;
+// Serialize the revision check with storage writes. The UI's revision reads
+// use a separate lock, so they don't have to wait for a storage transaction.
+static LAYOUT_WRITE_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+static RUNTIME_LAYOUT_REVISIONS: std::sync::LazyLock<
+    parking_lot::RwLock<HashMap<PathBuf, HashMap<String, u64>>>,
+> = std::sync::LazyLock::new(Default::default);
 
 pub fn terminal_layout_storage_key(project_id: &str, worktree_id: &str) -> String {
     codux_terminal_core::runtime_scope_key(project_id, Some(worktree_id))
@@ -137,10 +144,12 @@ impl TerminalLayoutService {
         if terminal_id.is_empty() {
             return Err("Terminal id is required.".to_string());
         }
+        let _write = LAYOUT_WRITE_LOCK.lock();
         let mut layout = self.load(Some(project_id));
         if layout
             .top_panes
             .iter()
+            .chain(&layout.collapsed_panes)
             .any(|pane| pane.terminal_id == terminal_id)
             || layout.tabs.iter().any(|tab| tab.terminal_id == terminal_id)
         {
@@ -154,7 +163,64 @@ impl TerminalLayoutService {
             },
             terminal_id: terminal_id.to_string(),
         });
-        self.save_summary(project_id, layout)
+        let saved = self.save_summary(project_id, layout)?;
+        self.advance_runtime_revision(project_id);
+        Ok(saved)
+    }
+
+    pub fn runtime_revision(&self, project_id: &str) -> u64 {
+        RUNTIME_LAYOUT_REVISIONS
+            .read()
+            .get(&self.support_dir)
+            .and_then(|revisions| revisions.get(project_id))
+            .copied()
+            .unwrap_or_default()
+    }
+
+    fn advance_runtime_revision(&self, project_id: &str) {
+        *RUNTIME_LAYOUT_REVISIONS
+            .write()
+            .entry(self.support_dir.clone())
+            .or_default()
+            .entry(project_id.to_string())
+            .or_default() += 1;
+    }
+
+    pub fn save_desktop_snapshot(
+        &self,
+        project_id: &str,
+        layout: TerminalLayoutSummary,
+        runtime_revision: u64,
+    ) -> Result<bool, String> {
+        let _write = LAYOUT_WRITE_LOCK.lock();
+        if self.runtime_revision(project_id) != runtime_revision {
+            return Ok(false);
+        }
+        self.save_from_gpui_with_grid(project_id, layout)?;
+        Ok(true)
+    }
+
+    pub(crate) fn remove_runtime_terminal(
+        &self,
+        project_id: &str,
+        terminal_id: &str,
+    ) -> Result<bool, String> {
+        let _write = LAYOUT_WRITE_LOCK.lock();
+        let mut layout = self.load(Some(project_id));
+        let before = layout.top_panes.len();
+        layout
+            .top_panes
+            .retain(|pane| pane.terminal_id != terminal_id);
+        if layout.top_panes.len() == before {
+            return Ok(false);
+        }
+        // Keep the last slot so the user can start it again from the desktop.
+        if layout.top_panes.is_empty() {
+            return Ok(true);
+        }
+        self.save_summary(project_id, layout)?;
+        self.advance_runtime_revision(project_id);
+        Ok(true)
     }
 
     pub fn load_many<'a, I>(
@@ -228,8 +294,15 @@ impl TerminalLayoutService {
     }
 
     pub fn delete(&self, project_id: &str) -> Result<bool, String> {
-        crate::persistent_cache::PersistentCacheStore::for_support_dir(self.support_dir.clone())?
-            .delete_json(TERMINAL_LAYOUT_NAMESPACE, project_id)
+        let _write = LAYOUT_WRITE_LOCK.lock();
+        let deleted = crate::persistent_cache::PersistentCacheStore::for_support_dir(
+            self.support_dir.clone(),
+        )?
+        .delete_json(TERMINAL_LAYOUT_NAMESPACE, project_id)?;
+        if deleted {
+            self.advance_runtime_revision(project_id);
+        }
+        Ok(deleted)
     }
 }
 

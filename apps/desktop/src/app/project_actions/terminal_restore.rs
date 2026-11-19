@@ -1,4 +1,25 @@
+use super::super::app_state::TerminalLayoutCacheEntry;
 use super::*;
+
+fn terminal_layout_for_restore(
+    service: &RuntimeService,
+    layout_key: &str,
+    cached: Option<&TerminalLayoutCacheEntry>,
+    layout: TerminalLayoutSummary,
+    runtime: TerminalRuntimeSummary,
+) -> (TerminalLayoutSummary, TerminalRuntimeSummary, u64) {
+    let revision = service.terminal_layout_runtime_revision(layout_key);
+    if let Some(cached) = cached.filter(|cached| cached.runtime_revision == revision) {
+        return (cached.layout.clone(), cached.runtime.clone(), revision);
+    }
+    // The earlier project/worktree load may predate the controller's mutation.
+    let layout = if revision == 0 {
+        layout
+    } else {
+        service.reload_terminal_layout(Some(layout_key))
+    };
+    (layout, runtime, revision)
+}
 
 impl CoduxApp {
     pub(in crate::app) fn schedule_terminal_layout_restore(
@@ -9,21 +30,17 @@ impl CoduxApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(key) = current_worktree_scope_key(&self.state)
-            && let Some((cached_layout, cached_runtime)) = self.cached_terminal_layout_state(&key)
-        {
-            self.runtime_trace(
-                "terminal-restore",
-                &format!(
-                    "use runtime layout cache project={} worktree={} tabs={} top={}",
-                    key.project_id,
-                    key.worktree_id,
-                    cached_layout.tabs.len(),
-                    cached_layout.top_panes.len()
-                ),
+        if let Some(key) = current_worktree_scope_key(&self.state) {
+            let layout_key = super::app_state::worktree_terminal_storage_key(&key);
+            let revision;
+            (terminal_layout, terminal_runtime, revision) = terminal_layout_for_restore(
+                &self.runtime_service,
+                &layout_key,
+                self.terminal_layout_cache.get(&key),
+                terminal_layout,
+                terminal_runtime,
             );
-            terminal_layout = cached_layout;
-            terminal_runtime = cached_runtime;
+            self.terminal_layout_runtime_revision = Some((layout_key, revision));
         }
         self.runtime_trace(
             "terminal-restore",
@@ -211,5 +228,61 @@ impl CoduxApp {
             self.register_terminal_pane(Some(&terminal_id), &pane, cx);
         }
         pending
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use codux_runtime::terminal_layout::{TerminalLayoutService, terminal_layout_storage_key};
+
+    #[test]
+    fn desktop_restore_uses_mobile_terminal_after_switching_back_to_its_worktree() {
+        let support_dir =
+            std::env::temp_dir().join(format!("codux-restore-mobile-{}", uuid::Uuid::new_v4()));
+        let service = RuntimeService::new(support_dir.clone());
+        let layouts = TerminalLayoutService::new(support_dir.clone());
+        let key = terminal_layout_storage_key("project-a", "worktree-a");
+        let other_key = terminal_layout_storage_key("project-a", "worktree-b");
+        let desktop_id = "gpui-term-worktree-a-1";
+        let cached = TerminalLayoutCacheEntry {
+            layout: TerminalLayoutSummary {
+                top_panes: vec![TerminalPaneSummary {
+                    title: "Desktop".to_string(),
+                    terminal_id: desktop_id.to_string(),
+                }],
+                ..Default::default()
+            },
+            runtime: TerminalRuntimeSummary::default(),
+            runtime_revision: 0,
+        };
+        layouts.save_summary(&key, cached.layout.clone()).unwrap();
+        let before = service.reload_terminal_layout(Some(&key));
+        layouts
+            .ensure_terminal(&other_key, "other-terminal", "Other")
+            .unwrap();
+        let (layout, _, revision) = terminal_layout_for_restore(
+            &service,
+            &key,
+            Some(&cached),
+            TerminalLayoutSummary::default(),
+            Default::default(),
+        );
+        assert_eq!(revision, cached.runtime_revision);
+        assert_eq!(layout.top_panes[0].terminal_id, desktop_id);
+
+        let mobile_id = uuid::Uuid::new_v4().to_string();
+        layouts.ensure_terminal(&key, &mobile_id, "Mobile").unwrap();
+        let (layout, runtime, revision) =
+            terminal_layout_for_restore(&service, &key, Some(&cached), before, Default::default());
+        assert!(revision > cached.runtime_revision);
+        let plan = terminal_restore_plan_for_language(&layout, &runtime, "english", None);
+        let ids: Vec<_> = plan.tabs[0]
+            .panes
+            .iter()
+            .filter_map(|pane| pane.terminal_id.as_deref())
+            .collect();
+        assert_eq!(ids, [desktop_id, mobile_id.as_str()]);
+        std::fs::remove_dir_all(support_dir).ok();
     }
 }

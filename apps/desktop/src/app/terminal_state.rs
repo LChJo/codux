@@ -203,6 +203,13 @@ pub(in crate::app) fn prepare_boot_terminal_state(
     layout: TerminalLayoutSummary,
     language: &str,
 ) -> (TerminalLayoutSummary, TerminalRuntimeSummary) {
+    let runtime_revision = storage_key
+        .map(|key| service.terminal_layout_runtime_revision(key))
+        .unwrap_or_default();
+    let layout = match storage_key {
+        Some(key) if runtime_revision != 0 => service.reload_terminal_layout(Some(key)),
+        _ => layout,
+    };
     let mut layout = structural_terminal_layout(layout);
     // The first prototype did not save the default pane on synchronous boot.
     // Recover its last unowned binding only when no layout survived, before
@@ -249,7 +256,9 @@ pub(in crate::app) fn prepare_boot_terminal_state(
     if let Some(key) = storage_key
         && !layout.top_panes.is_empty()
     {
-        if let Err(error) = service.save_terminal_layout_with_grid(key, layout.clone()) {
+        if let Err(error) =
+            service.save_desktop_terminal_layout_snapshot(key, layout.clone(), runtime_revision)
+        {
             service.runtime_trace_frontend(
                 "terminal-layout",
                 &format!("boot layout persist failed owner={key}: {error}"),

@@ -114,35 +114,41 @@ impl CoduxApp {
     /// already live in the shared `TerminalManager` and persisted into the
     /// layout; here we attach the desktop view to each one we are not yet showing
     /// — without re-mounting existing panes (no flicker), reusing the running PTY
-    /// via the attach path. Driven by the runtime's terminal-layout generation.
+    /// via the attach path. Compare the selected scope's revision so changes
+    /// survive project switches and events drained while a restore is loading.
     pub(in crate::app) fn reconcile_remote_terminal_layout(&mut self, cx: &mut Context<Self>) {
         if self.terminal_layout_loading {
             return;
         }
-        let Some(launch_context) = self.current_terminal_launch_context() else {
-            return;
-        };
         let Some(layout_key) =
             super::ai_runtime_status::current_terminal_layout_storage_key(&self.state)
         else {
+            return;
+        };
+        let revision = self.runtime_service.terminal_layout_runtime_revision(&layout_key);
+        if revision == self.observed_terminal_layout_runtime_revision(&layout_key) {
+            return;
+        }
+        let Some(launch_context) = self.current_terminal_launch_context() else {
             return;
         };
         let base_pty_config = launch_context.to_config();
         let layout = self
             .runtime_service
             .reload_terminal_layout(Some(&layout_key));
-        let layout_ids: std::collections::HashSet<String> = layout
+        self.terminal_layout_runtime_revision = Some((layout_key, revision));
+        let layout_ids: HashSet<_> = layout
             .top_panes
             .iter()
-            .map(|pane| pane.terminal_id.clone())
+            .map(|pane| pane.terminal_id.as_str())
             .filter(|terminal_id| !terminal_id.trim().is_empty())
             .collect();
-        // An empty layout is NOT an early-out. reconcile runs only on a real
-        // TerminalLayoutChanged event (create/close/move) and reloads the
-        // just-persisted summary, so an empty result means the last terminal was
-        // genuinely closed (e.g. a controller closed the only terminal in a
-        // worktree) -- fall through and tear the now-stale desktop panes down
-        // instead of leaving an orphaned dead pane behind.
+        // A live or mounting pane may be ahead of its queued desktop snapshot.
+        // Keep it when the controller's mutation started from an older layout.
+        let live_ids: HashSet<_> = self.terminal_manager.list().into_iter()
+            .filter(|session| session.is_running)
+            .map(|session| session.id)
+            .collect();
         let mut removed_stale = false;
         let mut removed_terminal_ids = Vec::new();
         for tab in &mut self.terminals {
@@ -153,9 +159,11 @@ impl CoduxApp {
                     .terminal_id
                     .clone()
                     .or_else(|| tab_terminal_id.clone());
-                if terminal_id
-                    .as_deref()
-                    .is_some_and(|terminal_id| !layout_ids.contains(terminal_id))
+                if terminal_id.as_deref().is_some_and(|terminal_id| {
+                    !layout_ids.contains(terminal_id)
+                        && !live_ids.contains(terminal_id)
+                        && !self.terminal_attach_in_flight.contains(terminal_id)
+                })
                 {
                     if let Some(terminal_id) = terminal_id.as_deref() {
                         removed_terminal_ids.push(terminal_id.to_string());
@@ -173,7 +181,7 @@ impl CoduxApp {
         }
         if removed_stale {
             let active_id = self.active_terminal_runtime_id();
-            if active_id.trim().is_empty() || !layout_ids.contains(&active_id) {
+            if active_id.trim().is_empty() || !layout_ids.contains(active_id.as_str()) {
                 self.activate_first_terminal();
             }
         }
@@ -182,10 +190,11 @@ impl CoduxApp {
             self.invalidate_task_column(cx);
         }
 
-        let shown_ids: std::collections::HashSet<String> = self
+        let mut shown_ids: HashSet<String> = self
             .terminals
             .iter()
             .flat_map(|tab| tab.panes.iter())
+            .chain(self.collapsed_terminal_panes.iter())
             .filter_map(|slot| slot.terminal_id.clone())
             .collect();
 
@@ -209,7 +218,7 @@ impl CoduxApp {
             else {
                 continue;
             };
-            if shown_ids.contains(&pane_terminal_id) {
+            if !shown_ids.insert(pane_terminal_id.clone()) {
                 continue;
             }
             let pty_config = terminal_pty_config_for_terminal_id(
@@ -223,15 +232,24 @@ impl CoduxApp {
                 self.terminal_config_from_settings(),
             );
             self.register_terminal_pane(Some(&pane_terminal_id), &terminal_pane, cx);
-            if let Some(tab) = self.main_terminal_mut() {
-                tab.panes.push(TerminalPaneSlot {
-                    title: pane.title.clone(),
-                    terminal_id: Some(pane_terminal_id),
-                    pane: Some(terminal_pane),
-                    restored_output_bytes: 0,
-                    restored_output_tail: String::new(),
+            if self.terminals.is_empty() {
+                let id = self.next_terminal_index;
+                self.next_terminal_index += 1;
+                self.active_terminal_id = id;
+                self.terminals.push(TerminalTab {
+                    id,
+                    label: self.text("terminal.main", "Main Terminal"),
+                    terminal_id: None,
+                    panes: Vec::new(),
                 });
             }
+            self.terminals[0].panes.push(TerminalPaneSlot {
+                title: pane.title.clone(),
+                terminal_id: Some(pane_terminal_id),
+                pane: Some(terminal_pane),
+                restored_output_bytes: 0,
+                restored_output_tail: String::new(),
+            });
             pending.push((pty_config, attach));
         }
 

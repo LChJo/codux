@@ -69,6 +69,10 @@ impl RuntimeService {
         load_terminal_layout(&self.support_dir, project_id)
     }
 
+    pub fn terminal_layout_runtime_revision(&self, layout_key: &str) -> u64 {
+        TerminalLayoutService::new(self.support_dir.clone()).runtime_revision(layout_key)
+    }
+
     pub fn reload_terminal_layouts<'a, I>(
         &self,
         project_ids: I,
@@ -336,6 +340,16 @@ impl RuntimeService {
         TerminalLayoutService::new(self.support_dir.clone()).save_from_gpui_with_grid(
             project_id, layout,
         )
+    }
+
+    pub fn save_desktop_terminal_layout_snapshot(
+        &self,
+        layout_key: &str,
+        layout: TerminalLayoutSummary,
+        runtime_revision: u64,
+    ) -> Result<bool, String> {
+        TerminalLayoutService::new(self.support_dir.clone())
+            .save_desktop_snapshot(layout_key, layout, runtime_revision)
     }
 
     pub fn save_file_editor_layout(

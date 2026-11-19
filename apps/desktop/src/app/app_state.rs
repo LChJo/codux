@@ -107,6 +107,7 @@ pub struct CoduxApp {
         crate::terminal::PendingTerminalAttach,
     )>,
     pub(in crate::app) terminal_layout_loading: bool,
+    pub(in crate::app) terminal_layout_runtime_revision: Option<(String, u64)>,
     pub(in crate::app) active_terminal_id: usize,
     pub(in crate::app) active_terminal_runtime_ids: HashMap<WorktreeScopeKey, String>,
     pub(in crate::app) terminal_layout_cache: HashMap<WorktreeScopeKey, TerminalLayoutCacheEntry>,
@@ -477,6 +478,7 @@ pub struct CoduxApp {
 pub(in crate::app) struct TerminalLayoutCacheEntry {
     pub(in crate::app) layout: TerminalLayoutSummary,
     pub(in crate::app) runtime: TerminalRuntimeSummary,
+    pub(in crate::app) runtime_revision: u64,
 }
 
 #[derive(Clone, Debug, Default)]
