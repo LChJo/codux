@@ -232,8 +232,8 @@
     },
     {
       "id": "7cd638d9-f35c-44f7-9652-61e8333f0702",
-      "observedAt": "2026-11-19T06:01:07Z",
-      "hash": "5af66769e153bad6370afa75fa0b85f2a0794bc010b4720c6c9d3dfe6e02bec7",
+      "observedAt": "2026-11-19T17:18:26Z",
+      "hash": "9df045789df9919d567436850839eabe5e4e0b3cdeafdee733b14972dd28a1cb",
       "claim": "Declared dependencies or calls: Uses workspace services",
       "kind": "source-code",
       "location": {
@@ -242,8 +242,8 @@
     },
     {
       "id": "9d28ab23-9257-45a6-bfbb-b4756c01533c",
-      "observedAt": "2026-11-19T06:01:07Z",
-      "hash": "a42cf4db186c77dedb7a34c26603d69a30f346ec1449e116114b989bc00784c9",
+      "observedAt": "2026-11-19T17:18:26Z",
+      "hash": "58805caf8f98cfeecab157120ca78b147d225803ab6e09b5ab2b076708693233",
       "claim": "Declared dependencies or calls: Uses runtime domain rules",
       "kind": "source-code",
       "location": {
@@ -252,8 +252,8 @@
     },
     {
       "id": "32503d30-a00d-4574-b21c-78eea1a34d4a",
-      "observedAt": "2026-11-19T06:01:07Z",
-      "hash": "c6278a74d893b2af4c16f2c9b1d7f8f8a9034af885de20afa3ef4cba4629daa7",
+      "observedAt": "2026-11-19T17:18:26Z",
+      "hash": "0d1fe25402253ce476ad22facadb5ea34ba81d802dc4b3fbbf78c92bc67f6103",
       "claim": "Declared dependencies or calls: Uses shared memory engine",
       "kind": "source-code",
       "location": {
@@ -542,8 +542,8 @@
     },
     {
       "id": "e6215fee-7cae-43ba-a564-9ae2e651cc67",
-      "observedAt": "2026-11-18T10:44:06Z",
-      "hash": "f924e442b4a5c2b0169d0d06102ea56f84759923a30ccc39eff4057f688d489c",
+      "observedAt": "2026-11-19T17:11:10Z",
+      "hash": "970153b6ab4bc1716c5967e11d4c97e341942de2465c3d884b9dd836d4be1022",
       "claim": "The desktop Git review workspace arranges the Git sidebar, changed files and diff in scope-aware panels and offers staged, unstaged, branch and commit comparisons.",
       "kind": "source-code",
       "location": {

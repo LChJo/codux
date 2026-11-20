@@ -93,6 +93,7 @@ impl Render for WorkspaceColumnView {
                                 .flex_none()
                                 .h_full()
                                 .min_h_0()
+                                .bg(theme::vibrancy_panel(color(theme::BG_COLUMN)))
                                 .border_r_1()
                                 .border_color(cx.theme().border)
                                 .child(gpui::AnyView::from(sidebar)),

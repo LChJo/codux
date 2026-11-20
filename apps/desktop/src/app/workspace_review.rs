@@ -345,6 +345,7 @@ pub(in crate::app) fn review_workspace_body(
             resizable_panel()
                 .size(px(285.0))
                 .size_range(px(180.0)..px(440.0))
+                .bg(color(theme::BG_COLUMN))
                 .child(gpui::AnyView::from(git_sidebar)),
         );
     }
