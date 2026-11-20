@@ -15,7 +15,10 @@ Write-Host "Repository: $RepoRoot"
 Write-Host "Target: $Target"
 cargo --version
 
-cargo build -p codux -p codux-wrapper-helper --release --target $Target
+cargo build --locked -p codux -p codux-wrapper-helper --release --target $Target
+if ($LASTEXITCODE -ne 0) {
+    throw "Windows cargo build failed with exit code $LASTEXITCODE"
+}
 
 $releaseDir = Join-Path $RepoRoot "target\$Target\release"
 
