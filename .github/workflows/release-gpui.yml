@@ -160,9 +160,13 @@ jobs:
       - name: Verify required assets and publish
         shell: bash
         run: |
-          test -s release-artifacts/codux-windows-x86_64-setup.exe
-          test -s release-artifacts/codux-macos-aarch64.dmg
-          test -s release-artifacts/codux-macos-x86_64.dmg
-          test -s release-artifacts/codux-linux-x86_64
-          test -s release-artifacts/codux-linux-aarch64
+          for asset in \
+            codux-windows-x86_64-setup.exe codux-macos-aarch64.dmg codux-macos-x86_64.dmg \
+            codux-windows-x86_64.exe codux-macos-aarch64 codux-macos-x86_64 \
+            codux-linux-x86_64 codux-linux-aarch64; do
+            if [[ ! -s "$RELEASE_ARTIFACTS_DIR/$asset" ]]; then
+              echo "::error::Release asset is missing or empty: $asset"
+              exit 1
+            fi
+          done
           node apps/desktop/scripts/release/publish-github-release.mjs

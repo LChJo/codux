@@ -502,9 +502,9 @@
     },
     {
       "id": "e60ad127-b851-40aa-90dd-a5896abd923c",
-      "observedAt": "2026-11-18T04:22:07.990676Z",
-      "hash": "29bff1a5a50929360309d8e8d97b3050d071c7b620ea2d78d3374791c6e347d6",
-      "claim": "The fork release workflow packages desktop and agent artifacts from a version tag, then publishes the GitHub release and channel manifests.",
+      "observedAt": "2026-11-20T11:18:28Z",
+      "hash": "d4084ec9966f068042d8a550930e1c99c6d95c5aa241816857aaead531dce5cd",
+      "claim": "The fork release workflow builds and checks the complete desktop installer and Agent asset set from a version tag before publishing the GitHub release and channel manifests.",
       "kind": "source-code",
       "location": {
         "path": ".github/workflows/release-gpui.yml"

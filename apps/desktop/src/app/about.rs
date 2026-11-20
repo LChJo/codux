@@ -253,12 +253,16 @@ impl CoduxApp {
                 match status_result {
                     Ok(status) => {
                         app.update_dialog_status = Some(status.clone());
-                        app.update_dialog_phase = if !status.configured || status.latest_version.is_none() {
-                            UpdateDialogPhase::NotConfigured
-                        } else if status.available {
-                            UpdateDialogPhase::Available
-                        } else {
-                            UpdateDialogPhase::Latest
+                        app.update_dialog_phase = match (status.configured, &status.latest_version)
+                        {
+                            (false, _) if status.manifest_endpoint_configured => {
+                                app.update_dialog_error = Some(status.message.clone());
+                                UpdateDialogPhase::Error
+                            }
+                            (false, _) => UpdateDialogPhase::NotConfigured,
+                            (true, None) => UpdateDialogPhase::NoRelease,
+                            (true, Some(_)) if status.available => UpdateDialogPhase::Available,
+                            (true, Some(_)) => UpdateDialogPhase::Latest,
                         };
                         app.status_message = status.message;
                     }
@@ -643,7 +647,7 @@ fn update_dialog_icon(phase: UpdateDialogPhase, cx: &mut Context<CoduxApp>) -> A
             (cx.theme().success, HeroIconName::CheckCircle)
         }
         UpdateDialogPhase::Available => (cx.theme().primary, HeroIconName::ArrowUpCircle),
-        UpdateDialogPhase::NotConfigured => {
+        UpdateDialogPhase::NoRelease | UpdateDialogPhase::NotConfigured => {
             (cx.theme().muted_foreground, HeroIconName::InformationCircle)
         }
         UpdateDialogPhase::Checking | UpdateDialogPhase::Downloading => {
@@ -744,27 +748,35 @@ fn update_dialog_body(app: &CoduxApp, language: &str, cx: &mut Context<CoduxApp>
             )
             .into_any_element(),
         UpdateDialogPhase::Latest => body.hidden().into_any_element(),
-        UpdateDialogPhase::NotConfigured => body
-            .child(
+        UpdateDialogPhase::NoRelease | UpdateDialogPhase::NotConfigured => {
+            let message = if app.update_dialog_phase == UpdateDialogPhase::NoRelease {
+                translate(
+                    language,
+                    "update.no_release.message",
+                    "No release has been published for this update channel.",
+                )
+            } else {
+                app.update_dialog_status
+                    .as_ref()
+                    .map(|status| status.message.clone())
+                    .unwrap_or_else(|| {
+                        translate(
+                            language,
+                            "update.not_configured.preview",
+                            "Update channel is not configured.",
+                        )
+                    })
+            };
+            body.child(
                 div()
                     .w_full()
                     .text_size(rems(0.8125))
                     .line_height(rems(1.5))
                     .text_color(cx.theme().muted_foreground)
-                    .child(
-                        app.update_dialog_status
-                            .as_ref()
-                            .map(|status| status.message.clone())
-                            .unwrap_or_else(|| {
-                                translate(
-                                    language,
-                                    "update.not_configured.preview",
-                                    "Update channel is not configured.",
-                                )
-                            }),
-                    ),
+                    .child(message),
             )
-            .into_any_element(),
+            .into_any_element()
+        }
         UpdateDialogPhase::Checking => body.hidden().into_any_element(),
     }
 }
@@ -857,7 +869,9 @@ fn update_dialog_footer(app: &CoduxApp, language: &str, cx: &mut Context<CoduxAp
                 |app, _event, _window, cx| app.request_restart(cx),
             ));
         }
-        UpdateDialogPhase::Error | UpdateDialogPhase::NotConfigured => {
+        UpdateDialogPhase::Error
+        | UpdateDialogPhase::NoRelease
+        | UpdateDialogPhase::NotConfigured => {
             footer = footer.child(dialog_secondary_button(
                 "update-dialog-retry",
                 translate(language, "about.updates", "Check for Updates"),
@@ -982,6 +996,9 @@ fn update_dialog_title(phase: UpdateDialogPhase, language: &str) -> String {
             translate(language, "update.available.title", "Update Available")
         }
         UpdateDialogPhase::Latest => translate(language, "update.latest.title", "Up to Date"),
+        UpdateDialogPhase::NoRelease => {
+            translate(language, "update.no_release.title", "No Release Yet")
+        }
         UpdateDialogPhase::NotConfigured => translate(
             language,
             "update.not_configured.title",

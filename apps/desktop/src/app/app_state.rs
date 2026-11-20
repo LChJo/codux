@@ -551,6 +551,7 @@ pub(in crate::app) enum UpdateDialogPhase {
     Checking,
     Available,
     Latest,
+    NoRelease,
     NotConfigured,
     Downloading,
     Finished,
