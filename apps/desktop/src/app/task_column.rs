@@ -270,6 +270,9 @@ impl CoduxApp {
         &mut self,
         cx: &mut Context<Self>,
     ) -> gpui::Entity<TaskWorktreeListView> {
+        if self.reconcile_pane_agent_worktree_projects() {
+            self.sync_project_lifecycle_state(cx);
+        }
         let snapshot = self.task_worktree_list_snapshot();
         if let Some(view) = self.task_worktree_list_view.clone() {
             view.update(cx, |view, cx| view.set_snapshot(snapshot, cx));

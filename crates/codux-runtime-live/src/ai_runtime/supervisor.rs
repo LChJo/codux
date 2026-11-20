@@ -487,12 +487,14 @@ impl CodexTurnStatus {
         }
         match hint.state {
             TerminalStatusState::Completed => None,
-            TerminalStatusState::Idle if hint.source == TERMINAL_TITLE_OSC_SOURCE => {
-                // The title withdrew its hint. Keep a known active turn visible.
-                Some(match self.state {
-                    TerminalStatusState::Working | TerminalStatusState::Waiting => self.state,
-                    _ => TerminalStatusState::Idle,
-                })
+            TerminalStatusState::Idle
+                if hint.source == TERMINAL_TITLE_OSC_SOURCE
+                    && matches!(
+                        self.state,
+                        TerminalStatusState::Working | TerminalStatusState::Waiting
+                    ) =>
+            {
+                Some(self.state)
             }
             TerminalStatusState::Idle if self.state != TerminalStatusState::Idle => None,
             TerminalStatusState::Working if self.state == TerminalStatusState::Waiting => None,
@@ -929,6 +931,29 @@ fn now_seconds() -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn late_codex_title_clear_keeps_confirmed_completion() {
+        let turn = CodexTurnStatus {
+            terminal_instance_id: Some("instance-1".to_string()),
+            state: TerminalStatusState::Completed,
+            turn_started_at: Some(1.0),
+        };
+        let mut idle = TerminalStatusEvent {
+            terminal_id: "codex-term".to_string(),
+            terminal_instance_id: turn.terminal_instance_id.clone(),
+            project_id: None,
+            worktree_id: None,
+            state: TerminalStatusState::Idle,
+            updated_at: 2.0,
+            source: TERMINAL_TITLE_OSC_SOURCE.to_string(),
+        };
+
+        assert_eq!(turn.status_for_hint(&idle), None);
+
+        idle.source = TERMINAL_LIFECYCLE_SOURCE.to_string();
+        assert_eq!(turn.status_for_hint(&idle), Some(TerminalStatusState::Idle));
+    }
 
     #[test]
     fn codex_runtime_status_rejects_completion_hint_and_tracks_turn_boundaries() {
