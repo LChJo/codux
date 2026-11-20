@@ -34,6 +34,22 @@ All notable changes to this project will be documented in this file.
 - Enforced the previously inert `maxInjectedSummaryTokens` memory setting: the existing user summary injected into the extraction prompt is now capped at the configured token budget, so a runaway summary can no longer inflate every extraction request.
 - Hardened AI CLI wrapper tool-permission resolution: when the managed permission cache under the temp directory is missing, corrupt, or mid-write, launches now fall back to the app settings source of truth and log every resolution outcome, instead of silently dropping fullAccess/model injection; terminals keep the managed settings path wired even when the permission sync reports an error, and elevated (Administrator/root) terminals print a one-line warning whenever `--dangerously-skip-permissions` is active because Claude Code refuses the bypass there.
 
+## [2.1.0] - 2026-11-20
+
+This is the first stable release maintained independently by `LChJo/codux`. It introduces the fork’s own release builds and Stable and Beta update channels.
+
+### Changed
+
+- Redesigned the Git review workspace with an independent Git sidebar, a file list, and a diff pane. Review staged, unstaged, branch, and commit comparisons in the same workspace.
+- Grouped AI usage by root project and made the charts follow the selected date range.
+
+### Fixed
+
+- Mobile-created terminals now appear in their desktop worktree and attach to the running session.
+- Git sidebar text stays legible when the application theme and the Windows backdrop or terminal theme differ.
+- Codex completion indicators stay visible when a later terminal title update arrives. Project badges use the owning worktree to resolve CLI status.
+- Update checks report when a configured channel has yet to publish a version.
+
 ## [2.0.3] - 2026-07-21
 
 ### Added
