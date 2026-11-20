@@ -4,6 +4,9 @@
 
 <h1 align="center">Codux</h1>
 
+> [!IMPORTANT]
+> **Codux는 `LChJo/codux`에서 독립적으로 유지 관리됩니다.** 이 포크는 자체 개발, 릴리스 및 업데이트 채널을 운영합니다. 원본 저장소는 보관 처리되었으며, 원래 팀은 Sailry를 개발하고 있습니다. Codux를 만든 duxweb과 업스트림 기여자 여러분께 감사드립니다. [원본 Codux](https://github.com/duxweb/codux) · [Sailry](https://github.com/sailry/sailry-harness)
+
 <p align="center">
   <b>AI 코딩을 위한 고성능 터미널: 데스크톱, 휴대폰, 서버를 하나의 워크스페이스로</b><br/>
   <b>Rust + GPUI</b> 로 만든 Codux는 Codex, Claude Code, 9개 이상의 AI 코딩 CLI를 통합하고, 실시간 agent 상태, 토큰 분석, 로컬 메모리, 자격 증명이 격리된 SSH / 데이터베이스 접근, 장시간 실행 중인 agent 작업을 어디서든 이어받을 수 있는 암호화된 디바이스 링크를 제공합니다.
@@ -13,15 +16,15 @@
   <a href="https://github.com/LChJo/codux/releases/latest"><img src="https://img.shields.io/github/v/release/LChJo/codux?label=release&color=blue" alt="Latest release"></a>
   <a href="https://github.com/LChJo/codux/releases"><img src="https://img.shields.io/github/downloads/LChJo/codux/total?label=downloads&color=brightgreen" alt="Total downloads"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-8250df" alt="Platform">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/duxweb/codux?color=orange" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/LChJo/codux?color=orange" alt="License"></a>
 </p>
 
 <p align="center">
-  <a href="https://codux.work">웹사이트</a> &middot;
-  <a href="https://codux.work/getting-started/">문서</a> &middot;
+  <a href="https://codux.work">업스트림 웹사이트</a> &middot;
+  <a href="https://codux.work/getting-started/">업스트림 문서</a> &middot;
   <a href="https://github.com/LChJo/codux/releases/latest">다운로드</a> &middot;
-  <a href="https://github.com/duxweb/codux-flutter/releases/latest">모바일</a> &middot;
-  <a href="https://github.com/duxweb/codux/issues">피드백</a>
+  <a href="https://github.com/duxweb/codux-flutter/releases/latest">업스트림 모바일</a> &middot;
+  <a href="https://github.com/LChJo/codux/issues">피드백</a>
 </p>
 
 <p align="center">
@@ -64,7 +67,7 @@ Codux는 또 하나의 에디터가 아닙니다. AI 코딩 CLI를 생활처럼 
 2. **내장 터미널에서 AI CLI를 시작합니다.** `codex`, `claude`, `opencode` 등을 실행하세요. non-invasive wrapper가 실시간 상태, 토큰 추적, 메모리 주입을 별도 설정 없이 활성화합니다.
 3. **자리를 비워도 계속합니다.** 휴대폰이나 headless host를 한 번 페어링하면 어디서든 같은 실행 중 세션을 이어받을 수 있습니다.
 
-Windows 또는 Homebrew를 쓰지 않는 경우 [다운로드](#download)를 참고하세요.
+[다운로드](#download)에서 플랫폼에 맞는 설치 프로그램을 선택하세요.
 
 ## 자격 증명은 AI에 전달되지 않습니다
 
@@ -143,6 +146,8 @@ agent가 소비하는 모든 토큰은 워크스페이스에 사는 픽셀 펫�
 ## Download
 
 **데스크톱 앱**
+
+데스크톱 앱의 **설정 → 업데이트**에서 이 포크의 안정 버전 또는 Beta 채널을 확인할 수 있습니다. [릴리스 및 업데이트 절차](docs/release.md)
 
 
 | 플랫폼 | 다운로드 |
@@ -236,7 +241,7 @@ Codux Desktop에서 페어링된 headless host를 제어할 때, 지구본 **Web
 
 ## 피드백
 
-버그나 기능 요청이 있으면 [GitHub Issues](https://github.com/duxweb/codux/issues)에 남겨 주세요.
+버그나 기능 요청은 [이 포크의 GitHub Issues](https://github.com/LChJo/codux/issues)에 남겨 주세요.
 
 버그 보고 시 **Help → Export Diagnostics** 를 사용해 생성된 `.zip`을 첨부하는 것을 권장합니다. runtime logs, rotated logs, performance summaries, 저장된 app state, invalid-state backups, 일치하는 macOS diagnostic reports가 포함됩니다.
 

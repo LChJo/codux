@@ -4,6 +4,9 @@
 
 <h1 align="center">Codux</h1>
 
+> [!IMPORTANT]
+> **Codux is independently maintained in `LChJo/codux`.** This fork has its own development, releases, and update channels. The original Codux repository has been archived, and its team now develops Sailry. Thanks to duxweb and all upstream contributors for creating Codux. [Original Codux](https://github.com/duxweb/codux) · [Sailry](https://github.com/sailry/sailry-harness)
+
 <p align="center">
   <b>The high-performance AI coding terminal — desktop, phone, and server, one workspace</b><br/>
   Built with <b>Rust + GPUI</b>, Codux unifies Codex, Claude Code, and 9+ AI coding CLIs with live agent status, token analytics, local memory, credential-isolated SSH &amp; database access, and encrypted device links for taking over long-running agent work from anywhere.
@@ -13,15 +16,15 @@
   <a href="https://github.com/LChJo/codux/releases/latest"><img src="https://img.shields.io/github/v/release/LChJo/codux?label=release&color=blue" alt="Latest release"></a>
   <a href="https://github.com/LChJo/codux/releases"><img src="https://img.shields.io/github/downloads/LChJo/codux/total?label=downloads&color=brightgreen" alt="Total downloads"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-8250df" alt="Platform">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/duxweb/codux?color=orange" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/LChJo/codux?color=orange" alt="License"></a>
 </p>
 
 <p align="center">
-  <a href="https://codux.work">Website</a> &middot;
-  <a href="https://codux.work/getting-started/">Docs</a> &middot;
+  <a href="https://codux.work">Upstream website</a> &middot;
+  <a href="https://codux.work/getting-started/">Upstream docs</a> &middot;
   <a href="https://github.com/LChJo/codux/releases/latest">Download</a> &middot;
-  <a href="https://github.com/duxweb/codux-flutter/releases/latest">Mobile</a> &middot;
-  <a href="https://github.com/duxweb/codux/issues">Feedback</a>
+  <a href="https://github.com/duxweb/codux-flutter/releases/latest">Upstream mobile</a> &middot;
+  <a href="https://github.com/LChJo/codux/issues">Feedback</a>
 </p>
 
 <p align="center">
@@ -64,7 +67,7 @@ Download the desktop installer from [GitHub Releases](https://github.com/LChJo/c
 2. **Start your AI CLI in the built-in terminal** — `codex`, `claude`, `opencode`, and friends. The non-invasive wrapper lights up live status, token tracking, and memory injection with zero configuration.
 3. **Leave the desk.** Pair your phone or a headless host once, then take over the same running session from anywhere.
 
-On Windows, or without Homebrew: see [Download](#download).
+See the installer for your platform in [Download](#download).
 
 ## Your Credentials Never Reach the AI
 
@@ -143,6 +146,8 @@ Completely useless. Absolutely essential.
 ## Download
 
 **Desktop app**
+
+The desktop app checks this fork’s Stable or Beta channel under **Settings → Updates**. [Release and update workflow](docs/release.md)
 
 
 | Platform | Download |
@@ -236,7 +241,7 @@ Customize everything in **Settings → Shortcuts**.
 
 ## Feedback
 
-Found a bug or have a feature request? Open an [issue on GitHub](https://github.com/duxweb/codux/issues).
+Report bugs and feature requests in the [fork’s GitHub Issues](https://github.com/LChJo/codux/issues).
 
 For bug reports, use **Help → Export Diagnostics** and attach the generated `.zip` — it bundles runtime logs, rotated logs, performance summaries, saved app state, invalid-state backups, and matching macOS diagnostic reports when available.
 

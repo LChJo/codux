@@ -4,6 +4,9 @@
 
 <h1 align="center">Codux</h1>
 
+> [!IMPORTANT]
+> **Codux は `LChJo/codux` で独立してメンテナンスされています。** このフォークは開発、リリース、更新チャンネルを独自に運用しています。元のリポジトリはアーカイブされ、元のチームは Sailry の開発を続けています。Codux を生み出した duxweb と上流のコントリビューターの皆さまに感謝します。 [元の Codux](https://github.com/duxweb/codux) · [Sailry](https://github.com/sailry/sailry-harness)
+
 <p align="center">
   <b>AI コーディングのための高性能ターミナル：デスクトップ、スマホ、サーバーをひとつのワークスペースへ</b><br/>
   <b>Rust + GPUI</b> で作られた Codux は、Codex、Claude Code、9 種類以上の AI コーディング CLI を統合し、ライブ状態、トークン分析、ローカルメモリ、認証情報を隔離した SSH / データベースアクセス、長時間実行中の agent 作業をどこからでも引き継げる暗号化デバイスリンクを提供します。
@@ -13,15 +16,15 @@
   <a href="https://github.com/LChJo/codux/releases/latest"><img src="https://img.shields.io/github/v/release/LChJo/codux?label=release&color=blue" alt="Latest release"></a>
   <a href="https://github.com/LChJo/codux/releases"><img src="https://img.shields.io/github/downloads/LChJo/codux/total?label=downloads&color=brightgreen" alt="Total downloads"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-8250df" alt="Platform">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/duxweb/codux?color=orange" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/LChJo/codux?color=orange" alt="License"></a>
 </p>
 
 <p align="center">
-  <a href="https://codux.work">Web サイト</a> &middot;
-  <a href="https://codux.work/getting-started/">ドキュメント</a> &middot;
+  <a href="https://codux.work">上流の Web サイト</a> &middot;
+  <a href="https://codux.work/getting-started/">上流のドキュメント</a> &middot;
   <a href="https://github.com/LChJo/codux/releases/latest">ダウンロード</a> &middot;
-  <a href="https://github.com/duxweb/codux-flutter/releases/latest">モバイル</a> &middot;
-  <a href="https://github.com/duxweb/codux/issues">フィードバック</a>
+  <a href="https://github.com/duxweb/codux-flutter/releases/latest">上流のモバイル版</a> &middot;
+  <a href="https://github.com/LChJo/codux/issues">フィードバック</a>
 </p>
 
 <p align="center">
@@ -64,7 +67,7 @@ Codux は新しいエディタではありません。AI コーディング CLI 
 2. **内蔵ターミナルで AI CLI を起動する。** `codex`、`claude`、`opencode` などを実行します。非侵襲の wrapper がライブ状態、トークン追跡、メモリ注入をゼロ設定で有効にします。
 3. **席を離れても続ける。** スマホまたは headless host を一度ペアリングすれば、どこからでも同じ実行中セッションを引き継げます。
 
-Windows、または Homebrew を使わない場合は [ダウンロード](#download) を参照してください。
+お使いのプラットフォームに合ったインストーラーを [ダウンロード](#download) から選んでください。
 
 ## 認証情報は AI に届きません
 
@@ -143,6 +146,8 @@ agent が消費するすべてのトークンは、ワークスペースに住�
 ## Download
 
 **デスクトップアプリ**
+
+デスクトップアプリの **設定 → 更新** で、このフォークの安定版または Beta チャンネルを確認できます。 [リリースと更新の手順](docs/release.md)
 
 
 | プラットフォーム | ダウンロード |
@@ -236,7 +241,7 @@ Flags：`--beta` · `--version <x.y.z>` · `--dir <path>` · `--setup` · `--mir
 
 ## フィードバック
 
-バグ報告や機能要望は [GitHub Issues](https://github.com/duxweb/codux/issues) に投稿してください。
+バグ報告や機能要望は [このフォークの GitHub Issues](https://github.com/LChJo/codux/issues) に投稿してください。
 
 バグ報告時は **Help → Export Diagnostics** を使い、生成された `.zip` を添付することを推奨します。runtime logs、rotated logs、performance summaries、保存済み app state、invalid-state backups、該当する macOS diagnostic reports が含まれます。
 

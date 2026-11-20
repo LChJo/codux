@@ -4,6 +4,9 @@
 
 <h1 align="center">Codux</h1>
 
+> [!IMPORTANT]
+> **Codux 现由 `LChJo/codux` 独立维护。** 本仓库从原 Codux 分叉后，独立开发、发布并运营更新通道。原仓库已归档，原团队继续开发 Sailry。感谢 duxweb 和所有上游贡献者为 Codux 奠定基础。 [原 Codux 仓库](https://github.com/duxweb/codux) · [Sailry](https://github.com/sailry/sailry-harness)
+
 <p align="center">
   <b>为 AI 编程而生的高性能终端 —— 桌面、手机、服务器,一套工作区</b><br/>
   用 <b>Rust + GPUI</b> 原生打造，统一 Codex、Claude Code 等 9+ AI 编程 CLI，整合实时状态、Token 统计、本地记忆与凭证隔离的 SSH / 数据库访问，并用加密链路连通桌面、手机和主机端，让你随时随地接管长时间运行的 agent 任务。
@@ -13,15 +16,15 @@
   <a href="https://github.com/LChJo/codux/releases/latest"><img src="https://img.shields.io/github/v/release/LChJo/codux?label=release&color=blue" alt="最新版本"></a>
   <a href="https://github.com/LChJo/codux/releases"><img src="https://img.shields.io/github/downloads/LChJo/codux/total?label=downloads&color=brightgreen" alt="总下载量"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-8250df" alt="支持平台">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/duxweb/codux?color=orange" alt="开源协议"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/LChJo/codux?color=orange" alt="开源协议"></a>
 </p>
 
 <p align="center">
-  <a href="https://codux.work">官网</a> &middot;
-  <a href="https://codux.work/zh-cn/getting-started/">文档</a> &middot;
+  <a href="https://codux.work">上游官网</a> &middot;
+  <a href="https://codux.work/zh-cn/getting-started/">上游文档</a> &middot;
   <a href="https://github.com/LChJo/codux/releases/latest">下载</a> &middot;
-  <a href="https://github.com/duxweb/codux-flutter/releases/latest">移动端</a> &middot;
-  <a href="https://github.com/duxweb/codux/issues">反馈</a>
+  <a href="https://github.com/duxweb/codux-flutter/releases/latest">上游移动端</a> &middot;
+  <a href="https://github.com/LChJo/codux/issues">反馈</a>
 </p>
 
 <p align="center">
@@ -64,7 +67,7 @@ Codux **不是** 又一个编辑器。它是给重度泡在 AI 编程 CLI 里的
 2. **在内置终端里启动你的 AI CLI** —— `codex`、`claude`、`opencode` 都行。非侵入 wrapper 自动点亮实时状态、Token 统计和记忆注入，零配置。
 3. **起身走人。** 手机或主机端配对一次，之后在任何地方接管同一个正在运行的会话。
 
-Windows 或不用 Homebrew：见[下载](#下载)。
+请在[下载](#下载)中选择对应平台的安装包。
 
 ## 凭证永远不进 AI 的上下文
 
@@ -143,6 +146,8 @@ Agent 烧掉的每一个 Token，都会喂养一只住在工作区里的像素�
 ## 下载
 
 **桌面端**
+
+桌面端在 **设置 → 更新** 中检查本仓库的稳定版或 Beta 通道。 [发布与更新流程](docs/release.md)
 
 
 | 平台 | 下载 |
@@ -236,7 +241,7 @@ curl -fsSL https://raw.githubusercontent.com/LChJo/codux/main/apps/agent/scripts
 
 ## 反馈
 
-发现 Bug 或有功能建议？欢迎在 [GitHub Issues](https://github.com/duxweb/codux/issues) 提出。
+Bug 和功能建议请提交到 [本仓库的 GitHub Issues](https://github.com/LChJo/codux/issues)。
 
 提交 Bug 时，推荐用 **帮助 → 导出诊断包**，把生成的 `.zip` 附上——里面有运行日志、轮转日志、性能摘要、应用状态、无效状态备份，以及可匹配到的 macOS 诊断报告。
 
