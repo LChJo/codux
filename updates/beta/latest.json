@@ -1,25 +1,25 @@
 {
-  "version": "2.1.0",
-  "notes": "## 中文\n\n## [2.1.0] - 2026-11-20\n\n这是 `LChJo/codux` 独立维护的首个稳定版，使用本仓库自己的发布构建以及稳定版和 Beta 更新通道。\n\n### 变更\n\n- 重做 Git 审查工作区，可同时查看独立的 Git 侧栏、文件清单和差异。支持审查已暂存、未暂存、分支和提交的差异。\n- AI 用量按根项目归组，统计图表随选定日期范围更新。\n\n### 修复\n\n- 手机创建的终端会出现在桌面端对应的工作树，并连接到正在运行的会话。\n- Git 侧栏使用应用主题底色，避免 Windows 磨砂背景或终端主题影响文字可读性。\n- 较晚到达的终端标题事件不会清除已确认的 Codex 完成提示。项目图标根据工作树归属汇总 CLI 状态。\n- 更新检查会明确说明所选通道尚未发布版本。\n\n---\n\n## English\n\n## [2.1.0] - 2026-11-20\n\nThis is the first stable release maintained independently by `LChJo/codux`. It introduces the fork’s own release builds and Stable and Beta update channels.\n\n### Changed\n\n- Redesigned the Git review workspace with an independent Git sidebar, a file list, and a diff pane. Review staged, unstaged, branch, and commit comparisons in the same workspace.\n- Grouped AI usage by root project and made the charts follow the selected date range.\n\n### Fixed\n\n- Mobile-created terminals now appear in their desktop worktree and attach to the running session.\n- Git sidebar text stays legible when the application theme and the Windows backdrop or terminal theme differ.\n- Codex completion indicators stay visible when a later terminal title update arrives. Project badges use the owning worktree to resolve CLI status.\n- Update checks report when a configured channel has yet to publish a version.\n\n## Downloads / 下载说明\n\n| File / 文件 | Usage | 用途 |\n| --- | --- | --- |\n| [`codux-macos-aarch64.dmg`](https://github.com/LChJo/codux/releases/download/v2.1.0/codux-macos-aarch64.dmg) | Apple Silicon Mac stable release | Apple Silicon Mac 正式版本 |\n| [`codux-macos-x86_64.dmg`](https://github.com/LChJo/codux/releases/download/v2.1.0/codux-macos-x86_64.dmg) | Intel Mac stable release | Intel Mac 正式版本 |\n| [`codux-windows-x86_64-setup.exe`](https://github.com/LChJo/codux/releases/download/v2.1.0/codux-windows-x86_64-setup.exe) | Windows 64-bit installer | Windows 64 位安装包 |\n| [`codux-macos-aarch64`](https://github.com/LChJo/codux/releases/download/v2.1.0/codux-macos-aarch64) | Apple Silicon Mac headless agent | Apple Silicon Mac 主机端 |\n| [`codux-macos-x86_64`](https://github.com/LChJo/codux/releases/download/v2.1.0/codux-macos-x86_64) | Intel Mac headless agent | Intel Mac 主机端 |\n| [`codux-linux-x86_64`](https://github.com/LChJo/codux/releases/download/v2.1.0/codux-linux-x86_64) | Linux x86_64 headless agent | Linux x86_64 主机端 |\n| [`codux-linux-aarch64`](https://github.com/LChJo/codux/releases/download/v2.1.0/codux-linux-aarch64) | Linux ARM64 headless agent | Linux ARM64 主机端 |\n| [`codux-windows-x86_64.exe`](https://github.com/LChJo/codux/releases/download/v2.1.0/codux-windows-x86_64.exe) | Windows 64-bit headless agent | Windows 64 位主机端 |",
-  "pub_date": "2026-11-20T12:12:38.569Z",
+  "version": "2.1.1",
+  "notes": "## 中文\n\n## [2.1.1] - 2026-11-22\n\n### 新增\n\n- 「Git 历史」会标出当前分支相对远程上游尚未推送的提交，并显示总数。搜索或翻页时仍可看到提交标记。\n\n---\n\n## English\n\n## [2.1.1] - 2026-11-22\n\n### Added\n\n- Git History marks commits that are ahead of the branch’s remote upstream and shows the total. Commit marks remain visible when searching or paging through history.\n\n## Downloads / 下载说明\n\n| File / 文件 | Usage | 用途 |\n| --- | --- | --- |\n| [`codux-macos-aarch64.dmg`](https://github.com/LChJo/codux/releases/download/v2.1.1/codux-macos-aarch64.dmg) | Apple Silicon Mac stable release | Apple Silicon Mac 正式版本 |\n| [`codux-macos-x86_64.dmg`](https://github.com/LChJo/codux/releases/download/v2.1.1/codux-macos-x86_64.dmg) | Intel Mac stable release | Intel Mac 正式版本 |\n| [`codux-windows-x86_64-setup.exe`](https://github.com/LChJo/codux/releases/download/v2.1.1/codux-windows-x86_64-setup.exe) | Windows 64-bit installer | Windows 64 位安装包 |\n| [`codux-macos-aarch64`](https://github.com/LChJo/codux/releases/download/v2.1.1/codux-macos-aarch64) | Apple Silicon Mac headless agent | Apple Silicon Mac 主机端 |\n| [`codux-macos-x86_64`](https://github.com/LChJo/codux/releases/download/v2.1.1/codux-macos-x86_64) | Intel Mac headless agent | Intel Mac 主机端 |\n| [`codux-linux-x86_64`](https://github.com/LChJo/codux/releases/download/v2.1.1/codux-linux-x86_64) | Linux x86_64 headless agent | Linux x86_64 主机端 |\n| [`codux-linux-aarch64`](https://github.com/LChJo/codux/releases/download/v2.1.1/codux-linux-aarch64) | Linux ARM64 headless agent | Linux ARM64 主机端 |\n| [`codux-windows-x86_64.exe`](https://github.com/LChJo/codux/releases/download/v2.1.1/codux-windows-x86_64.exe) | Windows 64-bit headless agent | Windows 64 位主机端 |",
+  "pub_date": "2026-11-22T05:37:20.923Z",
   "platforms": {
     "darwin-aarch64": {
-      "url": "https://github.com/LChJo/codux/releases/download/v2.1.0/codux-macos-aarch64.dmg"
+      "url": "https://github.com/LChJo/codux/releases/download/v2.1.1/codux-macos-aarch64.dmg"
     },
     "darwin-aarch64-app": {
-      "url": "https://github.com/LChJo/codux/releases/download/v2.1.0/codux-macos-aarch64.dmg"
+      "url": "https://github.com/LChJo/codux/releases/download/v2.1.1/codux-macos-aarch64.dmg"
     },
     "darwin-x86_64": {
-      "url": "https://github.com/LChJo/codux/releases/download/v2.1.0/codux-macos-x86_64.dmg"
+      "url": "https://github.com/LChJo/codux/releases/download/v2.1.1/codux-macos-x86_64.dmg"
     },
     "darwin-x86_64-app": {
-      "url": "https://github.com/LChJo/codux/releases/download/v2.1.0/codux-macos-x86_64.dmg"
+      "url": "https://github.com/LChJo/codux/releases/download/v2.1.1/codux-macos-x86_64.dmg"
     },
     "windows-x86_64": {
-      "url": "https://github.com/LChJo/codux/releases/download/v2.1.0/codux-windows-x86_64-setup.exe"
+      "url": "https://github.com/LChJo/codux/releases/download/v2.1.1/codux-windows-x86_64-setup.exe"
     },
     "windows-x86_64-nsis": {
-      "url": "https://github.com/LChJo/codux/releases/download/v2.1.0/codux-windows-x86_64-setup.exe"
+      "url": "https://github.com/LChJo/codux/releases/download/v2.1.1/codux-windows-x86_64-setup.exe"
     }
   }
 }
