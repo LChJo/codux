@@ -1,7 +1,7 @@
 use super::*;
 
 pub(super) fn git_history_panel(
-    commits: &[GitCommitSummary],
+    page: Option<&GitHistoryPage>,
     branch: &str,
     head: Option<&str>,
     unfiltered: bool,
@@ -9,7 +9,12 @@ pub(super) fn git_history_panel(
     scroll_handle: VirtualListScrollHandle,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
-    let commits = Rc::new(commits.to_vec());
+    let commits = Rc::new(page.map(|page| page.commits.clone()).unwrap_or_default());
+    let unpushed_hashes = page
+        .map(|page| page.unpushed_hashes.clone())
+        .unwrap_or_default();
+    let unpushed_count = page.map_or(0, |page| page.unpushed_count);
+    let unpushed_label = SharedString::from(labels.text("git.history.unpushed", "Unpushed"));
     let commit_count = commits.len();
     let menu_labels = Rc::new(GitHistoryMenuLabels::from(labels.as_ref()));
     let head = head.map(str::to_string);
@@ -30,15 +35,36 @@ pub(super) fn git_history_panel(
                 .px_3()
                 .flex()
                 .items_center()
+                .gap_2()
                 // Thin translucent darkening: deeper than the panel, see-through.
                 .bg(theme::vibrancy_raised(cx.theme().list_head))
                 .text_size(rems(0.875))
                 .line_height(rems(1.125))
                 .text_color(cx.theme().muted_foreground)
-                .child(if branch.is_empty() {
-                    labels.history.clone()
-                } else {
-                    format!("{} · {branch}", labels.history)
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex_1()
+                        .truncate()
+                        .child(if branch.is_empty() {
+                            labels.history.clone()
+                        } else {
+                            format!("{} · {branch}", labels.history)
+                        }),
+                )
+                .when(unpushed_count > 0, |this| {
+                    this.child(
+                        div()
+                            .flex_shrink_0()
+                            .text_size(rems(0.75))
+                            .text_color(color(theme::ORANGE))
+                            .whitespace_nowrap()
+                            .child(
+                                labels
+                                    .text("git.history.unpushed_count", "%@ unpushed")
+                                    .replace("%@", &unpushed_count.to_string()),
+                            ),
+                    )
                 }),
         )
         .child(if commits.is_empty() {
@@ -78,6 +104,9 @@ pub(super) fn git_history_panel(
                                             index == 0,
                                             index + 1 >= commit_count,
                                             head_label.clone(),
+                                            unpushed_hashes
+                                                .contains(&commit.hash)
+                                                .then(|| unpushed_label.clone()),
                                             menu_labels.clone(),
                                             cx,
                                         )
@@ -101,6 +130,7 @@ fn git_history_timeline_row(
     is_first: bool,
     is_last: bool,
     head_label: SharedString,
+    unpushed_label: Option<SharedString>,
     labels: Rc<GitHistoryMenuLabels>,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
@@ -249,11 +279,28 @@ fn git_history_timeline_row(
             )
             .child(
                 div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
                     .text_size(rems(0.75))
                     .line_height(rems(1.0))
                     .text_color(color(theme::TEXT_DIM))
-                    .truncate()
-                    .child(format!("{author} · {relative_time} · {short_hash}")),
+                    .child(
+                        div()
+                            .min_w_0()
+                            .flex_1()
+                            .truncate()
+                            .child(format!("{author} · {relative_time} · {short_hash}")),
+                    )
+                    .when_some(unpushed_label, |this, label| {
+                        this.child(
+                            div()
+                                .flex_shrink_0()
+                                .text_color(color(theme::ORANGE))
+                                .whitespace_nowrap()
+                                .child(label),
+                        )
+                    }),
             ),
     )
     .context_menu(move |menu, _window, _cx| {

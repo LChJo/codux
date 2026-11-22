@@ -40,6 +40,7 @@ pub fn wire_status_summary(summary: GitSummary) -> WireStatusSummary {
     WireStatusSummary {
         branch: summary.branch,
         upstream: summary.upstream,
+        remote_upstream_head: summary.remote_upstream_head,
         ahead: summary.ahead,
         behind: summary.behind,
         staged: summary.staged,

@@ -19,14 +19,33 @@ fn repository_root(project_path: &str) -> Result<String, String> {
 
 fn upstream_branch_name(repo: &GitRepository) -> Option<String> {
     let head = repo.head().ok()?;
+    upstream_branch_for_head(repo, &head)?
+        .name()
+        .ok()?
+        .map(str::to_string)
+}
+
+fn upstream_branch_for_head<'repo>(
+    repo: &'repo GitRepository,
+    head: &git2::Reference<'_>,
+) -> Option<git2::Branch<'repo>> {
     if !head.is_branch() {
         return None;
     }
     let name = head.shorthand().ok()?;
     repo.find_branch(name, git2::BranchType::Local)
+        .ok()?
+        .upstream()
         .ok()
-        .and_then(|branch| branch.upstream().ok())
-        .and_then(|branch| branch.name().ok().flatten().map(str::to_string))
+}
+
+fn remote_upstream_tip(repo: &GitRepository, head: &git2::Reference<'_>) -> Option<git2::Oid> {
+    let upstream = upstream_branch_for_head(repo, head)?;
+    let reference = upstream.get();
+    if !reference.is_remote() {
+        return None;
+    }
+    reference.resolve().ok()?.target()
 }
 
 fn ahead_behind(repo: &GitRepository) -> Option<(i64, i64)> {

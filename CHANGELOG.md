@@ -34,6 +34,12 @@ All notable changes to this project will be documented in this file.
 - Enforced the previously inert `maxInjectedSummaryTokens` memory setting: the existing user summary injected into the extraction prompt is now capped at the configured token budget, so a runaway summary can no longer inflate every extraction request.
 - Hardened AI CLI wrapper tool-permission resolution: when the managed permission cache under the temp directory is missing, corrupt, or mid-write, launches now fall back to the app settings source of truth and log every resolution outcome, instead of silently dropping fullAccess/model injection; terminals keep the managed settings path wired even when the permission sync reports an error, and elevated (Administrator/root) terminals print a one-line warning whenever `--dangerously-skip-permissions` is active because Claude Code refuses the bypass there.
 
+## [2.1.1] - 2026-11-22
+
+### Added
+
+- Git History marks commits that are ahead of the branch’s remote upstream and shows the total. Commit marks remain visible when searching or paging through history.
+
 ## [2.1.0] - 2026-11-20
 
 This is the first stable release maintained independently by `LChJo/codux`. It introduces the fork’s own release builds and Stable and Beta update channels.

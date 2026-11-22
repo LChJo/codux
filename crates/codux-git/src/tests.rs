@@ -178,6 +178,71 @@ mod tests {
     }
 
     #[test]
+    fn history_marks_only_commits_missing_from_the_remote_upstream() {
+        let (root, repo) = comparison_fixture();
+        let path = root.to_str().unwrap();
+        let tree = repo
+            .find_tree(repo.treebuilder(None).unwrap().write().unwrap())
+            .unwrap();
+        let commit = |reference, title, seconds, parents: &[&git2::Commit<'_>]| {
+            let signature =
+                git2::Signature::new("Codux", "codux@example.test", &git2::Time::new(seconds, 0))
+                    .unwrap();
+            let id = repo
+                .commit(reference, &signature, &signature, title, &tree, parents)
+                .unwrap();
+            repo.find_commit(id).unwrap()
+        };
+        let common = commit(Some("HEAD"), "Common", 1, &[]);
+        let local = commit(Some("HEAD"), "Local change", 2, &[&common]);
+        let upstream = commit(None, "Upstream change", 3, &[&common]);
+        let merge = commit(Some("HEAD"), "Merge upstream", 4, &[&local, &upstream]);
+
+        let history = |query, offset| GitService::history_page(path, query, offset, 1).unwrap();
+        assert_eq!(history("", 0).unpushed_count, 0);
+        repo.remote("origin", "https://example.test/repo.git")
+            .unwrap();
+        let branch = current_branch_name(&repo);
+        let remote_branch = format!("origin/{branch}");
+        let upstream_ref = format!("refs/remotes/{remote_branch}");
+        repo.reference(&upstream_ref, upstream.id(), true, "Set upstream tip")
+            .unwrap();
+        repo.find_branch(&branch, git2::BranchType::Local)
+            .unwrap()
+            .set_upstream(Some(&remote_branch))
+            .unwrap();
+
+        let first = history("", 0);
+        assert!(first.has_more);
+        assert_eq!(first.unpushed_count, 2);
+        assert_eq!(
+            first.unpushed_hashes,
+            HashSet::from([merge.id().to_string()])
+        );
+        let second = history("", 1);
+        assert_eq!(second.commits[0].hash, upstream.id().to_string());
+        assert!(second.unpushed_hashes.is_empty());
+        let search = history("Local change", 0);
+        assert_eq!(search.unpushed_count, 2);
+        assert_eq!(
+            search.unpushed_hashes,
+            HashSet::from([local.id().to_string()])
+        );
+
+        let before = GitService::status(path);
+        assert_eq!(before.remote_upstream_head, Some(upstream.id().to_string()));
+        repo.reference(&upstream_ref, merge.id(), true, "Advance upstream tip")
+            .unwrap();
+        let after = GitService::status(path);
+        assert_eq!(after.remote_upstream_head, Some(merge.id().to_string()));
+        assert_eq!(history("", 0).unpushed_count, 0);
+
+        drop((common, local, upstream, merge, tree));
+        drop(repo);
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
     fn comparison_uses_merge_base_and_selected_parent() {
         let (root, repo) = comparison_fixture();
         let path = root.to_str().unwrap();

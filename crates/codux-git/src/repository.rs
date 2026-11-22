@@ -18,6 +18,11 @@ type GitStatusFiles = (Vec<GitFileStatus>, Vec<GitFileStatus>, Vec<GitFileStatus
 fn git_status_and_files_from_repo(repo: &GitRepository) -> (GitSummary, Vec<GitFileStatus>) {
     let branch = current_branch_name(repo);
     let upstream = upstream_branch_name(repo);
+    let remote_upstream_head = repo
+        .head()
+        .ok()
+        .and_then(|head| remote_upstream_tip(repo, &head))
+        .map(|tip| tip.to_string());
     let (ahead, behind) = ahead_behind(repo).unwrap_or((0, 0));
     let head_pushed = head_commit_pushed_from_repo(repo);
     let (raw_changed_files, status_error) = match git2_status_files(repo) {
@@ -60,6 +65,7 @@ fn git_status_and_files_from_repo(repo: &GitRepository) -> (GitSummary, Vec<GitF
         GitSummary {
             branch,
             upstream,
+            remote_upstream_head,
             ahead,
             behind,
             head_pushed,

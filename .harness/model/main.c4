@@ -15,14 +15,14 @@ model {
       version "1"
     }
     desktop = component "Codux Desktop" {
-      description "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration. Terminal layouts restore dormant panes. Mobile-created terminals appear in their worktree and attach to the running session. Worktree-scoped layout revisions invalidate the restore cache and are checked again after the desktop finishes loading. Explicit selection starts shells, the power control stops sessions while retaining their panes, and closing a floating terminal window stops its session. Selection text snapshots keep copy available and stable across TUI redraws. AI settings expose global prompts and providers. CLI model, permission and effort defaults are configured through the native tools. AI usage statistics group worktrees under configured root projects and chart the selected date range. Git review arranges an independently toggleable Git sidebar, the changed files, and the diff. It supports working-tree, branch, and historical comparison scopes. Comparisons are bound to project and worktree visits and refresh on review entry; history rows support keyboard activation."
+      description "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration. Terminal layouts restore dormant panes. Mobile-created terminals appear in their worktree and attach to the running session. Worktree-scoped layout revisions invalidate the restore cache and are checked again after the desktop finishes loading. Explicit selection starts shells, the power control stops sessions while retaining their panes, and closing a floating terminal window stops its session. Selection text snapshots keep copy available and stable across TUI redraws. AI settings expose global prompts and providers. CLI model, permission and effort defaults are configured through the native tools. AI usage statistics group worktrees under configured root projects and chart the selected date range. Git review arranges an independently toggleable Git sidebar, the changed files, and the diff. It supports working-tree, branch, and historical comparison scopes. Comparisons are bound to project and worktree visits and refresh on review entry; history rows support keyboard activation and show unpushed commits and the branch total."
       metadata {
         harness_id "42a580c4-143d-4093-9051-4601fc90d4a3"
-        brief "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration. Terminal layouts restore dormant panes. Mobile-created terminals appear in their worktree and attach to the running session. Worktree-scoped layout revisions invalidate the restore cache and are checked again after the desktop finishes loading. Explicit selection starts shells, the power control stops sessions while retaining their panes, and closing a floating terminal window stops its session. Selection text snapshots keep copy available and stable across TUI redraws. AI settings expose global prompts and providers. CLI model, permission and effort defaults are configured through the native tools. AI usage statistics group worktrees under configured root projects and chart the selected date range. Git review arranges an independently toggleable Git sidebar, the changed files, and the diff. It supports working-tree, branch, and historical comparison scopes. Comparisons are bound to project and worktree visits and refresh on review entry; history rows support keyboard activation."
+        brief "Rust and GPUI workspace UI, terminal rendering, project/worktree orchestration and native desktop integration. Terminal layouts restore dormant panes. Mobile-created terminals appear in their worktree and attach to the running session. Worktree-scoped layout revisions invalidate the restore cache and are checked again after the desktop finishes loading. Explicit selection starts shells, the power control stops sessions while retaining their panes, and closing a floating terminal window stops its session. Selection text snapshots keep copy available and stable across TUI redraws. AI settings expose global prompts and providers. CLI model, permission and effort defaults are configured through the native tools. AI usage statistics group worktrees under configured root projects and chart the selected date range. Git review arranges an independently toggleable Git sidebar, the changed files, and the diff. It supports working-tree, branch, and historical comparison scopes. Comparisons are bound to project and worktree visits and refresh on review entry; history rows support keyboard activation and show unpushed commits and the branch total."
         source "fact"
         status "verified"
         evidence "f01500b8-70ac-404d-879d-535593dcff91 52962a4d-75b5-42ef-8e63-6b07d57beed2 995870f7-d95d-46f7-9613-70210b3db7b4 bb227975-e5d0-4a9e-8255-90c1c285e0bf 38e88cbb-fbfb-45fb-92ba-546df25d70f9 ebce4727-61d5-4d44-9987-b586b0297257 cfa11d57-2603-4734-8d33-10f5655f98f4 c837c7ef-96c2-45f7-a656-5475db53ccd3 c3dce9d3-23cd-45ca-a842-2ea0acc3fb32 ccf6be52-43f3-4720-abf2-7711d81c87fb e6215fee-7cae-43ba-a564-9ae2e651cc67 c08e5029-afa8-49fd-a89c-bb98382d4f7e 341cdbec-d36d-480b-9e84-67ea80d9529c 593e8cf2-9eec-40df-a725-6504fa562be5 f0f09380-4c20-43ff-b4d3-be1b70844d51"
-        version "10"
+        version "11"
       }
       terminal_links = component "Terminal Hyperlinks" {
         description "Prefers the OSC 8 URI stored on a screen cell over plain URL detection and passes the complete target with the label column range."
@@ -169,14 +169,14 @@ model {
       }
     }
     git = component "Git Engine" {
-      description "Shared git2 and notify Git service, watchers, worktree operations and remote wire dispatch. The service provides paged history, scoped comparison endpoints, and bounded file previews to desktop and remote hosts."
+      description "Shared git2 and notify Git service, watchers, worktree operations and remote wire dispatch. The service provides paged history with commit reachability against the configured remote upstream, scoped comparison endpoints, and bounded file previews to desktop and remote hosts."
       metadata {
         harness_id "947052ad-bc73-4e0f-be44-da71b25ff455"
-        brief "Shared git2 and notify Git service, watchers, worktree operations and remote wire dispatch. The service provides paged history, scoped comparison endpoints, and bounded file previews to desktop and remote hosts."
+        brief "Shared git2 and notify Git service, watchers, worktree operations and remote wire dispatch. The service provides paged history with commit reachability against the configured remote upstream, scoped comparison endpoints, and bounded file previews to desktop and remote hosts."
         source "fact"
         status "verified"
         evidence "48b50b45-19dc-4dae-aadb-47e47cef6703 05349d2f-42e1-446e-a9de-b088421e2f28"
-        version "2"
+        version "3"
       }
     }
     llm = component "LLM Completion Core" {

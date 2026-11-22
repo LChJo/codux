@@ -232,8 +232,8 @@
     },
     {
       "id": "7cd638d9-f35c-44f7-9652-61e8333f0702",
-      "observedAt": "2026-11-20T11:49:27Z",
-      "hash": "5f77c9d5727ae82e2d7c1e7ec80d824fb2335a29a350727a2e4500a11eefc47a",
+      "observedAt": "2026-11-22T04:28:14Z",
+      "hash": "02f2fc9035d72b52fe9b465ee84beea5e9f3be2e5abbe49cf66fc56474c89a23",
       "claim": "Declared dependencies or calls: Uses workspace services",
       "kind": "source-code",
       "location": {
@@ -242,8 +242,8 @@
     },
     {
       "id": "9d28ab23-9257-45a6-bfbb-b4756c01533c",
-      "observedAt": "2026-11-20T11:49:27Z",
-      "hash": "33a19ffdebd82980440960897739253c7399b0900192be55446b70654a6a7186",
+      "observedAt": "2026-11-22T04:28:14Z",
+      "hash": "6b8adffb95d4ae0b72f7a8b439c10a6b6e3d6db6ccfe79ccbb3f5fa88b8a456c",
       "claim": "Declared dependencies or calls: Uses runtime domain rules",
       "kind": "source-code",
       "location": {
@@ -252,8 +252,8 @@
     },
     {
       "id": "32503d30-a00d-4574-b21c-78eea1a34d4a",
-      "observedAt": "2026-11-20T11:49:27Z",
-      "hash": "ed5e933241e77dce162db7ad93d6c97e5fbac6bb1199983359d89459d93b7d10",
+      "observedAt": "2026-11-22T04:28:14Z",
+      "hash": "63f0b854f3d5b7d4ffeffc9ff7179abb3ff7e0afa219c43bce89a5f25080cbb6",
       "claim": "Declared dependencies or calls: Uses shared memory engine",
       "kind": "source-code",
       "location": {
@@ -562,9 +562,9 @@
     },
     {
       "id": "05349d2f-42e1-446e-a9de-b088421e2f28",
-      "observedAt": "2026-11-18T10:44:06Z",
-      "hash": "1a5e0ef74c445dbf9a6b45e92eee8f1d6963280be8c6022a8d8c254a1ccd86e8",
-      "claim": "The shared Git service reads paged commit history and resolves comparisons to staged, unstaged, or immutable tree endpoints, with bounded file previews.",
+      "observedAt": "2026-11-21T17:49:07Z",
+      "hash": "7aba829b74f3bde2f7ad90fb09b368c93f54f9753b4a9f7a01fddf4ceb084c1a",
+      "claim": "The shared Git service reads paged commit history with branch-wide unpushed counts and per-page marks relative to the configured remote upstream. It resolves comparisons to staged, unstaged, or immutable trees and bounds file previews.",
       "kind": "source-code",
       "location": {
         "path": "crates/codux-git/src/comparison.rs"
@@ -582,9 +582,9 @@
     },
     {
       "id": "593e8cf2-9eec-40df-a725-6504fa562be5",
-      "observedAt": "2026-11-18T12:28:01Z",
-      "hash": "c68e9a9db29824d15986e17d9a4191a5525cae6c0ae0c1362a10cdd71c36d9bc",
-      "claim": "Git history rows are focusable and open commit comparisons through native GPUI keyboard click activation.",
+      "observedAt": "2026-11-21T17:49:07Z",
+      "hash": "85ea2cd877d56b6d2e8ae287bc3cbba7acbf2217adb4f9d993074a48f61350af",
+      "claim": "Git history shows a branch-wide unpushed total and marks individual unpushed commits. Rows are focusable and open commit comparisons through native GPUI keyboard click activation.",
       "kind": "source-code",
       "location": {
         "path": "apps/desktop/src/app/sidebars/git/history.rs"

@@ -3,6 +3,8 @@
 pub struct GitSummary {
     pub branch: String,
     pub upstream: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_upstream_head: Option<String>,
     pub ahead: i64,
     pub behind: i64,
     pub head_pushed: bool,

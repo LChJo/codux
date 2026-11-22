@@ -1,6 +1,6 @@
 [package]
 name = "codux-agent"
-version = "2.1.0"
+version = "2.1.1"
 edition = "2024"
 
 # The cargo binary is `codux-agent` to avoid colliding with the desktop app's

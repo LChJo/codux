@@ -6,6 +6,8 @@ use serde_json::{Value, json};
 pub struct GitStatusSummary {
     pub branch: String,
     pub upstream: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_upstream_head: Option<String>,
     pub ahead: i64,
     pub behind: i64,
     pub staged: usize,
@@ -45,6 +47,7 @@ pub fn git_status_payload(
         "projectPath": project_path.into(),
         "branch": summary.branch,
         "upstream": summary.upstream,
+        "remoteUpstreamHead": summary.remote_upstream_head,
         "ahead": summary.ahead,
         "behind": summary.behind,
         "staged": summary.staged,

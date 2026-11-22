@@ -122,6 +122,7 @@ pub(in crate::app) struct GitHistoryPanelSnapshot {
     language: String,
     branch: String,
     head: Option<String>,
+    remote_upstream_head: Option<String>,
     path: Option<String>,
     scope: Option<WorktreeScopeKey>,
 }
@@ -142,7 +143,12 @@ impl GitHistoryPanelView {
         if self.snapshot == snapshot {
             return;
         }
-        if self.snapshot.scope != snapshot.scope || self.snapshot.head != snapshot.head {
+        if self.snapshot.scope != snapshot.scope
+            || self.snapshot.path != snapshot.path
+            || self.snapshot.branch != snapshot.branch
+            || self.snapshot.head != snapshot.head
+            || self.snapshot.remote_upstream_head != snapshot.remote_upstream_head
+        {
             self.request += 1;
             self.loading = false;
             self.offset = 0;
@@ -231,7 +237,7 @@ impl Render for GitHistoryPanelView {
         } else {
             app_entity.update(cx, |app, cx| {
                 git_history_panel(
-                    page.map(|page| page.commits.as_slice()).unwrap_or_default(),
+                    page,
                     &self.snapshot.branch,
                     self.snapshot.head.as_deref(),
                     self.query.is_empty(),
@@ -405,6 +411,7 @@ impl CoduxApp {
                 .commits
                 .first()
                 .map(|commit| commit.hash.clone()),
+            remote_upstream_head: self.state.git.remote_upstream_head.clone(),
             path: self.selected_worktree_path(),
             scope: current_worktree_scope_key(&self.state),
         }

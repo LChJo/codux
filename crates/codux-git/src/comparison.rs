@@ -50,11 +50,15 @@ pub struct GitCommitDetails {
     pub parents: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitHistoryPage {
     pub commits: Vec<GitCommitSummary>,
     pub has_more: bool,
+    #[serde(default)]
+    pub unpushed_count: usize,
+    #[serde(default)]
+    pub unpushed_hashes: HashSet<String>,
 }
 
 const MAX_COMPARISON_FILE_BYTES: usize = 2 * 1024 * 1024;
@@ -242,27 +246,36 @@ impl GitService {
         limit: usize,
     ) -> Result<GitHistoryPage, String> {
         let repo = open_git_repository(project_path)?;
+        let head = match repo.head() {
+            Ok(head) => head,
+            Err(error)
+                if matches!(
+                    error.code(),
+                    git2::ErrorCode::UnbornBranch | git2::ErrorCode::NotFound
+                ) =>
+            {
+                return Ok(GitHistoryPage::default());
+            }
+            Err(error) => return Err(error.to_string()),
+        };
+        let head_id = head
+            .peel_to_commit()
+            .map_err(|error| error.to_string())?
+            .id();
+        let unpushed =
+            history_unpushed_commits(&repo, &head, head_id).map_err(|error| error.to_string())?;
         let mut walk = repo.revwalk().map_err(|error| error.to_string())?;
         walk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)
             .map_err(|error| error.to_string())?;
-        if let Err(error) = walk.push_head() {
-            return if matches!(
-                error.code(),
-                git2::ErrorCode::UnbornBranch | git2::ErrorCode::NotFound
-            ) {
-                Ok(GitHistoryPage {
-                    commits: Vec::new(),
-                    has_more: false,
-                })
-            } else {
-                Err(error.to_string())
-            };
-        }
+        walk.push(head_id).map_err(|error| error.to_string())?;
         let query = query.trim().to_lowercase();
         let limit = limit.clamp(1, 100);
         let tags = git2_tags_by_commit(&repo);
         let mut matched = 0;
-        let mut commits = Vec::new();
+        let mut page = GitHistoryPage {
+            unpushed_count: unpushed.len(),
+            ..Default::default()
+        };
         for oid in walk {
             let oid = oid.map_err(|error| error.to_string())?;
             let commit = repo.find_commit(oid).map_err(|error| error.to_string())?;
@@ -285,13 +298,14 @@ impl GitService {
                 matched += 1;
                 continue;
             }
-            if commits.len() == limit {
-                return Ok(GitHistoryPage {
-                    commits,
-                    has_more: true,
-                });
+            if page.commits.len() == limit {
+                page.has_more = true;
+                break;
             }
-            commits.push(GitCommitSummary {
+            if unpushed.contains(&oid) {
+                page.unpushed_hashes.insert(hash.clone());
+            }
+            page.commits.push(GitCommitSummary {
                 hash,
                 title,
                 author,
@@ -300,11 +314,25 @@ impl GitService {
                 graph_prefix: String::new(),
             });
         }
-        Ok(GitHistoryPage {
-            commits,
-            has_more: false,
-        })
+        Ok(page)
     }
+}
+
+fn history_unpushed_commits(
+    repo: &GitRepository,
+    head: &git2::Reference<'_>,
+    head_id: git2::Oid,
+) -> Result<HashSet<git2::Oid>, git2::Error> {
+    let Some(upstream) = remote_upstream_tip(repo, head) else {
+        return Ok(HashSet::new());
+    };
+    if upstream == head_id {
+        return Ok(HashSet::new());
+    }
+    let mut walk = repo.revwalk()?;
+    walk.push(head_id)?;
+    walk.hide(upstream)?;
+    walk.collect()
 }
 
 fn comparison_display_text(text: &str) -> std::borrow::Cow<'_, str> {
