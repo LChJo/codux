@@ -451,12 +451,14 @@ fn remote_ai_stats_payload_matches_tauri_empty_snapshot_shape() {
 
 #[test]
 fn remote_git_status_payload_matches_domain_shape() {
+    let upstream_head = "0123456789abcdef0123456789abcdef01234567";
     let payload = super::host::remote_git_status_payload(
         "project-1".to_string(),
         "/tmp/project-1".to_string(),
         crate::git::GitSummary {
             branch: "main".to_string(),
             upstream: Some("origin/main".to_string()),
+            remote_upstream_head: Some(upstream_head.to_string()),
             ahead: 2,
             behind: 1,
             head_pushed: true,
@@ -495,6 +497,12 @@ fn remote_git_status_payload_matches_domain_shape() {
     assert_eq!(
         payload.get("branch").and_then(serde_json::Value::as_str),
         Some("main")
+    );
+    assert_eq!(
+        payload
+            .get("remoteUpstreamHead")
+            .and_then(serde_json::Value::as_str),
+        Some(upstream_head)
     );
     assert_eq!(
         payload.get("changes").and_then(serde_json::Value::as_u64),
