@@ -1,10 +1,10 @@
 use super::{AIRuntimeStateCore, helpers::now_seconds};
+use crate::ai_runtime::constants::NEEDS_INPUT_VISIBLE_SECONDS;
 use crate::ai_runtime::log::runtime_log_line;
 use crate::ai_runtime::snapshot::{
     AILatestCompletion, AIProjectPhase, AIProjectStateSnapshot, AIProjectTotals,
     AIRuntimeCompletionEvent, AIRuntimeStateSnapshot, AISessionSnapshot,
 };
-const NEEDS_INPUT_VISIBLE_SECONDS: f64 = 30.0;
 
 pub(super) fn state_snapshot_unlocked(core: &AIRuntimeStateCore) -> AIRuntimeStateSnapshot {
     let now = now_seconds();

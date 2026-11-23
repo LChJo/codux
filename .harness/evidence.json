@@ -482,12 +482,22 @@
     },
     {
       "id": "df0a6675-5699-41b4-a97b-a834a1632389",
-      "observedAt": "2026-11-20T10:09:51Z",
-      "hash": "4697192111e6f0e98a7ffbd5ef863077dcd0ac147c5f96cfd0b4a806a64d6f81",
-      "claim": "The shared supervisor publishes Codex terminal status from observed turn state, rejects conflicting completion hints, and preserves confirmed completion when a late title update withdraws its hint.",
+      "observedAt": "2026-11-23T08:08:08Z",
+      "hash": "b4f0c643fbcd31dbda643605bbe14e295993627e3bea5290d9692cafe51c983b",
+      "claim": "The supervisor reconciles live Codex approval and resume signals with active turns before publishing terminal status. It preserves confirmed completion, expires unconfirmed waits, and clears badges on terminal removal.",
       "kind": "source-code",
       "location": {
         "path": "crates/codux-runtime-live/src/ai_runtime/supervisor.rs"
+      }
+    },
+    {
+      "id": "24ca8e3e-ae1e-48b6-8913-309e18aba8a7",
+      "observedAt": "2026-11-23T08:08:08Z",
+      "hash": "78601df38d802870b81740e9588709ae0a17c4bd2c4507f65c095d2f2e808a19",
+      "claim": "The desktop derives project, worktree, and terminal indicators from pane lifecycle entries and preserves event ordering across clears and completion acknowledgments.",
+      "kind": "source-code",
+      "location": {
+        "path": "apps/desktop/src/app/agent_lifecycle.rs"
       }
     },
     {

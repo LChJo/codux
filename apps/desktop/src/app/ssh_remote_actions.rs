@@ -1284,11 +1284,8 @@ impl CoduxApp {
         let drained = self
             .runtime_service
             .drain_ai_runtime_events_and_enqueue_memory();
-        let terminal_status_changed =
+        let mut pane_lifecycle_changed =
             self.drain_and_apply_terminal_lifecycle_events(&drained.events);
-        if terminal_status_changed {
-            self.ensure_agent_pulse(cx);
-        }
         self.dispatch_ai_completion_notifications(&drained.events);
         self.refresh_dock_badge_for_ai_runtime_events(&drained.events, cx);
         self.ai_runtime_state_save_tick = self.ai_runtime_state_save_tick.wrapping_add(1);
@@ -1304,6 +1301,7 @@ impl CoduxApp {
         if should_refresh_ai_state {
             let previous_project_states = self.state.ai_runtime_state.project_states.clone();
             let live_ai_snapshot = self.runtime_service.ai_runtime_state_snapshot();
+            pane_lifecycle_changed |= self.reconcile_claude_agent_lifecycle(&live_ai_snapshot);
             self.state.ai_runtime_state = self
                 .runtime_service
                 .summarize_ai_runtime_state_snapshot(&live_ai_snapshot);
@@ -1322,7 +1320,7 @@ impl CoduxApp {
                 self.pet_snapshot = snapshot;
             }
         }
-        self.maybe_refresh_git_for_agent_activity(terminal_status_changed, cx);
+        self.maybe_refresh_git_for_agent_activity(pane_lifecycle_changed, cx);
         let remote_ai_stats_changed = self.apply_pushed_remote_ai_stats();
         let memory_event = current_memory_update_event();
         let memory_update_event = memory_event.revision > self.memory_seen_revision;
@@ -1354,15 +1352,14 @@ impl CoduxApp {
             || child_window_events > 0
             || !remote_events.is_empty()
             || ai_activity_changed
-            || terminal_status_changed
+            || pane_lifecycle_changed
             || remote_ai_stats_changed
             || !drained.memory.is_empty()
             || memory_update_event
             || has_scheduled_refresh;
         if changed {
-            if terminal_status_changed {
-                self.sync_project_lifecycle_state(cx);
-                self.invalidate_task_column(cx);
+            if pane_lifecycle_changed {
+                self.refresh_agent_lifecycle_ui(cx);
             }
             self.runtime_trace(
                 "runtime-activity",
@@ -1504,9 +1501,6 @@ impl CoduxApp {
         let claude_runtime_status_changed =
             self.reconcile_claude_agent_lifecycle(&live_ai_snapshot);
         let pane_lifecycle_changed = terminal_status_changed || claude_runtime_status_changed;
-        if pane_lifecycle_changed {
-            self.ensure_agent_pulse(cx);
-        }
         self.maybe_refresh_git_for_agent_activity(pane_lifecycle_changed, cx);
         let memory_event = current_memory_update_event();
         let memory_update_event = memory_event.revision > self.memory_seen_revision;
@@ -1559,8 +1553,7 @@ impl CoduxApp {
         }
 
         if pane_lifecycle_changed {
-            self.sync_project_lifecycle_state(cx);
-            self.invalidate_task_column(cx);
+            self.refresh_agent_lifecycle_ui(cx);
         }
         let memory_events = drained.memory.len() + usize::from(memory_update_event);
         let changed = ai_activity_changed || memory_events > 0 || pane_lifecycle_changed;

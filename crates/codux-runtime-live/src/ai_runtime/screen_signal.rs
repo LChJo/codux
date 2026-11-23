@@ -45,6 +45,23 @@ pub fn detect_screen_signal(
     ScreenSignal::Unknown
 }
 
+pub(super) fn detect_codex_screen_signal(rendered_text: &str) -> ScreenSignal {
+    let region = bottom_region(rendered_text, SCAN_TAIL_ROWS).to_lowercase();
+    for line in region.lines().rev().map(str::trim) {
+        // The approval footer also contains "esc to cancel". Match it first
+        // and ignore conversational questions in the enclosing transcript.
+        if line.contains("esc to cancel")
+            && (line.starts_with("press enter to confirm") || line.contains("enter to submit"))
+        {
+            return ScreenSignal::Waiting;
+        }
+        if line.contains("esc to interrupt") || line.contains("ctrl+c to interrupt") {
+            return ScreenSignal::Running;
+        }
+    }
+    ScreenSignal::Unknown
+}
+
 fn matches_any(text: &str, patterns: &[&str]) -> bool {
     patterns.iter().any(|pattern| text.contains(pattern))
 }
@@ -93,6 +110,26 @@ mod tests {
     const COMMON: &[AIRuntimeScreenPatterns] = &[COMMON_SCREEN_PATTERNS];
     const COMMON_AND_KIRO: &[AIRuntimeScreenPatterns] =
         &[COMMON_SCREEN_PATTERNS, KIRO_SCREEN_PATTERNS];
+
+    #[test]
+    fn codex_uses_the_latest_interaction_footer() {
+        let approval = "Would you like to run the following command?\n  1. Yes, proceed (y)\nPress enter to confirm or esc to cancel";
+        assert_eq!(detect_codex_screen_signal(approval), ScreenSignal::Waiting);
+        assert_eq!(
+            detect_codex_screen_signal(
+                "Question 1/2\nTab to advance · Enter to submit · Esc to cancel"
+            ),
+            ScreenSignal::Waiting
+        );
+        assert_eq!(
+            detect_codex_screen_signal(&format!("{approval}\nWorking (esc to interrupt)")),
+            ScreenSignal::Running
+        );
+        assert_eq!(
+            detect_codex_screen_signal("Would you like me to apply this change?\n› Ask Codex"),
+            ScreenSignal::Unknown
+        );
+    }
 
     #[test]
     fn detects_claude_approval_prompt() {

@@ -1,8 +1,8 @@
 use crate::ai_runtime::{
     constants::{
         CLAUDE_STALE_PRELAUNCH_OPEN_TURN_SOURCE, CODEX_STALE_PRELAUNCH_OPEN_TURN_SOURCE,
-        COMPLETION_TIMESTAMP_SKEW_SECONDS, RESPONDING_RENEWAL_MAX_SECONDS,
-        RUNNING_STATE_RENEWAL_SECONDS,
+        COMPLETION_TIMESTAMP_SKEW_SECONDS, NEEDS_INPUT_VISIBLE_SECONDS,
+        RESPONDING_RENEWAL_MAX_SECONDS, RUNNING_STATE_RENEWAL_SECONDS,
     },
     screen_signal::ScreenSignal,
     snapshot::{AIRuntimeContextSnapshot, AISessionSnapshot, AIUsageAmountSnapshot},
@@ -24,8 +24,16 @@ pub(in crate::ai_runtime::store) fn apply_screen_signal_unlocked(
     let Some(session) = core.sessions.get(terminal_id).cloned() else {
         return false;
     };
+    let now = now_seconds();
     let next_state = match signal {
         ScreenSignal::Waiting if session.state == "responding" => "needsInput",
+        ScreenSignal::Waiting
+            if session.tool == "codex"
+                && session.state == "needsInput"
+                && now - session.updated_at >= NEEDS_INPUT_VISIBLE_SECONDS / 2.0 =>
+        {
+            "needsInput"
+        }
         ScreenSignal::Running if session.state == "needsInput" => "responding",
         ScreenSignal::Running if allow_idle_start && session.state == "idle" => "responding",
         _ => return false,
@@ -34,11 +42,13 @@ pub(in crate::ai_runtime::store) fn apply_screen_signal_unlocked(
     next.state = next_state.to_string();
     next.status = status_for_runtime_state(next_state).to_string();
     next.is_running = next_state == "responding";
+    next.updated_at = next.updated_at.max(now);
     if next_state == "responding" {
-        let now = now_seconds();
+        next.notification_type = None;
+        next.target_tool_name = None;
+        next.message = None;
         next.active_turn_started_at = next.active_turn_started_at.or(Some(now));
         next.runtime_turn_started_at = next.runtime_turn_started_at.or(Some(now));
-        next.updated_at = next.updated_at.max(now);
         next.was_interrupted = false;
         next.has_completed_turn = false;
         next.completed_turn_started_at = None;

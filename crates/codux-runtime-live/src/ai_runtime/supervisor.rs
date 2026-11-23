@@ -3,7 +3,9 @@ use crate::ai_runtime::{
         AIRuntimeBindingFileEvent, AIRuntimeBindingScanState, read_changed_runtime_binding,
         runtime_file_signature, scan_runtime_bindings,
     },
-    constants::{POLL_INTERVAL_SECONDS, TRANSCRIPT_MONITOR_INTERVAL_MS},
+    constants::{
+        NEEDS_INPUT_VISIBLE_SECONDS, POLL_INTERVAL_SECONDS, TRANSCRIPT_MONITOR_INTERVAL_MS,
+    },
     event_file::drain_runtime_event_dir,
     frame::runtime_frame_to_hook,
     log::runtime_log_line,
@@ -11,14 +13,14 @@ use crate::ai_runtime::{
     payload::AIRuntimeEvent,
     probe::{claude::ClaudeProbeCache, probe_runtime_with_claude_cache},
     registry::AIRuntimeRegistry,
-    screen_signal::detect_screen_signal,
+    screen_signal::{ScreenSignal, detect_codex_screen_signal, detect_screen_signal},
     snapshot::{AIRuntimeCompletionEvent, AIRuntimeStateSnapshot, AISessionSnapshot},
     state::canonical_tool_name,
     store::{AIRuntimeStateMutation, AIRuntimeStateStore},
     store::{probe_request_for_session, should_poll_runtime_session},
     terminal_status::{
-        TERMINAL_COMMAND_OSC_SOURCE, TERMINAL_LIFECYCLE_SOURCE, TERMINAL_TITLE_OSC_SOURCE,
-        TerminalStatusEvent, TerminalStatusState,
+        TERMINAL_COMMAND_OSC_SOURCE, TERMINAL_LIFECYCLE_SOURCE, TERMINAL_NOTIFICATION_OSC_SOURCE,
+        TERMINAL_TITLE_OSC_SOURCE, TerminalStatusEvent, TerminalStatusState,
     },
     tool_driver::{runtime_screen_patterns, screen_starts_idle_tool},
 };
@@ -292,18 +294,46 @@ fn supervisor_loop(
             AIRuntimeSupervisorMessage::Poll => {
                 let mutation =
                     poll_runtime_sessions(state, registry, "interval", None, &mut claude_cache);
+                if !mutation.did_change
+                    && codex_terminals
+                        .values()
+                        .any(|turn| turn.state == TerminalStatusState::Waiting)
+                {
+                    // A wait can age out of the visible snapshot without changing the store.
+                    let snapshot = state.snapshot();
+                    reconcile_codex_terminal_statuses(
+                        &context,
+                        &mut codex_terminals,
+                        &snapshot.sessions,
+                    );
+                }
                 after_mutation(&context, &mut codex_terminals, mutation);
+                expire_unconfirmed_terminal_waits(&context, now_seconds());
             }
             AIRuntimeSupervisorMessage::ScreenSignal(terminal_id) => {
                 let mutation = apply_screen_signal_for_terminal(state, registry, &terminal_id);
                 after_mutation(&context, &mut codex_terminals, mutation);
             }
             AIRuntimeSupervisorMessage::TerminalStatus(mut status) => {
+                if registry
+                    .binding(&status.terminal_id)
+                    .is_some_and(|binding| {
+                        binding.terminal_instance_id.is_some()
+                            && binding.terminal_instance_id != status.terminal_instance_id
+                    })
+                {
+                    continue;
+                }
                 if let Some(runtime) = codex_terminals.get(&status.terminal_id) {
-                    let Some(state) = runtime.status_for_hint(&status) else {
+                    if let Some(signal) = runtime.screen_signal_for_hint(&status, registry) {
+                        let mutation = state.apply_screen_signal(&status.terminal_id, signal);
+                        after_mutation(&context, &mut codex_terminals, mutation);
+                        continue;
+                    }
+                    let Some(next) = runtime.status_for_hint(&status) else {
                         continue;
                     };
-                    status.state = state;
+                    status.state = next;
                 }
                 publish_terminal_status(&context, status);
             }
@@ -327,8 +357,13 @@ fn supervisor_loop(
                     ..Default::default()
                 };
                 let removed = mutation.did_change;
-                if let Ok(mut statuses) = terminal_statuses.lock() {
-                    statuses.remove(&terminal_id);
+                codex_terminals.remove(&terminal_id);
+                let status = terminal_statuses
+                    .lock()
+                    .ok()
+                    .and_then(|mut statuses| statuses.remove(&terminal_id));
+                if let Some(status) = status {
+                    publish_terminal_status(&context, cleared_terminal_status(status));
                 }
                 after_mutation(&context, &mut codex_terminals, mutation);
                 let _ = reply.send(removed);
@@ -479,6 +514,43 @@ fn after_mutation(
 }
 
 impl CodexTurnStatus {
+    fn screen_signal_for_hint(
+        &self,
+        hint: &TerminalStatusEvent,
+        registry: &AIRuntimeRegistry,
+    ) -> Option<ScreenSignal> {
+        if self.terminal_instance_id != hint.terminal_instance_id
+            || !self
+                .turn_started_at
+                .is_some_and(|started_at| hint.updated_at >= started_at)
+            || !matches!(
+                self.state,
+                TerminalStatusState::Working | TerminalStatusState::Waiting
+            )
+        {
+            return None;
+        }
+        match (hint.source.as_str(), hint.state) {
+            (
+                TERMINAL_TITLE_OSC_SOURCE | TERMINAL_NOTIFICATION_OSC_SOURCE,
+                TerminalStatusState::Waiting,
+            ) => Some(ScreenSignal::Waiting),
+            (TERMINAL_TITLE_OSC_SOURCE, TerminalStatusState::Working)
+                if self.state == TerminalStatusState::Waiting =>
+            {
+                Some(ScreenSignal::Running)
+            }
+            (TERMINAL_TITLE_OSC_SOURCE, TerminalStatusState::Idle)
+                if self.state == TerminalStatusState::Waiting
+                    && terminal_screen_signal(registry, &hint.terminal_id, "codex")
+                        != ScreenSignal::Waiting =>
+            {
+                Some(ScreenSignal::Running)
+            }
+            _ => None,
+        }
+    }
+
     fn status_for_hint(&self, hint: &TerminalStatusEvent) -> Option<TerminalStatusState> {
         if self.terminal_instance_id != hint.terminal_instance_id
             || hint.source == TERMINAL_LIFECYCLE_SOURCE
@@ -487,12 +559,10 @@ impl CodexTurnStatus {
         }
         match hint.state {
             TerminalStatusState::Completed => None,
+            TerminalStatusState::Waiting => None,
             TerminalStatusState::Idle
                 if hint.source == TERMINAL_TITLE_OSC_SOURCE
-                    && matches!(
-                        self.state,
-                        TerminalStatusState::Working | TerminalStatusState::Waiting
-                    ) =>
+                    && self.state == TerminalStatusState::Working =>
             {
                 Some(self.state)
             }
@@ -501,6 +571,47 @@ impl CodexTurnStatus {
             _ => Some(hint.state),
         }
     }
+}
+
+fn expire_unconfirmed_terminal_waits(context: &AIRuntimeSupervisorLoopContext, now: f64) {
+    let candidates = context
+        .terminal_statuses
+        .lock()
+        .map(|statuses| {
+            statuses
+                .values()
+                .filter(|status| {
+                    status.state == TerminalStatusState::Waiting
+                        && status.source != CODEX_RUNTIME_STATUS_SOURCE
+                        && now - status.updated_at >= NEEDS_INPUT_VISIBLE_SECONDS
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    for status in candidates {
+        let binding = context.registry.binding(&status.terminal_id);
+        let tool = if status.source == TERMINAL_TITLE_OSC_SOURCE {
+            "codex"
+        } else {
+            binding
+                .as_ref()
+                .and_then(|binding| binding.tool.as_deref())
+                .unwrap_or_default()
+        };
+        if terminal_screen_signal(&context.registry, &status.terminal_id, tool)
+            != ScreenSignal::Waiting
+        {
+            publish_terminal_status(context, cleared_terminal_status(status));
+        }
+    }
+}
+
+fn cleared_terminal_status(mut status: TerminalStatusEvent) -> TerminalStatusEvent {
+    status.state = TerminalStatusState::Idle;
+    status.updated_at = now_seconds().max(status.updated_at);
+    status.source = TERMINAL_LIFECYCLE_SOURCE.to_string();
+    status
 }
 
 fn reconcile_codex_terminal_statuses(
@@ -713,11 +824,25 @@ fn apply_screen_signal_for_session(
     registry: &AIRuntimeRegistry,
     session: &crate::ai_runtime::AISessionSnapshot,
 ) -> AIRuntimeStateMutation {
-    let signal = registry
-        .screen_text(&session.terminal_id)
-        .map(|text| detect_screen_signal(&text, &runtime_screen_patterns(&session.tool)))
-        .unwrap_or(crate::ai_runtime::screen_signal::ScreenSignal::Unknown);
+    let signal = terminal_screen_signal(registry, &session.terminal_id, &session.tool);
     state.apply_screen_signal(&session.terminal_id, signal)
+}
+
+fn terminal_screen_signal(
+    registry: &AIRuntimeRegistry,
+    terminal_id: &str,
+    tool: &str,
+) -> ScreenSignal {
+    registry
+        .screen_text(terminal_id)
+        .map(|text| {
+            if canonical_tool_name(tool).as_deref() == Some("codex") {
+                detect_codex_screen_signal(&text)
+            } else {
+                detect_screen_signal(&text, &runtime_screen_patterns(tool))
+            }
+        })
+        .unwrap_or(ScreenSignal::Unknown)
 }
 
 fn start_poll_loop(tx: SyncSender<AIRuntimeSupervisorMessage>) {
@@ -969,6 +1094,7 @@ mod tests {
             worktree_id: Some("worktree-1".to_string()),
             cwd: dir.display().to_string(),
             is_active: true,
+            terminal_instance_id: Some("instance-1".to_string()),
             ..Default::default()
         });
         supervisor
@@ -982,6 +1108,7 @@ mod tests {
         writeln!(file, "{start}\n{answer}").unwrap();
         let hook = serde_json::json!({"kind":"ai-hook","payload":{
             "kind":"promptSubmitted","terminalID":"codex-term","projectID":"project-1",
+            "terminalInstanceID":"instance-1",
             "projectName":"Codux","projectPath":dir,"sessionTitle":"Task","tool":"codex",
             "metadata":{"transcriptPath":transcript},"updatedAt":now
         }});
@@ -998,7 +1125,7 @@ mod tests {
         supervisor
             .submit_terminal_status(TerminalStatusEvent {
                 terminal_id: "codex-term".to_string(),
-                terminal_instance_id: None,
+                terminal_instance_id: Some("instance-1".to_string()),
                 project_id: None,
                 worktree_id: None,
                 state: TerminalStatusState::Completed,
@@ -1011,7 +1138,7 @@ mod tests {
         assert_eq!(state(), Some(TerminalStatusState::Working));
         let title_status = |state| TerminalStatusEvent {
             terminal_id: "codex-term".to_string(),
-            terminal_instance_id: None,
+            terminal_instance_id: Some("instance-1".to_string()),
             project_id: Some("root-1".to_string()),
             worktree_id: Some("worktree-1".to_string()),
             state,
@@ -1022,10 +1149,21 @@ mod tests {
             .submit_terminal_status(title_status(TerminalStatusState::Waiting))
             .unwrap();
         wait_for(|| state() == Some(TerminalStatusState::Waiting));
+        assert_eq!(supervisor.state_snapshot().needs_input_count, 1);
+        supervisor
+            .submit_terminal_status(title_status(TerminalStatusState::Working))
+            .unwrap();
+        wait_for(|| state() == Some(TerminalStatusState::Working));
+        assert_eq!(supervisor.state_snapshot().needs_input_count, 0);
+        supervisor
+            .submit_terminal_status(title_status(TerminalStatusState::Waiting))
+            .unwrap();
+        wait_for(|| state() == Some(TerminalStatusState::Waiting));
         supervisor
             .submit_terminal_status(title_status(TerminalStatusState::Idle))
             .unwrap();
         wait_for(|| state() == Some(TerminalStatusState::Working));
+        assert_eq!(supervisor.state_snapshot().needs_input_count, 0);
         let complete = serde_json::json!({"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","completed_at":now_seconds()}});
         writeln!(file, "{complete}").unwrap();
         supervisor.poll_once().unwrap();
@@ -1036,7 +1174,72 @@ mod tests {
                 .as_deref(),
             Some("worktree-1")
         );
+        supervisor
+            .submit_terminal_status(title_status(TerminalStatusState::Waiting))
+            .unwrap();
+        assert!(!supervisor.remove_session("queue-barrier"));
+        assert_eq!(
+            state(),
+            Some(TerminalStatusState::Completed),
+            "a title hint must not put a finished turn back into Waiting"
+        );
+        supervisor
+            .submit_terminal_status(title_status(TerminalStatusState::Idle))
+            .unwrap();
+        assert!(!supervisor.remove_session("queue-barrier"));
+        assert_eq!(state(), Some(TerminalStatusState::Completed));
+        let mut old_instance = title_status(TerminalStatusState::Waiting);
+        old_instance.terminal_instance_id = Some("retired-instance".to_string());
+        supervisor.submit_terminal_status(old_instance).unwrap();
+        assert!(!supervisor.remove_session("queue-barrier"));
+        assert_eq!(state(), Some(TerminalStatusState::Completed));
         drop(file);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn poll_clears_stale_title_wait_and_keeps_visible_approval() {
+        let supervisor = AIRuntimeSupervisor::new();
+        let registry = AIRuntimeRegistry::shared();
+        let dir = std::env::temp_dir().join(format!("codux-stale-wait-{}", uuid::Uuid::new_v4()));
+        supervisor
+            .start(
+                Arc::clone(&registry),
+                dir.join("events"),
+                dir.join("bindings"),
+            )
+            .unwrap();
+        let screen = Arc::new(parking_lot::Mutex::new(
+            codux_terminal_core::HeadlessTerminalScreen::new(80, 24, 100),
+        ));
+        registry.register_screen("term", Arc::downgrade(&screen));
+        screen
+            .lock()
+            .process(b"Press enter to confirm or esc to cancel");
+
+        let waiting = TerminalStatusEvent {
+            terminal_id: "term".to_string(),
+            terminal_instance_id: None,
+            project_id: Some("project".to_string()),
+            worktree_id: Some("worktree".to_string()),
+            state: TerminalStatusState::Waiting,
+            updated_at: now_seconds() - NEEDS_INPUT_VISIBLE_SECONDS - 1.0,
+            source: TERMINAL_TITLE_OSC_SOURCE.to_string(),
+        };
+        supervisor.submit_terminal_status(waiting.clone()).unwrap();
+        supervisor.poll_once().unwrap();
+        assert!(!supervisor.remove_session("queue-barrier"));
+        assert_eq!(supervisor.terminal_statuses_snapshot(), vec![waiting]);
+
+        screen.lock().process(b"\x1b[2J\x1b[HAsk Codex");
+        supervisor.poll_once().unwrap();
+        assert!(!supervisor.remove_session("queue-barrier"));
+        assert!(supervisor.terminal_statuses_snapshot().is_empty());
+        assert!(supervisor.drain_events().iter().any(|event| matches!(
+            event,
+            AIRuntimeSupervisorEvent::TerminalStatus { status }
+                if status.terminal_id == "term" && status.state == TerminalStatusState::Idle
+        )));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1101,6 +1304,11 @@ mod tests {
         assert!(events.iter().any(|event| matches!(
             event,
             AIRuntimeSupervisorEvent::State { snapshot } if snapshot.sessions.is_empty()
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            AIRuntimeSupervisorEvent::TerminalStatus { status }
+                if status.terminal_id == "term-1" && status.state == TerminalStatusState::Idle
         )));
         let _ = std::fs::remove_dir_all(dir);
     }

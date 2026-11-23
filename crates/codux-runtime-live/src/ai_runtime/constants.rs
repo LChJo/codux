@@ -26,6 +26,7 @@ pub const COMPLETION_TIMESTAMP_SKEW_SECONDS: f64 = 1.0;
 /// a slow *running* tool needs the process-tree check (Layer 3); until then this
 /// only fires when the session's permission mode can still prompt at all.
 pub const NEEDS_INPUT_IDLE_SECONDS: f64 = 4.0;
+pub(crate) const NEEDS_INPUT_VISIBLE_SECONDS: f64 = 30.0;
 pub const CODEX_INTERVAL_POLL_MINIMUM_SECONDS: f64 = 60.0;
 pub const CODEX_LIVE_TRANSCRIPT_TAIL_BYTES: u64 = 128 * 1024;
 pub const CODEX_LIVE_TRANSCRIPT_TAIL_LINES: usize = 260;

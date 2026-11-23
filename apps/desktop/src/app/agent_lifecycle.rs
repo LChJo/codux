@@ -2,7 +2,8 @@ use super::ai_runtime_status::AgentLifecycleState;
 use super::{CoduxApp, ProjectInfo, WorktreeInfo};
 use crate::terminal::TerminalPane;
 use codux_runtime::ai_runtime::{
-    AIRuntimeStateSnapshot, TerminalStatusEvent, TerminalStatusState, canonical_tool_name,
+    AIRuntimeStateSnapshot, TERMINAL_COMMAND_OSC_SOURCE, TerminalStatusEvent, TerminalStatusState,
+    canonical_tool_name,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -73,7 +74,9 @@ impl PaneAgentLifecycle {
 
     fn accepts_status_event(&self, terminal_instance_id: Option<&str>, updated_at: f64) -> bool {
         if self.terminal_instance_id.as_deref() == terminal_instance_id {
-            return self.updated_at <= 0.0 || (updated_at > 0.0 && updated_at >= self.updated_at);
+            return self.updated_at <= 0.0
+                || updated_at > self.updated_at
+                || (updated_at == self.updated_at && self.state != AgentLifecycleState::Idle);
         }
         updated_at > self.updated_at
     }
@@ -152,11 +155,14 @@ fn reconcile_runtime_agent_lifecycle_entries<'a>(
         let entry = entries
             .entry(terminal_id.to_string())
             .or_insert_with(PaneAgentLifecycle::new);
+        let worktree_id = entry
+            .worktree_id
+            .clone()
+            .or_else(|| Some(project_id.to_string()));
         let project_id = entry
             .project_id
             .clone()
             .or_else(|| Some(project_id.to_string()));
-        let worktree_id = entry.worktree_id.clone();
         let terminal_instance_id = terminal_instance_id
             .map(str::to_string)
             .or_else(|| entry.terminal_instance_id.clone());
@@ -187,6 +193,12 @@ fn reconcile_runtime_agent_lifecycle_entries<'a>(
 }
 
 impl CoduxApp {
+    pub(in crate::app) fn refresh_agent_lifecycle_ui(&mut self, cx: &mut gpui::Context<Self>) {
+        self.ensure_agent_pulse(cx);
+        self.sync_project_lifecycle_state(cx);
+        self.invalidate_task_column(cx);
+    }
+
     pub(in crate::app) fn any_pane_agent_working(&self) -> bool {
         self.pane_agent_lifecycle
             .values()
@@ -341,9 +353,20 @@ impl CoduxApp {
             return false;
         }
         self.note_trigger_terminal_status(status);
-        let Some(next) = agent_lifecycle_state_for_terminal_status(status.state) else {
-            return self.clear_pane_agent_lifecycle(&status.terminal_id);
-        };
+        let next = agent_lifecycle_state_for_terminal_status(status.state);
+        if next == AgentLifecycleState::Idle
+            && self
+                .pane_agent_lifecycle
+                .get(&status.terminal_id)
+                .is_none_or(|entry| {
+                    entry.state == AgentLifecycleState::Completed
+                        && status.source == TERMINAL_COMMAND_OSC_SOURCE
+                })
+        {
+            return false;
+        }
+        // Keep the last accepted timestamp after clearing a visible dot so a
+        // delayed event cannot light it up again.
         let terminal_id = status.terminal_id.clone();
         let worktree_id = normalized_status_id(status.worktree_id.as_deref());
         let project_id =
@@ -495,7 +518,12 @@ impl CoduxApp {
 }
 
 fn lifecycle_belongs_to_worktree(lifecycle: &PaneAgentLifecycle, worktree: &WorktreeInfo) -> bool {
-    lifecycle.worktree_id.as_deref() == Some(worktree.id.as_str())
+    match lifecycle.worktree_id.as_deref() {
+        Some(worktree_id) => worktree_id == worktree.id,
+        None => {
+            worktree.is_default && lifecycle.project_id.as_deref() == Some(&worktree.project_id)
+        }
+    }
 }
 
 fn worktree_project_id<'a>(
@@ -523,16 +551,14 @@ fn status_matches_terminal_instance(
     current_instance_id.is_none() || event_instance_id == current_instance_id
 }
 
-fn agent_lifecycle_state_for_terminal_status(
-    state: TerminalStatusState,
-) -> Option<AgentLifecycleState> {
+fn agent_lifecycle_state_for_terminal_status(state: TerminalStatusState) -> AgentLifecycleState {
     match state {
-        TerminalStatusState::Idle => None,
-        TerminalStatusState::Working => Some(AgentLifecycleState::Working),
-        TerminalStatusState::Waiting => Some(AgentLifecycleState::Waiting),
-        TerminalStatusState::Completed => Some(AgentLifecycleState::Completed),
-        TerminalStatusState::Error => Some(AgentLifecycleState::Error),
-        TerminalStatusState::Warning => Some(AgentLifecycleState::Warning),
+        TerminalStatusState::Idle => AgentLifecycleState::Idle,
+        TerminalStatusState::Working => AgentLifecycleState::Working,
+        TerminalStatusState::Waiting => AgentLifecycleState::Waiting,
+        TerminalStatusState::Completed => AgentLifecycleState::Completed,
+        TerminalStatusState::Error => AgentLifecycleState::Error,
+        TerminalStatusState::Warning => AgentLifecycleState::Warning,
     }
 }
 
@@ -822,6 +848,19 @@ mod tests {
     }
 
     #[test]
+    fn idle_and_dismissed_completion_reject_stale_status_replay() {
+        for state in [AgentLifecycleState::Idle, AgentLifecycleState::Completed] {
+            let mut entry = PaneAgentLifecycle::new();
+            entry.apply_status_event(state, None, None, Some("instance".to_string()), 20.0, None);
+            entry.dismiss_completed();
+
+            assert!(!entry.accepts_status_event(Some("instance"), 19.0));
+            assert!(!entry.accepts_status_event(Some("instance"), 20.0));
+            assert!(entry.accepts_status_event(Some("instance"), 21.0));
+        }
+    }
+
+    #[test]
     fn lifecycle_rejects_old_terminal_instance_event() {
         let mut lifecycle = PaneAgentLifecycle::new();
         lifecycle.apply_status_event(
@@ -926,7 +965,7 @@ mod tests {
 
     #[test]
     fn worktree_requires_matching_worktree_lifecycle() {
-        let worktree = WorktreeInfo {
+        let mut worktree = WorktreeInfo {
             id: "worktree-a".to_string(),
             project_id: "project-a".to_string(),
             name: "feature".to_string(),
@@ -952,6 +991,11 @@ mod tests {
         assert!(lifecycle_belongs_to_worktree(&linked_lifecycle, &worktree));
         assert!(!lifecycle_belongs_to_worktree(&other_lifecycle, &worktree));
         assert!(!lifecycle_belongs_to_worktree(
+            &unscoped_lifecycle,
+            &worktree
+        ));
+        worktree.is_default = true;
+        assert!(lifecycle_belongs_to_worktree(
             &unscoped_lifecycle,
             &worktree
         ));

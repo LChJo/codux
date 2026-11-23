@@ -48,6 +48,7 @@ impl CoduxApp {
     }
 
     pub(super) fn sync_project_lifecycle_state(&mut self, cx: &mut Context<Self>) {
+        self.reconcile_pane_agent_worktree_projects();
         let state = self.ensure_project_list_state(cx);
         let lifecycle = self.project_lifecycle_snapshot();
         state.update(cx, |state, cx| state.set_lifecycle(lifecycle, cx));
