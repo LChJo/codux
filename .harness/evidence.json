@@ -232,8 +232,8 @@
     },
     {
       "id": "7cd638d9-f35c-44f7-9652-61e8333f0702",
-      "observedAt": "2026-11-22T04:28:14Z",
-      "hash": "02f2fc9035d72b52fe9b465ee84beea5e9f3be2e5abbe49cf66fc56474c89a23",
+      "observedAt": "2026-11-24T09:21:55Z",
+      "hash": "519fcb945b284aa90dd14ce4bdab99693777814c3682892192a1db34bd8d32f4",
       "claim": "Declared dependencies or calls: Uses workspace services",
       "kind": "source-code",
       "location": {
@@ -242,8 +242,8 @@
     },
     {
       "id": "9d28ab23-9257-45a6-bfbb-b4756c01533c",
-      "observedAt": "2026-11-22T04:28:14Z",
-      "hash": "6b8adffb95d4ae0b72f7a8b439c10a6b6e3d6db6ccfe79ccbb3f5fa88b8a456c",
+      "observedAt": "2026-11-24T09:21:55Z",
+      "hash": "fa3e4fa66a4c99f6c46b09c1a8ae6c0effb312b7880e3550ec069a1d2dc862d9",
       "claim": "Declared dependencies or calls: Uses runtime domain rules",
       "kind": "source-code",
       "location": {
@@ -252,8 +252,8 @@
     },
     {
       "id": "32503d30-a00d-4574-b21c-78eea1a34d4a",
-      "observedAt": "2026-11-22T04:28:14Z",
-      "hash": "63f0b854f3d5b7d4ffeffc9ff7179abb3ff7e0afa219c43bce89a5f25080cbb6",
+      "observedAt": "2026-11-24T09:21:55Z",
+      "hash": "45d585c6b832d907aadf4afb4757ed3b05043d5a5f4a6201211f8ea9872b0b27",
       "claim": "Declared dependencies or calls: Uses shared memory engine",
       "kind": "source-code",
       "location": {
@@ -482,12 +482,32 @@
     },
     {
       "id": "df0a6675-5699-41b4-a97b-a834a1632389",
-      "observedAt": "2026-11-23T08:08:08Z",
-      "hash": "b4f0c643fbcd31dbda643605bbe14e295993627e3bea5290d9692cafe51c983b",
-      "claim": "The supervisor reconciles live Codex approval and resume signals with active turns before publishing terminal status. It preserves confirmed completion, expires unconfirmed waits, and clears badges on terminal removal.",
+      "observedAt": "2026-11-24T05:52:42Z",
+      "hash": "8d0194a187af0c59213c2f91167d889a2b438e71f7b73c8eb575e6c7e0577603",
+      "claim": "The supervisor reconciles Codex rollout ownership using the matching terminal instance and native process, preserves confirmed completions, and clears unconfirmed title-only work, expired waits, and removed terminal badges.",
       "kind": "source-code",
       "location": {
         "path": "crates/codux-runtime-live/src/ai_runtime/supervisor.rs"
+      }
+    },
+    {
+      "id": "8aeef741-2f23-42f8-b669-bb361cad4368",
+      "observedAt": "2026-11-24T05:52:42Z",
+      "hash": "7830f34d01d7184af90dcb7222ebfc313fd9e47aede9f7e078fdfc4a56f06e74",
+      "claim": "Read-only Codex log and state databases connect a native CLI process to its recent top-level rollout. Candidate paths, workspace, timestamps and existing terminal ownership are checked before switching.",
+      "kind": "source-code",
+      "location": {
+        "path": "crates/codux-runtime-live/src/ai_runtime/probe/codex/process.rs"
+      }
+    },
+    {
+      "id": "8d2a20c3-10cf-4dee-a852-87ecf6ce7cd9",
+      "observedAt": "2026-11-24T05:52:42Z",
+      "hash": "6b52895d8e6874d3fd6b79592673d15b0d7ab537c26d4f17f077e03c0d0213d9",
+      "claim": "Supervisor regressions cover distinct Codex processes switching rollouts in the same worktree, a missed completed turn, retired terminal instance rejection, and clearing an expired title-only Working badge.",
+      "kind": "source-code",
+      "location": {
+        "path": "crates/codux-runtime-live/src/ai_runtime/supervisor/codex_tests.rs"
       }
     },
     {

@@ -31,6 +31,7 @@ pub const CODEX_INTERVAL_POLL_MINIMUM_SECONDS: f64 = 60.0;
 pub const CODEX_LIVE_TRANSCRIPT_TAIL_BYTES: u64 = 128 * 1024;
 pub const CODEX_LIVE_TRANSCRIPT_TAIL_LINES: usize = 260;
 pub const CODEX_STALE_PRELAUNCH_OPEN_TURN_SOURCE: &str = "probe:codex-stale-prelaunch-open-turn";
+pub(crate) const CODEX_PROCESS_ROLLOUT_SOURCE: &str = "probe:codex-process-rollout";
 pub const CLAUDE_STALE_PRELAUNCH_OPEN_TURN_SOURCE: &str = "probe:claude-stale-prelaunch-open-turn";
 pub const TRANSCRIPT_MONITOR_INTERVAL_MS: u64 = 3_000;
 pub const TRANSCRIPT_POLL_MINIMUM_SECONDS: f64 = 3.0;

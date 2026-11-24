@@ -1,8 +1,8 @@
 use crate::ai_runtime::{
     constants::{
-        CLAUDE_STALE_PRELAUNCH_OPEN_TURN_SOURCE, CODEX_STALE_PRELAUNCH_OPEN_TURN_SOURCE,
-        COMPLETION_TIMESTAMP_SKEW_SECONDS, NEEDS_INPUT_VISIBLE_SECONDS,
-        RESPONDING_RENEWAL_MAX_SECONDS, RUNNING_STATE_RENEWAL_SECONDS,
+        CLAUDE_STALE_PRELAUNCH_OPEN_TURN_SOURCE, CODEX_PROCESS_ROLLOUT_SOURCE,
+        CODEX_STALE_PRELAUNCH_OPEN_TURN_SOURCE, COMPLETION_TIMESTAMP_SKEW_SECONDS,
+        NEEDS_INPUT_VISIBLE_SECONDS, RESPONDING_RENEWAL_MAX_SECONDS, RUNNING_STATE_RENEWAL_SECONDS,
     },
     screen_signal::ScreenSignal,
     snapshot::{AIRuntimeContextSnapshot, AISessionSnapshot, AIUsageAmountSnapshot},
@@ -66,10 +66,44 @@ pub(in crate::ai_runtime::store) fn apply_runtime_snapshot_unlocked(
     terminal_id: &str,
     snapshot: AIRuntimeContextSnapshot,
 ) -> bool {
-    let Some(session) = core.sessions.get(terminal_id).cloned() else {
+    let Some(mut session) = core.sessions.get(terminal_id).cloned() else {
         return false;
     };
     let snapshot_tool = canonical_tool_name(&snapshot.tool).unwrap_or_else(|| session.tool.clone());
+    if snapshot.source == CODEX_PROCESS_ROLLOUT_SOURCE
+        && session.ai_session_id.is_some()
+        && snapshot.external_session_id.is_some()
+        && snapshot.external_session_id != session.ai_session_id
+    {
+        session = AISessionSnapshot {
+            state: "idle".into(),
+            status: status_for_runtime_state("idle").into(),
+            is_running: false,
+            input_tokens: 0,
+            output_tokens: 0,
+            cached_input_tokens: 0,
+            total_tokens: 0,
+            baseline_total_tokens: 0,
+            baseline_cached_input_tokens: 0,
+            usage_amounts: Vec::new(),
+            baseline_usage_amounts: Vec::new(),
+            baseline_resolved: false,
+            started_at: snapshot.started_at.or(session.started_at),
+            updated_at: snapshot.started_at.unwrap_or(snapshot.updated_at),
+            active_turn_started_at: None,
+            runtime_turn_started_at: None,
+            completed_turn_started_at: None,
+            session_origin: None,
+            has_completed_turn: false,
+            was_interrupted: false,
+            notification_type: None,
+            target_tool_name: None,
+            message: None,
+            latest_assistant_preview: None,
+            plan: None,
+            ..session
+        };
+    }
     let codewhale_finished_turn_is_authoritative = snapshot_tool == "codewhale"
         && session.state == "idle"
         && (session.was_interrupted || session.has_completed_turn);

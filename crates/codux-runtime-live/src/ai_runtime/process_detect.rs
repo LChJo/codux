@@ -3,17 +3,30 @@ use std::collections::{HashMap, HashSet};
 
 /// Identify each terminal's AI tool by walking the process tree from its shell PID to a descendant AI CLI. Read-only snapshot (`ps` on unix, sysinfo on Windows), non-intrusive.
 pub fn detect_terminal_tools(shell_pids: &[(String, u32)]) -> Option<HashMap<String, String>> {
+    detect_terminal_processes(shell_pids).map(|detected| detected.tools)
+}
+
+#[derive(Default)]
+pub(crate) struct DetectedTerminalProcesses {
+    pub(crate) tools: HashMap<String, String>,
+    pub(crate) codex_pids: HashMap<String, u32>,
+}
+
+pub(crate) fn detect_terminal_processes(
+    shell_pids: &[(String, u32)],
+) -> Option<DetectedTerminalProcesses> {
     if shell_pids.is_empty() {
-        return Some(HashMap::new());
+        return Some(DetectedTerminalProcesses::default());
     }
     let rows = process_snapshot()?;
-    Some(detect_from_rows(shell_pids, &rows))
+    Some(detect_processes_from_rows(shell_pids, &rows))
 }
 
 struct ProcessRow {
     pid: u32,
     ppid: u32,
     command: String,
+    native_codex: bool,
 }
 
 #[cfg(not(windows))]
@@ -59,6 +72,7 @@ fn process_snapshot() -> Option<Vec<ProcessRow>> {
                 pid: pid.as_u32(),
                 ppid: process.parent().map(|parent| parent.as_u32()).unwrap_or(0),
                 command,
+                native_codex: process.name().eq_ignore_ascii_case("codex.exe"),
             }
         })
         .collect();
@@ -71,31 +85,41 @@ fn parse_ps_row(line: &str) -> Option<ProcessRow> {
     let (pid, rest) = trimmed.split_once(char::is_whitespace)?;
     let rest = rest.trim_start();
     let (ppid, command) = rest.split_once(char::is_whitespace)?;
+    let command = command.trim();
     Some(ProcessRow {
         pid: pid.trim().parse().ok()?,
         ppid: ppid.trim().parse().ok()?,
-        command: command.trim().to_string(),
+        command: command.to_string(),
+        native_codex: command
+            .split_whitespace()
+            .next()
+            .is_some_and(|exe| exe.rsplit('/').next() == Some("codex")),
     })
 }
 
-fn detect_from_rows(shell_pids: &[(String, u32)], rows: &[ProcessRow]) -> HashMap<String, String> {
-    let mut children: HashMap<u32, Vec<(u32, &str)>> = HashMap::new();
+fn detect_processes_from_rows(
+    shell_pids: &[(String, u32)],
+    rows: &[ProcessRow],
+) -> DetectedTerminalProcesses {
+    let mut children: HashMap<u32, Vec<&ProcessRow>> = HashMap::new();
     for row in rows {
-        children
-            .entry(row.ppid)
-            .or_default()
-            .push((row.pid, row.command.as_str()));
+        children.entry(row.ppid).or_default().push(row);
     }
-    let mut out = HashMap::new();
+    let mut out = DetectedTerminalProcesses::default();
     for (terminal_id, shell_pid) in shell_pids {
         if let Some(tool) = find_ai_descendant(*shell_pid, &children) {
-            out.insert(terminal_id.clone(), tool);
+            if tool == "codex"
+                && let Some(pid) = find_native_codex(*shell_pid, &children)
+            {
+                out.codex_pids.insert(terminal_id.clone(), pid);
+            }
+            out.tools.insert(terminal_id.clone(), tool);
         }
     }
     out
 }
 
-fn find_ai_descendant(root: u32, children: &HashMap<u32, Vec<(u32, &str)>>) -> Option<String> {
+fn find_ai_descendant(root: u32, children: &HashMap<u32, Vec<&ProcessRow>>) -> Option<String> {
     let mut stack = vec![root];
     let mut visited = HashSet::new();
     while let Some(pid) = stack.pop() {
@@ -105,14 +129,36 @@ fn find_ai_descendant(root: u32, children: &HashMap<u32, Vec<(u32, &str)>>) -> O
         let Some(kids) = children.get(&pid) else {
             continue;
         };
-        for (kid_pid, command) in kids {
-            if let Some(tool) = command_ai_tool_name(command) {
+        for child in kids {
+            if let Some(tool) = command_ai_tool_name(&child.command) {
                 return Some(tool);
             }
-            stack.push(*kid_pid);
+            stack.push(child.pid);
         }
     }
     None
+}
+
+fn find_native_codex(root: u32, children: &HashMap<u32, Vec<&ProcessRow>>) -> Option<u32> {
+    let mut stack = vec![root];
+    let mut visited = HashSet::new();
+    let mut native_pid = None;
+    while let Some(pid) = stack.pop() {
+        if !visited.insert(pid) {
+            continue;
+        }
+        for child in children.get(&pid).into_iter().flatten() {
+            if child.native_codex {
+                if native_pid.replace(child.pid).is_some() {
+                    return None;
+                }
+                // A Codex process can launch another Codex as a tool.
+            } else {
+                stack.push(child.pid);
+            }
+        }
+    }
+    native_pid
 }
 
 /// The canonical tool for a command line, by checking each word's executable
@@ -157,11 +203,19 @@ fn strip_launcher_extension(base: &str) -> &str {
 mod tests {
     use super::*;
 
+    fn detect_from_rows(
+        shell_pids: &[(String, u32)],
+        rows: &[ProcessRow],
+    ) -> HashMap<String, String> {
+        detect_processes_from_rows(shell_pids, rows).tools
+    }
+
     fn row(pid: u32, ppid: u32, command: &str) -> ProcessRow {
         ProcessRow {
             pid,
             ppid,
             command: command.to_string(),
+            native_codex: matches!(command, "codex" | "codex.exe" | "/opt/homebrew/bin/codex"),
         }
     }
 
@@ -195,6 +249,31 @@ mod tests {
             Some("codex")
         );
         assert!(!detected.contains_key("term-plain"));
+    }
+
+    #[test]
+    fn identifies_distinct_native_codex_processes_behind_launchers() {
+        let rows = vec![
+            row(101, 100, "node /bin/codex.js"),
+            row(102, 101, "codex.exe"),
+            row(103, 102, "codex.exe"),
+            row(201, 200, "codex.exe"),
+            row(301, 300, "codex.exe"),
+            row(302, 300, "codex.exe"),
+        ];
+        let detected = detect_processes_from_rows(
+            &[
+                ("one".into(), 100),
+                ("two".into(), 200),
+                ("ambiguous".into(), 300),
+            ],
+            &rows,
+        );
+        assert_eq!(
+            detected.codex_pids,
+            HashMap::from([("one".into(), 102), ("two".into(), 201)])
+        );
+        assert_eq!(detected.tools["ambiguous"], "codex");
     }
 
     #[test]

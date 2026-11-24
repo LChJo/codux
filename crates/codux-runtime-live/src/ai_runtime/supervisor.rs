@@ -4,14 +4,18 @@ use crate::ai_runtime::{
         runtime_file_signature, scan_runtime_bindings,
     },
     constants::{
-        NEEDS_INPUT_VISIBLE_SECONDS, POLL_INTERVAL_SECONDS, TRANSCRIPT_MONITOR_INTERVAL_MS,
+        NEEDS_INPUT_VISIBLE_SECONDS, POLL_INTERVAL_SECONDS, RUNNING_STALE_SECONDS,
+        TRANSCRIPT_MONITOR_INTERVAL_MS,
     },
     event_file::drain_runtime_event_dir,
     frame::runtime_frame_to_hook,
     log::runtime_log_line,
     monitor::{TranscriptMonitorMap, refresh_transcript_monitors, scan_transcript_monitors},
     payload::AIRuntimeEvent,
-    probe::{claude::ClaudeProbeCache, probe_runtime_with_claude_cache},
+    probe::{
+        claude::ClaudeProbeCache, codex::probe_codex_process_rollout, paths::paths_equivalent,
+        probe_runtime_with_claude_cache,
+    },
     registry::AIRuntimeRegistry,
     screen_signal::{ScreenSignal, detect_codex_screen_signal, detect_screen_signal},
     snapshot::{AIRuntimeCompletionEvent, AIRuntimeStateSnapshot, AISessionSnapshot},
@@ -308,7 +312,7 @@ fn supervisor_loop(
                     );
                 }
                 after_mutation(&context, &mut codex_terminals, mutation);
-                expire_unconfirmed_terminal_waits(&context, now_seconds());
+                expire_unconfirmed_terminal_hints(&context, &codex_terminals, now_seconds());
             }
             AIRuntimeSupervisorMessage::ScreenSignal(terminal_id) => {
                 let mutation = apply_screen_signal_for_terminal(state, registry, &terminal_id);
@@ -330,7 +334,10 @@ fn supervisor_loop(
                         after_mutation(&context, &mut codex_terminals, mutation);
                         continue;
                     }
-                    let Some(next) = runtime.status_for_hint(&status) else {
+                    let title_working = status.state == TerminalStatusState::Idle
+                        && status.source == TERMINAL_TITLE_OSC_SOURCE
+                        && terminal_has_unconfirmed_working_title(&context, &status);
+                    let Some(next) = runtime.status_for_hint(&status, title_working) else {
                         continue;
                     };
                     status.state = next;
@@ -551,7 +558,11 @@ impl CodexTurnStatus {
         }
     }
 
-    fn status_for_hint(&self, hint: &TerminalStatusEvent) -> Option<TerminalStatusState> {
+    fn status_for_hint(
+        &self,
+        hint: &TerminalStatusEvent,
+        title_working: bool,
+    ) -> Option<TerminalStatusState> {
         if self.terminal_instance_id != hint.terminal_instance_id
             || hint.source == TERMINAL_LIFECYCLE_SOURCE
         {
@@ -562,18 +573,44 @@ impl CodexTurnStatus {
             TerminalStatusState::Waiting => None,
             TerminalStatusState::Idle
                 if hint.source == TERMINAL_TITLE_OSC_SOURCE
-                    && self.state == TerminalStatusState::Working =>
+                    && title_working
+                    && self.state != TerminalStatusState::Working =>
             {
-                Some(self.state)
+                Some(TerminalStatusState::Idle)
             }
             TerminalStatusState::Idle if self.state != TerminalStatusState::Idle => None,
-            TerminalStatusState::Working if self.state == TerminalStatusState::Waiting => None,
+            TerminalStatusState::Working
+                if matches!(
+                    self.state,
+                    TerminalStatusState::Working | TerminalStatusState::Waiting
+                ) =>
+            {
+                None
+            }
             _ => Some(hint.state),
         }
     }
 }
 
-fn expire_unconfirmed_terminal_waits(context: &AIRuntimeSupervisorLoopContext, now: f64) {
+fn terminal_has_unconfirmed_working_title(
+    context: &AIRuntimeSupervisorLoopContext,
+    hint: &TerminalStatusEvent,
+) -> bool {
+    context.terminal_statuses.lock().is_ok_and(|statuses| {
+        statuses.get(&hint.terminal_id).is_some_and(|status| {
+            status.source == TERMINAL_TITLE_OSC_SOURCE
+                && status.state == TerminalStatusState::Working
+                && status.terminal_instance_id == hint.terminal_instance_id
+                && status.updated_at <= hint.updated_at
+        })
+    })
+}
+
+fn expire_unconfirmed_terminal_hints(
+    context: &AIRuntimeSupervisorLoopContext,
+    codex_terminals: &CodexTerminalStates,
+    now: f64,
+) {
     let candidates = context
         .terminal_statuses
         .lock()
@@ -581,9 +618,22 @@ fn expire_unconfirmed_terminal_waits(context: &AIRuntimeSupervisorLoopContext, n
             statuses
                 .values()
                 .filter(|status| {
-                    status.state == TerminalStatusState::Waiting
+                    (status.state == TerminalStatusState::Waiting
                         && status.source != CODEX_RUNTIME_STATUS_SOURCE
-                        && now - status.updated_at >= NEEDS_INPUT_VISIBLE_SECONDS
+                        && now - status.updated_at >= NEEDS_INPUT_VISIBLE_SECONDS)
+                        || (status.state == TerminalStatusState::Working
+                            && status.source == TERMINAL_TITLE_OSC_SOURCE
+                            && now - status.updated_at >= RUNNING_STALE_SECONDS
+                            && !codex_terminals
+                                .get(&status.terminal_id)
+                                .is_some_and(|turn| {
+                                    turn.terminal_instance_id == status.terminal_instance_id
+                                        && matches!(
+                                            turn.state,
+                                            TerminalStatusState::Working
+                                                | TerminalStatusState::Waiting
+                                        )
+                                }))
                 })
                 .cloned()
                 .collect::<Vec<_>>()
@@ -591,6 +641,12 @@ fn expire_unconfirmed_terminal_waits(context: &AIRuntimeSupervisorLoopContext, n
         .unwrap_or_default();
     for status in candidates {
         let binding = context.registry.binding(&status.terminal_id);
+        if status.state == TerminalStatusState::Working
+            && !codex_terminals.contains_key(&status.terminal_id)
+            && binding.as_ref().and_then(|binding| binding.tool.as_deref()) != Some("codex")
+        {
+            continue;
+        }
         let tool = if status.source == TERMINAL_TITLE_OSC_SOURCE {
             "codex"
         } else {
@@ -599,9 +655,12 @@ fn expire_unconfirmed_terminal_waits(context: &AIRuntimeSupervisorLoopContext, n
                 .and_then(|binding| binding.tool.as_deref())
                 .unwrap_or_default()
         };
-        if terminal_screen_signal(&context.registry, &status.terminal_id, tool)
-            != ScreenSignal::Waiting
-        {
+        let expected = if status.state == TerminalStatusState::Waiting {
+            ScreenSignal::Waiting
+        } else {
+            ScreenSignal::Running
+        };
+        if terminal_screen_signal(&context.registry, &status.terminal_id, tool) != expected {
             publish_terminal_status(context, cleared_terminal_status(status));
         }
     }
@@ -726,20 +785,32 @@ fn poll_runtime_sessions(
     let mut mutation = state.reconcile_bridge_snapshot(&terminal_snapshot);
     let now = now_seconds();
     // Interval poll only (keeps `ps` to once per interval): detect each terminal's AI tool and create an idle session the loop below refines.
-    if terminal_ids.is_none() && detection_enabled() {
+    let detected = if terminal_ids.is_none() && detection_enabled() {
         let shell_pids = registry.shell_pids_snapshot();
-        if let Some(detected) =
-            crate::ai_runtime::process_detect::detect_terminal_tools(&shell_pids)
-        {
-            mutation.merge(state.ensure_detected_sessions(&terminal_snapshot, &detected, now));
-            mutation.merge(state.retire_undetected_hookless_sessions(
-                &terminal_snapshot,
-                &shell_pids,
-                &detected,
-                now,
-            ));
-        }
-    }
+        crate::ai_runtime::process_detect::detect_terminal_processes(&shell_pids).inspect(
+            |detected| {
+                mutation.merge(state.ensure_detected_sessions(
+                    &terminal_snapshot,
+                    &detected.tools,
+                    now,
+                ));
+                mutation.merge(state.retire_undetected_hookless_sessions(
+                    &terminal_snapshot,
+                    &shell_pids,
+                    &detected.tools,
+                    now,
+                ));
+                mutation.merge(reconcile_codex_process_rollouts(
+                    state,
+                    registry,
+                    &detected.codex_pids,
+                    now,
+                ));
+            },
+        )
+    } else {
+        None
+    };
     let sessions = terminal_ids
         .map(|ids| state.sessions_for_terminals(ids))
         .unwrap_or_else(|| state.runtime_tracked_sessions(now));
@@ -775,6 +846,25 @@ fn poll_runtime_sessions(
             continue;
         }
         let mut request = probe_request_for_session(session);
+        if session.tool == "codex"
+            && request.external_session_id.is_none()
+            && request.transcript_path.is_none()
+            && let Some(project_path) = request.project_path.as_deref()
+            && detected.as_ref().is_some_and(|detected| {
+                terminal_snapshot.iter().any(|peer| {
+                    peer.terminal_id != session.terminal_id
+                        && detected
+                            .tools
+                            .get(&peer.terminal_id)
+                            .is_some_and(|tool| tool == "codex")
+                        && paths_equivalent(Some(&peer.cwd), project_path)
+                })
+            })
+        {
+            // A shared cwd cannot identify the owner. Wait for one of the
+            // process's own log entries.
+            continue;
+        }
         let assigned_key = (session.tool.clone(), session.project_id.clone());
         request.occupied_external_session_ids = assigned_external_session_ids
             .get(&assigned_key)
@@ -802,6 +892,59 @@ fn poll_runtime_sessions(
             || screen_starts_idle_tool(&session.tool)
         {
             mutation.merge(apply_screen_signal_for_session(state, registry, session));
+        }
+    }
+    mutation
+}
+
+fn reconcile_codex_process_rollouts(
+    state: &AIRuntimeStateStore,
+    registry: &AIRuntimeRegistry,
+    codex_pids: &HashMap<String, u32>,
+    now: f64,
+) -> AIRuntimeStateMutation {
+    let mut mutation = AIRuntimeStateMutation::default();
+    if codex_pids.is_empty() {
+        return mutation;
+    }
+    let sessions = state.snapshot().sessions;
+    let mut occupied: HashSet<_> = sessions
+        .iter()
+        .filter(|session| session.tool == "codex")
+        .filter_map(|session| session.ai_session_id.clone())
+        .collect();
+    for session in sessions.iter().filter(|session| session.tool == "codex") {
+        let Some(&pid) = codex_pids.get(&session.terminal_id) else {
+            continue;
+        };
+        if registry
+            .binding(&session.terminal_id)
+            .is_none_or(|binding| binding.terminal_instance_id != session.terminal_instance_id)
+        {
+            continue;
+        }
+        let mut request = probe_request_for_session(session);
+        request.occupied_external_session_ids = occupied.clone();
+        let previous_turn = session
+            .runtime_turn_started_at
+            .or(session.active_turn_started_at)
+            .or(session.completed_turn_started_at);
+        if let Some(snapshot) = probe_codex_process_rollout(&request, pid, previous_turn, now) {
+            let external_id = snapshot.external_session_id.clone();
+            let applied = state.apply_runtime_snapshot(&session.terminal_id, snapshot);
+            if applied.did_change
+                && let Some(id) = external_id
+            {
+                runtime_log_line(
+                    "runtime-binding",
+                    &format!(
+                        "bind codex process terminal={} pid={pid} external={id}",
+                        session.terminal_id
+                    ),
+                );
+                occupied.insert(id);
+            }
+            mutation.merge(applied);
         }
     }
     mutation
@@ -1054,6 +1197,10 @@ fn now_seconds() -> f64 {
 }
 
 #[cfg(test)]
+#[path = "supervisor/codex_tests.rs"]
+mod codex_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1074,10 +1221,17 @@ mod tests {
             source: TERMINAL_TITLE_OSC_SOURCE.to_string(),
         };
 
-        assert_eq!(turn.status_for_hint(&idle), None);
+        assert_eq!(turn.status_for_hint(&idle, false), None);
+        assert_eq!(
+            turn.status_for_hint(&idle, true),
+            Some(TerminalStatusState::Idle)
+        );
 
         idle.source = TERMINAL_LIFECYCLE_SOURCE.to_string();
-        assert_eq!(turn.status_for_hint(&idle), Some(TerminalStatusState::Idle));
+        assert_eq!(
+            turn.status_for_hint(&idle, false),
+            Some(TerminalStatusState::Idle)
+        );
     }
 
     #[test]

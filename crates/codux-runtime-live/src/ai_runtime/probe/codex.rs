@@ -1,6 +1,9 @@
 mod parse;
 mod preview;
+mod process;
 mod types;
+
+pub(crate) use process::probe_codex_process_rollout;
 
 use crate::ai_runtime::{
     constants::CODEX_STALE_PRELAUNCH_OPEN_TURN_SOURCE,
@@ -28,15 +31,23 @@ pub(crate) fn probe_codex_runtime(
                 None => find_codex_rollout_by_cwd_since(&project_path, request.started_at),
             }
         })?;
+    probe_codex_rollout(request, &file_path)
+}
+
+fn probe_codex_rollout(
+    request: &AIRuntimeProbeRequest,
+    file_path: &Path,
+) -> Option<AIRuntimeContextSnapshot> {
+    let project_path = normalized_string(request.project_path.as_deref())?;
     let transcript_path = file_path.display().to_string();
     let parsed = parse_codex_runtime_state(
-        &file_path,
+        file_path,
         Some(&project_path),
         request.started_at,
         request.updated_at,
     )?;
     let stale_prelaunch_open_turn =
-        stale_prelaunch_open_turn(&parsed, &file_path, request.started_at);
+        stale_prelaunch_open_turn(&parsed, file_path, request.started_at);
     let stale_completed_at = stale_prelaunch_open_turn.then(|| {
         request
             .updated_at
@@ -56,7 +67,7 @@ pub(crate) fn probe_codex_runtime(
         response_state = Some("needsInput".to_string());
     }
     let external_session_id = normalized_string(request.external_session_id.as_deref())
-        .or_else(|| codex_session_id_from_rollout(&file_path));
+        .or_else(|| codex_session_id_from_rollout(file_path));
     let mut plan = parsed.plan;
     if let (Some(plan), Some(session_id)) = (plan.as_mut(), external_session_id.as_ref()) {
         plan.session_id = session_id.clone();
