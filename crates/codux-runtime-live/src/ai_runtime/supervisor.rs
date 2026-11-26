@@ -212,6 +212,34 @@ impl AIRuntimeSupervisor {
         result.recv().unwrap_or(false)
     }
 
+    /// Fire-and-forget session removal for the terminal close path. Unlike
+    /// [`Self::remove_session`], this never blocks the calling (UI) thread on the
+    /// single-threaded supervisor: a busy loop (e.g. a Poll stuck reading a hung
+    /// AI CLI's process tree) must not freeze the app when a terminal is closed.
+    /// The removal is still applied in queue order; if the queue is full the
+    /// request is dropped and the next Poll retires the now-dead session.
+    pub fn remove_session_detached(&self, terminal_id: &str) {
+        let Ok(started) = self.started.lock() else {
+            return;
+        };
+        if !*started {
+            if let Ok(mut statuses) = self.terminal_statuses.lock() {
+                statuses.remove(terminal_id);
+            }
+            self.state.remove_session(terminal_id);
+            return;
+        }
+        drop(started);
+        let (reply, _result) = channel();
+        let _ = self
+            .tx
+            .try_send(AIRuntimeSupervisorMessage::RemoveSession {
+                terminal_id: terminal_id.to_string(),
+                reply,
+            });
+        // `_result` drops immediately: never wait for the supervisor's reply.
+    }
+
     pub fn note_output_activity(&self, terminal_id: &str, now: f64) -> bool {
         self.state.note_output_activity(terminal_id, now)
     }
@@ -1757,6 +1785,49 @@ mod tests {
         unsafe {
             std::env::remove_var("CODUX_AI_RUNTIME_DETECT");
         }
+    }
+
+    #[test]
+    fn close_path_remove_session_must_not_block_when_supervisor_busy() {
+        let supervisor = AIRuntimeSupervisor::new();
+        let registry = AIRuntimeRegistry::shared();
+        let dir = std::env::temp_dir().join(format!("codux-remove-block-{}", uuid::Uuid::new_v4()));
+        supervisor
+            .start(
+                Arc::clone(&registry),
+                dir.join("events"),
+                dir.join("bindings"),
+            )
+            .unwrap();
+
+        // Occupy the single-threaded supervisor loop: hold `binding_scan` and queue
+        // a ScanBindings that blocks on it, mirroring a Poll stuck in process
+        // detection while an AI CLI is busy. A terminal close then removes its
+        // session on the UI thread and must not block behind the busy loop.
+        let guard = supervisor.binding_scan.lock().unwrap();
+        supervisor
+            .tx
+            .try_send(AIRuntimeSupervisorMessage::ScanBindings)
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                supervisor.remove_session_detached("closing-terminal");
+                let _ = done_tx.send(());
+            });
+            let completed = done_rx
+                .recv_timeout(std::time::Duration::from_millis(500))
+                .is_ok();
+            // Release the loop so the spawned caller can finish even on failure.
+            drop(guard);
+            assert!(
+                completed,
+                "close-path session removal blocked the calling (UI) thread behind a busy supervisor"
+            );
+        });
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     fn wait_for(condition: impl Fn() -> bool) {

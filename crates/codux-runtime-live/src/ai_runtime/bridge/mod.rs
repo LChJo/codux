@@ -256,6 +256,12 @@ impl AIRuntimeBridge {
         self.supervisor.remove_session(terminal_id)
     }
 
+    /// Non-blocking variant for the terminal close path: never waits on the
+    /// supervisor, so a busy runtime loop cannot freeze the UI on close.
+    pub fn remove_session_detached(&self, terminal_id: &str) {
+        self.supervisor.remove_session_detached(terminal_id)
+    }
+
     /// Refresh an in-flight AI turn's liveness from real terminal output. No-op
     /// unless the terminal already has a `responding` turn.
     pub fn note_output_activity(&self, terminal_id: &str, now: f64) -> bool {

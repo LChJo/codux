@@ -591,7 +591,9 @@ impl TerminalManager {
             return;
         };
         ai_runtime.registry().remove(session.id());
-        ai_runtime.remove_session(session.id());
+        // Close runs on the UI thread: detach so a busy supervisor (e.g. a Poll
+        // reading a hung AI CLI's process tree) cannot block the app on close.
+        ai_runtime.remove_session_detached(session.id());
     }
 }
 
